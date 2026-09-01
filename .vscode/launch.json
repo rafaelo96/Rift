@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Debug Rift",
+            "target": "Rift",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Rift"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Release Rift",
+            "target": "Rift",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Rift"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Debug DemuxProbe",
+            "target": "DemuxProbe",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug DemuxProbe"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Release DemuxProbe",
+            "target": "DemuxProbe",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release DemuxProbe"
+        }
+    ]
+}

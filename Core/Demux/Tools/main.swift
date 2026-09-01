@@ -66,8 +66,19 @@ for track in info.tracks {
     if let fps = track.frameRate { extra.append(String(format: "%.2f fps", fps)) }
     extra.append("ct=\(track.colorTransfer.map(String.init) ?? "-")")
     extra.append("cp=\(track.colorPrimaries.map(String.init) ?? "-")")
+    extra.append("extradata=\(track.codecExtradata.count)B")
     print(String(format: "  [%d] %@ %@ %@",
                  track.streamIndex, kind, track.codecName, extra.joined(separator: ", ")))
+}
+
+// Success criterion for this task: the video track must expose non-empty
+// codec extradata (VPS/SPS/PPS for HEVC) for a future CMFormatDescription.
+if let video = info.tracks.first(where: { $0.kind == .video }) {
+    if video.codecExtradata.isEmpty {
+        print("FAIL: video track has EMPTY codecExtradata")
+        exit(3)
+    }
+    print(String(format: "video extradata : %d bytes (non-empty ✓)", video.codecExtradata.count))
 }
 
 // 2. Pull 20 packets, printing memory every 5.

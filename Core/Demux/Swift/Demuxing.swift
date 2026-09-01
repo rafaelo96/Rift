@@ -29,6 +29,11 @@ public struct TrackInfo: Equatable {
     /// Raw AVColorPrimaries.
     public let colorPrimaries: Int?
 
+    /// CodecPrivate bytes (VPS/SPS/PPS for HEVC) exposed raw and uninterpreted:
+    /// Decode needs them to build a CMFormatDescription; Demux decides nothing
+    /// about VideoToolbox. Empty when the container has none.
+    public let codecExtradata: [UInt8]
+
     public init(
         streamIndex: Int,
         kind: TrackKind,
@@ -38,7 +43,8 @@ public struct TrackInfo: Equatable {
         frameRate: Double?,
         duration: Double,
         colorTransfer: Int?,
-        colorPrimaries: Int?
+        colorPrimaries: Int?,
+        codecExtradata: [UInt8]
     ) {
         self.streamIndex = streamIndex
         self.kind = kind
@@ -49,6 +55,7 @@ public struct TrackInfo: Equatable {
         self.duration = duration
         self.colorTransfer = colorTransfer
         self.colorPrimaries = colorPrimaries
+        self.codecExtradata = codecExtradata
     }
 }
 

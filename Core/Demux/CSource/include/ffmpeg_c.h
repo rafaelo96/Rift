@@ -45,8 +45,10 @@ typedef struct {
     int         height;
     double      frame_rate;       /* 0 if unknown */
     double      duration_seconds; /* 0 if unknown */
-int         color_trc;        /* raw AVColorTransferCharacteristic (PQ/HLG/…). NO boolean */
-        int         color_primaries;  /* raw AVColorPrimaries */
+    int         color_trc;        /* raw AVColorTransferCharacteristic (PQ/HLG/…). NO boolean */
+    int         color_primaries;  /* raw AVColorPrimaries */
+    int         extradata_size;   /* CodecPrivate / VPS+SPS+PPS for HEVC (0 if none) */
+    const uint8_t *extradata;     /* owned by the context; valid while it is open */
 } RiftTrackInfoC;
 
 /* Returns NULL on failure; error_buffer receives a human-readable message. */

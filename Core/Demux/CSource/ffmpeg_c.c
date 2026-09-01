@@ -107,6 +107,11 @@ int rift_demux_track_info(RiftDemuxCtx *ctx, int index, RiftTrackInfoC *out) {
     out->color_trc = par->color_trc;
     out->color_primaries = par->color_primaries;
 
+    /* CodecPrivate (VPS/SPS/PPS for HEVC). Pointer owned by the
+     * AVFormatContext; the caller must copy it before using the ctx. */
+    out->extradata_size = par->extradata_size;
+    out->extradata = par->extradata;
+
     return 0;
 }
 
