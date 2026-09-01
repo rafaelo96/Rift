@@ -39,6 +39,26 @@
             "target": "DemuxProbe",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release DemuxProbe"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Debug DecodeProbe",
+            "target": "DecodeProbe",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug DecodeProbe"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Release DecodeProbe",
+            "target": "DecodeProbe",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release DecodeProbe"
         }
     ]
 }

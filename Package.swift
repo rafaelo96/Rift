@@ -58,6 +58,7 @@ let package = Package(
     products: [
         .executable(name: "Rift", targets: ["Rift"]),
         .executable(name: "DemuxProbe", targets: ["DemuxProbe"]),
+        .executable(name: "DecodeProbe", targets: ["DecodeProbe"]),
     ],
     targets: [
         .target(
@@ -99,6 +100,20 @@ let package = Package(
             name: "DemuxProbe",
             dependencies: ["Demux"],
             path: "Core/Demux/Tools"
+        ),
+        // Core/Decode — consumes Core/Demux output; VTDecompressionSession
+        // (hardware). System frameworks only, no UI/Contracts.
+        .target(
+            name: "Decode",
+            dependencies: ["Demux"],
+            path: "Core/Decode",
+            sources: ["Swift"]
+        ),
+        // Standalone validation tool for Core/Decode (uses Core/Demux as-is).
+        .executableTarget(
+            name: "DecodeProbe",
+            dependencies: ["Demux", "Decode"],
+            path: "Core/Decode/Tools"
         ),
     ],
     swiftLanguageVersions: [.v5]
