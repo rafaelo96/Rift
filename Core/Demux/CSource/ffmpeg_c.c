@@ -120,6 +120,16 @@ int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
         return -1;
     }
 
+    /*
+     * av_read_frame() hands out a reference-counted packet (pkt->buf) and
+     * requires that the packet passed in "must not contain data that needs
+     * to be freed" (avformat.h). Reusing the same ctx->pkt across calls
+     * without freeing it first leaks one packet payload per call. Free the
+     * previous payload before the next read overwrites the packet. The
+     * pointer exposed to Swift on the previous call stays valid until here.
+     */
+    av_packet_unref(ctx->pkt);
+
     int err = av_read_frame(ctx->fmt, ctx->pkt);
     if (err < 0) {
         if (err == AVERROR_EOF) {
