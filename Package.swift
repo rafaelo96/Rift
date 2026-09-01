@@ -59,6 +59,7 @@ let package = Package(
         .executable(name: "Rift", targets: ["Rift"]),
         .executable(name: "DemuxProbe", targets: ["DemuxProbe"]),
         .executable(name: "DecodeProbe", targets: ["DecodeProbe"]),
+        .executable(name: "FramePoolProbe", targets: ["FramePoolProbe"]),
     ],
     targets: [
         .target(
@@ -114,6 +115,22 @@ let package = Package(
             name: "DecodeProbe",
             dependencies: ["Demux", "Decode"],
             path: "Core/Decode/Tools"
+        ),
+        // Core/FramePool — bounded sliding window over decoded frames for
+        // Interpolation and Scheduler. Consumes Core/Decode output as-is.
+        // No UI/, no Contracts/. Recycling is by ARC: dropping the window's
+        // reference on evict lets VT recycle the buffer; no own pool.
+        .target(
+            name: "FramePool",
+            dependencies: ["Demux", "Decode"],
+            path: "Core/FramePool",
+            sources: ["Swift"]
+        ),
+        // Standalone validation tool for Core/FramePool (chains Demux+Decode).
+        .executableTarget(
+            name: "FramePoolProbe",
+            dependencies: ["Demux", "Decode", "FramePool"],
+            path: "Core/FramePool/Tools"
         ),
     ],
     swiftLanguageVersions: [.v5]

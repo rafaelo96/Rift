@@ -59,6 +59,26 @@
             "target": "DecodeProbe",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release DecodeProbe"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Debug FramePoolProbe",
+            "target": "FramePoolProbe",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug FramePoolProbe"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Rift}",
+            "name": "Release FramePoolProbe",
+            "target": "FramePoolProbe",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release FramePoolProbe"
         }
     ]
 }
