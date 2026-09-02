@@ -60,6 +60,7 @@ let package = Package(
         .executable(name: "DemuxProbe", targets: ["DemuxProbe"]),
         .executable(name: "DecodeProbe", targets: ["DecodeProbe"]),
         .executable(name: "FramePoolProbe", targets: ["FramePoolProbe"]),
+        .executable(name: "MVProbe", targets: ["MVProbe"]),
     ],
     targets: [
         .target(
@@ -131,6 +132,17 @@ let package = Package(
             name: "FramePoolProbe",
             dependencies: ["Demux", "Decode", "FramePool"],
             path: "Core/FramePool/Tools"
+        ),
+        // Core/Interpolation — measurement prototype for classic MCFI motion
+        // estimation (hierarchical block matching in MSL compute shaders).
+        // Standalone: consumes Demux+Decode directly; no FramePool, no UI,
+        // no Contracts. Shader source is embedded and compiled at runtime so
+        // this probe needs no .metallib build plumbing.
+        .executableTarget(
+            name: "MVProbe",
+            dependencies: ["Demux", "Decode"],
+            path: "Core/Interpolation/Tools",
+            exclude: [".gitkeep"]
         ),
     ],
     swiftLanguageVersions: [.v5]
