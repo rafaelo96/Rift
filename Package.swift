@@ -61,6 +61,7 @@ let package = Package(
         .executable(name: "DecodeProbe", targets: ["DecodeProbe"]),
         .executable(name: "FramePoolProbe", targets: ["FramePoolProbe"]),
         .executable(name: "MVProbe", targets: ["MVProbe"]),
+        .executable(name: "SchedulerProbe", targets: ["SchedulerProbe"]),
     ],
     targets: [
         .target(
@@ -143,6 +144,18 @@ let package = Package(
             dependencies: ["Demux", "Decode"],
             path: "Core/Interpolation/Tools",
             exclude: [".gitkeep"]
+        ),
+        // Core/Scheduler — presentation timing for real + interpolated frames
+        // (SDR only, no HDR yet). Consumes FramePool pts, Interpolation MVs.
+        .target(
+            name: "Scheduler",
+            path: "Core/Scheduler",
+            sources: ["Swift"]
+        ),
+        .executableTarget(
+            name: "SchedulerProbe",
+            dependencies: ["Scheduler"],
+            path: "Core/Scheduler/Tools"
         ),
     ],
     swiftLanguageVersions: [.v5]
