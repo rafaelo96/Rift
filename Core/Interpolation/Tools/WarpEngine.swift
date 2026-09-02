@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import CoreVideo
 
 final class WarpEngine {
     let device: MTLDevice
@@ -82,6 +83,74 @@ final class WarpEngine {
         let mvBuf = device.makeBuffer(bytes: mv, length: mv.count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)!
         let (outTex, ms) = interpolate(tex0: tex0, tex1: tex1, mv: mvBuf, gridW: UInt32(gridW), gridH: UInt32(gridH), blockSize: UInt32(blockSize), t: t, occThresh: occThresh)
         return (readTexture(outTex), ms)
+    }
+
+    // HDR: CVPixelBuffer path — propaga attachments BT.2020/PQ del original al interpolado
+    // Fix puntual: sin esto el buffer interpolado nacía sin color attachments y se veía SDR aplastado
+    func interpolatePixelBuffer(I0: CVPixelBuffer, I1: CVPixelBuffer, mv: [SIMD2<Int32>], gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float = 1.0) -> CVPixelBuffer? {
+        let w = CVPixelBufferGetWidth(I0), h = CVPixelBufferGetHeight(I0)
+        // Luma plane warp reuse existing MTL path (prototype: solo luma, para HDR real se warp-ean ambos planos Y+CbCr)
+        // Extrae luma como [UInt16] para reutilizar el kernel actual; luego re-ensambla en CVPixelBuffer
+        // Nota: para HDR10 completo habría que warp-ear plano CbCr también; v1 propaga metadata y warp luma.
+        guard let luma0 = copyLumaPlane(I0), let luma1 = copyLumaPlane(I1) else { return nil }
+        let (outLuma, _) = interpolate(I0: luma0, I1: luma1, mv: mv, width: w, height: h, gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+        var outPB: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+            kCVPixelBufferWidthKey as String: w,
+            kCVPixelBufferHeightKey as String: h,
+            kCVPixelBufferPixelFormatTypeKey as String: CVPixelBufferGetPixelFormatType(I0)
+        ]
+        let st = CVPixelBufferCreate(kCFAllocatorDefault, w, h, CVPixelBufferGetPixelFormatType(I0), attrs as CFDictionary, &outPB)
+        guard st == kCVReturnSuccess, let out = outPB else { return nil }
+        // Copia luma de vuelta (para 420v solo plano 0 aquí; plano 1 se deja negro en prototype)
+        CVPixelBufferLockBaseAddress(out, [])
+        CVPixelBufferLockBaseAddress(I0, .readOnly)
+        if let dst = CVPixelBufferGetBaseAddressOfPlane(out, 0), let _ = CVPixelBufferGetBaseAddressOfPlane(I0, 0) {
+            let bpr = CVPixelBufferGetBytesPerRowOfPlane(out, 0)
+            outLuma.withUnsafeBytes { raw in
+                let src = raw.baseAddress!
+                // out es 10-bit en high bits (como VT): ya viene así desde readTexture
+                for y in 0..<h {
+                    let dstRow = dst.advanced(by: y * bpr)
+                    let srcRow = src.advanced(by: y * w * 2)
+                    memcpy(dstRow, srcRow, w * 2)
+                }
+            }
+        }
+        CVPixelBufferUnlockBaseAddress(I0, .readOnly)
+        CVPixelBufferUnlockBaseAddress(out, [])
+        propagateHDR(from: I0, to: out)
+        return out
+    }
+
+    private func copyLumaPlane(_ pb: CVPixelBuffer) -> [UInt16]? {
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        guard CVPixelBufferIsPlanar(pb), CVPixelBufferGetPlaneCount(pb) >= 1,
+              let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) else { return nil }
+        let w = CVPixelBufferGetWidthOfPlane(pb, 0), h = CVPixelBufferGetHeightOfPlane(pb, 0)
+        let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
+        var out = [UInt16](repeating: 0, count: w*h)
+        for y in 0..<h {
+            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
+            for x in 0..<w { out[y*w + x] = row[x] }
+        }
+        return out
+    }
+
+    private func propagateHDR(from src: CVPixelBuffer, to dst: CVPixelBuffer) {
+        for key in [kCVImageBufferColorPrimariesKey, kCVImageBufferTransferFunctionKey, kCVImageBufferYCbCrMatrixKey] {
+            if let v = CVBufferCopyAttachment(src, key, nil) {
+                CVBufferSetAttachment(dst, key, v, .shouldPropagate)
+            }
+        }
+        // Propaga todos los attachments restantes por si hay otros (ej. MasteringDisplay)
+        if let dict = CVBufferCopyAttachments(src, .shouldPropagate) as? [String: Any] {
+            for (k, v) in dict {
+                CVBufferSetAttachment(dst, k as CFString, v as CFTypeRef, .shouldPropagate)
+            }
+        }
     }
 }
 

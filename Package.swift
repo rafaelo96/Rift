@@ -157,6 +157,12 @@ let package = Package(
             dependencies: ["Scheduler"],
             path: "Core/Scheduler/Tools"
         ),
+        // Rendering — presentation respecting HDR10 metadata (BT.2020/PQ)
+        .target(
+            name: "Rendering",
+            path: "Rendering",
+            sources: ["Swift"]
+        ),
     ],
     swiftLanguageVersions: [.v5]
 )
