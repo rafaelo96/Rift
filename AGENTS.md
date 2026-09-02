@@ -6,9 +6,9 @@
 ## 1. Qué es Rift
 
 Reproductor de video nativo para macOS con interpolación de frames en tiempo real
-(24fps → 120fps) usando un modelo tipo RIFE. Interfaz "Liquid Glass", soporte HDR
-con tone-mapping, y compatibilidad de formatos vía FFmpeg. Se distribuye como
-`.dmg` en GitHub y vía Homebrew tap.
+(24fps → 60fps) usando compensación de movimiento clásica (MCFI). Interfaz "Liquid
+Glass", soporte HDR con tone-mapping, y compatibilidad de formatos vía FFmpeg. Se
+distribuye como `.dmg` en GitHub y vía Homebrew tap.
 
 ## 2. Objetivo técnico no negociable
 
@@ -25,19 +25,36 @@ rechazarse, aunque parezca más simple de implementar.
 - **Lenguaje:** Swift
 - **Demux de contenedor (MKV):** FFmpeg (solo para separar paquetes, no para decodificar ni transcodificar)
 - **Decodificación de video:** `VTDecompressionSession` (hardware, HEVC)
-- **Interpolación:** Core ML o MPSGraph sobre Metal, modelo tipo RIFE
+- **Interpolación:** motion-compensated frame interpolation (MCFI) clásica, en Metal —
+  estimación de movimiento por bloques (block matching / optical flow clásico) +
+  generación del frame intermedio por compensación de movimiento. SIN redes
+  neuronales, SIN modelos preentrenados, SIN dependencias de conversión (Core ML /
+  MLX / PyTorch). Decisión tomada tras medir que RIFE (con flow-reuse ya optimizado)
+  queda 4.7× sobre presupuesto de tiempo real incluso a 480p en Apple M4 — no viable
+  en tiempo real en ningún Mac M soportado (M1+). Todo el prototipo/investigación de
+  RIFE fue descartado y eliminado del repo.
 - **Buffer de frames:** `CVPixelBufferPool`, ventana deslizante acotada (no crece indefinidamente)
 - **Salida/sincronía:** `AVSampleBufferDisplayLayer` + `AVSampleBufferRenderSynchronizer`
 - **UI:** SwiftUI / AppKit, estética Liquid Glass ya existente — no rediseñar sin que se pida
 
 No introducir nuevas dependencias externas sin justificarlo explícitamente y pedir confirmación.
 
+### Nota de trade-off de interpolación (no reabrir esta discusión sin nueva evidencia)
+
+MCFI clásico produce el "soap opera effect" (fluidez aumentada — el objetivo
+buscado) pero con más artefactos que una red neuronal como RIFE en escenas de
+movimiento rápido u oclusiones (halos, distorsión). Es un trade-off aceptado
+explícitamente por el usuario a cambio de viabilidad real-time en todo el rango
+de hardware soportado (M1 en adelante). No se vuelve a evaluar RIFE u otro modelo
+de deep learning para este propósito salvo que aparezca evidencia nueva de que
+cabe en presupuesto de tiempo real en el chip más débil soportado.
+
 ## 4. Estructura de módulos y límites de cada uno
 
 ```
 Core/Demux/          → extrae paquetes del contenedor. No decodifica. No conoce Metal ni UI.
 Core/Decode/         → paquetes comprimidos → CVPixelBuffer. No conoce interpolación ni UI.
-Core/Interpolation/  → 2 CVPixelBuffer → 1 CVPixelBuffer generado. No conoce disco ni UI.
+Core/Interpolation/  → 2 CVPixelBuffer → 1 CVPixelBuffer generado (MCFI). No conoce disco ni UI.
 Core/FramePool/       → ventana de N frames en memoria. No decodifica ni interpola.
 Core/Scheduler/       → timestamps y sincronía de reproducción. No decodifica ni interpola.
 Rendering/            → presenta frames ya listos, maneja metadata HDR.
@@ -91,10 +108,37 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
 
 ## 9. Orden de construcción del pipeline (para retomar desde cero)
 
-1. Demuxer aislado (extrae paquetes, sin decodificar).
-2. Decoder (paquetes → CVPixelBuffer, verificable con un frame estático).
-3. Sliding frame buffer (ventana en memoria, memoria estable medida).
-4. Motor de interpolación (par de frames → frame generado, medido en ms).
+1. Demuxer aislado (extrae paquetes, sin decodificar). ✅ Completado y validado.
+2. Decoder (paquetes → CVPixelBuffer, verificable con un frame estático). ✅ Completado y validado.
+3. Sliding frame buffer (ventana en memoria, memoria estable medida). ✅ Completado y validado.
+4. Motor de interpolación (MCFI clásico: par de frames → frame generado, medido en ms). ⬜ En curso.
 5. Scheduler + display (integración con timestamps, sin HDR primero).
 6. HDR/color metadata.
 7. Reconexión con la UI existente — solo al final, cuando el pipeline ya se probó solo.
+
+## Rango de hardware soportado
+
+Rift debe funcionar en cualquier Mac Apple Silicon (M1 en adelante),
+no solo en el hardware de desarrollo. La interpolación de frames debe
+ser adaptativa: el pipeline detecta la capacidad del chip en tiempo de
+ejecución y ajusta el objetivo (multiplicador de fps y/o resolución de
+trabajo de interpolación) en vez de asumir un target fijo. En el chip
+más débil soportado, la app debe degradar con elegancia (menor
+multiplicador, o interpolación desactivada) en vez de fallar o ir
+entrecortada. Toda medición de rendimiento debe reportar el chip real
+donde se corrió, y no se generaliza un número de un chip a toda la
+línea M sin verificarlo o al menos acotarlo con un argumento explícito
+(ej. proporción de núcleos GPU).
+
+No se asumen ni se codifican tiempos de rendimiento por modelo de chip
+(no hay tabla fija "M1 → tier X"). En su lugar, el pipeline de
+interpolación se auto-calibra: mide el costo real de interpolar en la
+máquina del usuario (benchmark corto, primera apertura de video o bajo
+demanda) y elige el multiplicador de fps / resolución de trabajo según
+ese resultado medido, no según el modelo de chip reportado por el
+sistema. Ningún número de rendimiento medido en el hardware de
+desarrollo (M4 mini) se generaliza a otros chips sin esta calibración
+en vivo. La calibración de arranque no captura variación térmica
+(throttling en sesiones largas de 4K sostenido) — limitación conocida
+a resolver en `Core/Scheduler` si el costo real observado se desvía
+mucho del calibrado.
