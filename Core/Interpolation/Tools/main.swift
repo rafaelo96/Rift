@@ -18,6 +18,7 @@
 
 import Foundation
 import CoreVideo
+import Metal
 import CoreMedia
 import VideoToolbox
 import Demux
@@ -474,6 +475,15 @@ do {
     print("ENGINE INIT FAILED: \(error)")
     exit(3)
 }
+let warpEngine: WarpEngine
+do {
+    guard let dev = MTLCreateSystemDefaultDevice() else { print("WARP INIT FAILED: no Metal device"); exit(3) }
+    warpEngine = try WarpEngine(device: dev)
+} catch {
+    print("WARP INIT FAILED: \(error)")
+    exit(3)
+}
+var warpTotal: [Double] = []
 
 // Synthetic HSV-coloring verification (MV_DIAG_ZERO=1): render a field of
 // known vectors to PNG and print the exact RGB at each grid block. This pins
@@ -614,7 +624,12 @@ for i in 0..<pairCount {
     madSum += mad
     if mad > madMax { madMax = mad }
 
-    print(String(format: "  pair %4d: %.3f ms", i + 1, elapsedMilliseconds(from: pairStart)))
+    // Warp/blend at t=0.5 (OBMC omitted v1 — known limitation, see header)
+    let mvForWarp = engine.downloadMV(level: 0)
+    let (interpPlane, warpMS) = warpEngine.interpolate(I0: cur, I1: ref, mv: mvForWarp, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5)
+    warpTotal.append(warpMS)
+
+    print(String(format: "  pair %4d: ME %.3f ms + warp %.3f ms", i + 1, elapsedMilliseconds(from: pairStart) - warpMS, warpMS))
 
     if dumpArtifacts && i == 0 {
         try? FileManager.default.createDirectory(atPath: dumpDir, withIntermediateDirectories: true)
@@ -624,8 +639,20 @@ for i in 0..<pairCount {
                       width: workWidth, height: workHeight, to: "\(dumpDir)/mv_l0_pair0.png")
         _ = writeGrayPNG(lumaGray(frames[0]), width: workWidth, height: workHeight,
                          to: "\(dumpDir)/cur_l0_pair0_gray.png")
+        // I1 (next real frame) for side-by-side I0 / interp / I1 inspection
+        let nxtGray: [UInt8]
+        if frames.count > 1 {
+            nxtGray = lumaGray(frames[1])
+        } else {
+            // fallback: ref plane from this pair
+            nxtGray = ref.map { UInt8(min(255, Int($0 >> 2))) }
+        }
+        _ = writeGrayPNG(nxtGray, width: workWidth, height: workHeight, to: "\(dumpDir)/nxt_l0_pair0_gray.png")
         writeMVCSV(mv0, gridW: g.w, gridH: g.h, path: "\(dumpDir)/mv_l0_pair0.csv")
-        print("artifacts: \(dumpDir)/{mv_l0_pair0.png, cur_l0_pair0_gray.png, mv_l0_pair0.csv}")
+        // Export interpolated frame at t=0.5 for direct visual inspection (lesson: no ratio/histogram alone)
+        let interpGray = interpPlane.map { UInt8(min(255, Int($0 >> 2))) }
+        _ = writeGrayPNG(interpGray, width: workWidth, height: workHeight, to: "\(dumpDir)/interp_t05_pair0.png")
+        print("artifacts: \(dumpDir)/{mv_l0_pair0.png, cur_l0_pair0_gray.png, nxt_l0_pair0_gray.png, mv_l0_pair0.csv, interp_t05_pair0.png}")
     }
 }
 
@@ -658,7 +685,15 @@ print(String(format: "ME total + upload : mean=%.3f ms", total.mean + up.mean))
 print(String(format: "\nbUDGET 41.7 ms/pair @60fps → ME is %.1f%% of budget (upload excluded)",
              total.mean / 41.7 * 100.0))
 print("REFERENCE (RIFE MLX probe, same plane): t_flow=177.7ms stage, 196.3ms end-to-end "
-    + "→ classic ME is \(String(format: "%.1f", 177.7 / max(total.mean, 0.001)))x faster at measured stage cost.")
+     + "→ classic ME is \(String(format: "%.1f", 177.7 / max(total.mean, 0.001)))x faster at measured stage cost.")
+let warp = stats(warpTotal)
+print(String(format: "\nWarp/blend t=0.5 per pair : mean=%.3f p50=%.3f p95=%.3f ms (OBMC omitted v1, occ thresh 1.0px)", warp.mean, warp.p50, warp.p95))
+let combined = total.mean + warp.mean
+print(String(format: "Combined ME+warp per pair : mean=%.3f ms (%.1f%% of 41.7ms budget) — margen %.1f ms %@",
+             combined, combined/41.7*100.0, 41.7 - combined, combined <= 41.7 ? "dentro" : "EXCEDE"))
+if combined > 41.7 {
+    print("NOTA: OBMC omitido v1; si se añade, re-medir presupuesto.")
+}
 
 // Quality verdict — computed from the metrics accumulated INSIDE the main loop
 // (cum, totalBlocks, madSum, madMax), so the aggregate reflects every measured
