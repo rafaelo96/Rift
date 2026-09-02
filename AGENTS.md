@@ -142,3 +142,8 @@ en vivo. La calibración de arranque no captura variación térmica
 (throttling en sesiones largas de 4K sostenido) — limitación conocida
 a resolver en `Core/Scheduler` si el costo real observado se desvía
 mucho del calibrado.
+
+## Validación pendiente: HDR en pantalla real
+Rendering (HDRDisplayRenderer) está implementado según la documentación de Apple (wantsExtendedDynamicRangeContent, propagación correcta de CVBufferAttachments HDR10 BT.2020/PQ desde Decode y desde el buffer interpolado de Interpolation tras el fix en WarpEngine.swift), pero NO se ha podido verificar visualmente que el HDR se muestra correctamente en una pantalla real, porque el hardware de desarrollo (Mac mini M4) no tiene pantalla EDR (maxEDR=1.0, SDR only).
+
+Antes de considerar el pipeline de HDR como validado (no solo "código correcto en teoría"), se necesita probar en una pantalla EDR real (MacBook Pro con XDR, Pro Display XDR, o cualquier Mac con maxEDR > 1.0) y confirmar visualmente que los highlights se ven con más rango que la versión SDR aplastada. Hasta entonces, tratar el HDR como "implementado pero no verificado visualmente" en cualquier decisión de release.
