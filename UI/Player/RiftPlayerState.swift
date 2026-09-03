@@ -49,6 +49,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var scheduler: FrameScheduler?
     private var renderer: HDRDisplayRenderer?
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
+    var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
     private var sourceFrameRate: Double?
     private let coordinator = DecodeCoordinator(capacity: 4)
@@ -56,8 +57,22 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var decodeTask: Task<Void, Never>?
     private var consumerTimer: Timer?
 
-    func togglePlay() { isPlaying.toggle() }
-    func seek(to time: Double) { currentTime = time }
+    func togglePlay() {
+        isPlaying.toggle()
+        if let sched = scheduler {
+            let t = CMTime(seconds: currentTime, preferredTimescale: 600)
+            sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: t)
+        }
+        // Start display loop on first play
+        if isPlaying { startDisplayLoop() }
+    }
+    func seek(to time: Double) {
+        currentTime = time
+        try? demuxer?.seek(to: time); decoder?.flush(); framePool?.flush()
+        if let sched = scheduler {
+            sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: CMTime(seconds: time, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+        }
+    }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
     func setVolume(_ v: Double) { volume = v }
     func cyclePlaybackRate() {}
@@ -67,6 +82,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         demuxer?.close(); decoder?.close()
         demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
         hasVideo = false; isPlaying = false
+        if let sched = scheduler {
+            sched.synchronizer.setRate(0, time: .zero)
+        }
     }
     func startHideTimer() {}
     func stopHideTimer() {}
@@ -131,6 +149,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func cleanup() { closeVideo() }
 
     // MARK: - 3a: Decode + FramePool con backpressure real + consumidor simulado
+    private var displayTask: Task<Void, Never>?
+    private var firstPts: Double?
+
+    // MARK: - 3a/3b: Decode + FramePool con backpressure real
     private func startDecodeLoop() {
         guard let d = demuxer, let dec = decoder, let pool = framePool else { return }
         let targetIndex = videoTrack?.streamIndex ?? -1
@@ -162,17 +184,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 await MainActor.run {
                     pool.add(buffer: pb, pts: pkt.pts)
-                    // 3b: mostrar PRIMER frame estático (sin loop continuo)
                     if decoded == 1 {
                         self.showFirstFrame(buffer: pb, pts: pkt.pts)
+                        // 3c: arrancar display continuo tras primer frame
+                        self.startDisplayLoop()
                     }
                 }
                 if decoded == 1 {
-                    for sec in 1...3 {
+                    for sec in 1...5 {
                         Task { @MainActor [weak self] in
                             try? await Task.sleep(nanoseconds: UInt64(sec) * 1_000_000_000)
                             guard let self else { return }
-                            print("RiftPlayerState: wall-clock \(sec)s after first decode, total decoded=\(self.totalDecoded) pool.count=\(self.framePool?.count ?? -1) (should be ~24-60 if backpressure works, 24=native)")
+                            print("RiftPlayerState: wall-clock \(sec)s after first decode, total decoded=\(self.totalDecoded) pool.count=\(self.framePool?.count ?? -1)")
                         }
                     }
                 }
@@ -182,31 +205,52 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func showFirstFrame(buffer: CVPixelBuffer, pts: Double) {
-        guard let rend = renderer else { return }
+        guard let rend = renderer, let sched = scheduler else { return }
         let cmPts = CMTime(seconds: pts, preferredTimescale: 600)
         let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
         if let sbuf = rend.sampleBuffer(from: buffer, pts: cmPts, duration: dur) {
+            // Enqueue al synchronizer (único gobernador), no DisplayImmediately en flujo normal
+            // Para 3b primer frame estático, lo encolamos directo para que se vea inmediato
             rend.displayLayer.enqueue(sbuf)
-            print("RiftPlayerState: 3b first frame enqueued pts \(pts) (static, no loop)")
+            print("RiftPlayerState: 3b first frame enqueued pts \(pts) (static)")
+            // Iniciar synchronizer en ese pts para que currentTime avance
+            sched.synchronizer.setRate(1.0, time: cmPts, atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+            firstPts = pts
+        }
+    }
+
+    private func startDisplayLoop() {
+        displayTask?.cancel()
+        displayTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var nextIndex = 0
+            while true {
+                if Task.isCancelled { break }
+                guard let pool = self.framePool, let rend = self.renderer else {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                    continue
+                }
+                let frames = pool.frames
+                guard nextIndex < frames.count else {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                    continue
+                }
+                let f = frames[nextIndex]
+                let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
+                let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
+                if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                    rend.displayLayer.enqueue(sbuf)
+                }
+                nextIndex += 1
+                Task { await self.coordinator.signal() }
+                try? await Task.sleep(nanoseconds: 1_000_000_000 / 24)
+                if Task.isCancelled { break }
+            }
         }
     }
 
     private func startSimulatedConsumer() {
-        // TODO(3c): reemplazar por Scheduler.synchronizer real que gobierne display a 24fps
-        // Consumidor simulado a 1/24s para probar backpressure a ritmo real
+        // Deprecated en 3c: ahora el display loop real consume y señaliza
         consumerTimer?.invalidate()
-        consumerTimer = Timer.scheduledTimer(withTimeInterval: 1.0/24.0, repeats: true) { [weak self] _ in
-            guard let self, let pool = self.framePool else { return }
-            // Simula consumo: evicta el frame más antiguo si hay al menos 2 (mantiene ventana)
-            if pool.count >= 2 {
-                // SlidingFramePool evicta al superar capacity, pero para simular consumo
-                // hacemos un removeFirst explícito si pool.count == capacity
-                // Como no hay API de consume, solo señalamos el semáforo para liberar al productor
-                Task { await self.coordinator.signal() }
-            } else {
-                // Si pool no está lleno, igual señalamos para no bloquear arranque
-                Task { await self.coordinator.signal() }
-            }
-        }
     }
 }
