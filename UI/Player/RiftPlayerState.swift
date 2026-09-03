@@ -171,7 +171,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             var decoded = 0
             while true {
                 await MainActor.run {
-                    print("RiftPlayerState: decode loop ABOUT TO WAIT (totalDecoded=\(totalDecoded))")
+                    print("RiftPlayerState: decode loop ABOUT TO WAIT (totalDecoded=\(self.totalDecoded))")
                 }
                 let before = Date()
                 await self.coordinator.wait()
