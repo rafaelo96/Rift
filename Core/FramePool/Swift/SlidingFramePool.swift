@@ -73,6 +73,16 @@ public final class SlidingFramePool {
         return result
     }
 
+    /// Removes the oldest frame from the window and returns it.
+    /// Use after `oldest()` to consume the frame and allow the next
+    /// `oldest()` call to return the following frame.
+    /// Does nothing if the window is empty.
+    public func removeFirst() {
+        if !storage.isEmpty {
+            storage.removeFirst()
+        }
+    }
+
     /// Empties the window. Call after a demux/decoder seek so new frames never
     /// mix with frames from before the jump.
     public func flush() {
