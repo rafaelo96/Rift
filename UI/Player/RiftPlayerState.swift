@@ -227,7 +227,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 return
             }
             print("RiftPlayerState: startDisplayLoop task started pool=\(self.framePool != nil) renderer=\(self.renderer != nil)")
-            var nextIndex = 0
             while true {
                 if Task.isCancelled {
                     print("RiftPlayerState: startDisplayLoop cancelled")
@@ -238,31 +237,39 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
-                let frames = pool.frames
-                guard nextIndex < frames.count else {
-                    // No new frame yet, wait a bit
-                    try? await Task.sleep(nanoseconds: 10_000_000)
+                // Consumir el frame más viejo de la ventana deslizante
+                // Usar oldest() + removeFirst() en lugar de nextIndex creciente,
+                // para evitar que nextIndex se desborde cuando el pool tiene
+                // capacidad fija (4) y nextIndex crece sin límite.
+                let oldest = pool.oldest()
+                if let f = oldest {
+                    let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
+                    let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
+                    // Log isReady and synchronizer rate
+                    let isReady = rend.displayLayer.isReadyForMoreMediaData
+                    let rate = sched.synchronizer.rate
+                    print("RiftPlayerState: displayLoop will enqueue idx (oldest) pts \(f.pts) isReady \(isReady) syncRate \(rate)")
+                    if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                        if sched.synchronizer.rate == 0 {
+                            print("RiftPlayerState: synchronizer.setRate 1.0 at pts \(pts.seconds) host \(CMClockGetTime(CMClockGetHostTimeClock()).seconds)")
+                            sched.synchronizer.setRate(1.0, time: pts, atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+                            print("RiftPlayerState: synchronizer.rate after set \(sched.synchronizer.rate)")
+                        }
+                        rend.displayLayer.enqueue(sbuf)
+                        print("RiftPlayerState: displayLayer.enqueue done isReady \(rend.displayLayer.isReadyForMoreMediaData) status \(rend.displayLayer.status.rawValue)")
+                        // Retirar el frame consumido del pool para que el próximo
+                        // oldest() traiga el siguiente frame disponible.
+                        pool.removeFirst()
+                    } else {
+                        print("RiftPlayerState: sampleBuffer creation FAILED")
+                    }
+                } else {
+                    // No hay frames en el pool aún: esperar breve para permitir
+                    // que el decode loop produzca frames via AsyncSemaphore,
+                    // en lugar de romper el bucle.
+                    try? await Task.sleep(nanoseconds: 1_000_000_000 / 30)
                     continue
                 }
-                let f = frames[nextIndex]
-                let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
-                let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
-                // Log isReady and synchronizer rate
-                let isReady = rend.displayLayer.isReadyForMoreMediaData
-                let rate = sched.synchronizer.rate
-                print("RiftPlayerState: displayLoop will enqueue idx \(nextIndex) pts \(f.pts) isReady \(isReady) syncRate \(rate)")
-                if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
-                    if sched.synchronizer.rate == 0 {
-                        print("RiftPlayerState: synchronizer.setRate 1.0 at pts \(pts.seconds) host \(CMClockGetTime(CMClockGetHostTimeClock()).seconds)")
-                        sched.synchronizer.setRate(1.0, time: pts, atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
-                        print("RiftPlayerState: synchronizer.rate after set \(sched.synchronizer.rate)")
-                    }
-                    rend.displayLayer.enqueue(sbuf)
-                    print("RiftPlayerState: displayLayer.enqueue done isReady \(rend.displayLayer.isReadyForMoreMediaData) status \(rend.displayLayer.status.rawValue)")
-                } else {
-                    print("RiftPlayerState: sampleBuffer creation FAILED")
-                }
-                nextIndex += 1
                 await self.coordinator.signal()
                 try? await Task.sleep(nanoseconds: 1_000_000_000 / 24)
                 if Task.isCancelled { print("RiftPlayerState: startDisplayLoop cancelled loop"); break }
