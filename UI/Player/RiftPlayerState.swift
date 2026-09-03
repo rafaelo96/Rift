@@ -377,7 +377,22 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             renderer.enqueue(sampleBuffer)
             audioFramesEnqueued += 1
             if audioFramesEnqueued <= 3 || audioFramesEnqueued % 50 == 0 {
-                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(frame.pts) sr=\(frame.sampleRate) ch=\(frame.channels) samples=\(frame.sampleCount)")
+                // Medir RMS del PCM justo antes del enqueue para descartar
+                // que el buffer tenga silencio digital.
+                var rms: Float = 0
+                var peak: Float = 0
+                let nFloats = frame.data.count / MemoryLayout<Float>.size
+                frame.data.withUnsafeBytes { ptr in
+                    guard let base = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+                    var sum: Double = 0
+                    for i in 0..<nFloats {
+                        let v = base[i]
+                        sum += Double(v) * Double(v)
+                        peak = max(peak, abs(v))
+                    }
+                    rms = nFloats > 0 ? Float(sqrt(sum / Double(nFloats))) : 0
+                }
+                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(frame.pts) sr=\(frame.sampleRate) ch=\(frame.channels) samples=\(frame.sampleCount) dataSize=\(frame.data.count) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil")")
             }
         }
     }
