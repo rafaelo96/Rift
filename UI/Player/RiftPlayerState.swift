@@ -267,6 +267,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private nonisolated(unsafe) static var audioPacketsSeen = 0
     private nonisolated(unsafe) static var audioFramesEnqueued = 0
     private nonisolated(unsafe) static var audioFailures = 0
+    private nonisolated(unsafe) static var audioDroppedNotReady = 0
 
     private nonisolated static func audioLog(_ s: String) {
         let line = s + "\n"
@@ -339,14 +340,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             )
             guard statusSB == noErr, let sampleBuffer else { continue }
             if !renderer.isReadyForMoreMediaData {
-                // No encolar si el renderer está lleno: mejor perder el frame
-                // que bloquear al loop de decode.
+                audioDroppedNotReady += 1
+                if audioDroppedNotReady == 1 || audioDroppedNotReady % 100 == 0 {
+                    audioLog("audio SKIP (not ready) #\(audioDroppedNotReady) pts=\(frame.pts)")
+                }
                 continue
             }
             renderer.enqueue(sampleBuffer)
             audioFramesEnqueued += 1
             if audioFramesEnqueued <= 3 || audioFramesEnqueued % 50 == 0 {
-                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(frame.pts)")
+                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(frame.pts) sr=\(frame.sampleRate) ch=\(frame.channels) samples=\(frame.sampleCount)")
             }
         }
     }
