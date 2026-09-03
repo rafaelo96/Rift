@@ -185,13 +185,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 await MainActor.run {
                     pool.add(buffer: pb, pts: pkt.pts)
                     if decoded == 1 {
-                        self.showFirstFrame(buffer: pb, pts: pkt.pts)
-                        // 3c: arrancar display continuo tras primer frame
                         self.startDisplayLoop()
                     }
                 }
                 if decoded == 1 {
-                    for sec in 1...5 {
+                    for sec in 1...10 {
                         Task { @MainActor [weak self] in
                             try? await Task.sleep(nanoseconds: UInt64(sec) * 1_000_000_000)
                             guard let self else { return }
@@ -201,21 +199,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 if Task.isCancelled { break }
             }
-        }
-    }
-
-    private func showFirstFrame(buffer: CVPixelBuffer, pts: Double) {
-        guard let rend = renderer, let sched = scheduler else { return }
-        let cmPts = CMTime(seconds: pts, preferredTimescale: 600)
-        let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
-        if let sbuf = rend.sampleBuffer(from: buffer, pts: cmPts, duration: dur) {
-            // Enqueue al synchronizer (único gobernador), no DisplayImmediately en flujo normal
-            // Para 3b primer frame estático, lo encolamos directo para que se vea inmediato
-            rend.displayLayer.enqueue(sbuf)
-            print("RiftPlayerState: 3b first frame enqueued pts \(pts) (static)")
-            // Iniciar synchronizer en ese pts para que currentTime avance
-            sched.synchronizer.setRate(1.0, time: cmPts, atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
-            firstPts = pts
         }
     }
 
