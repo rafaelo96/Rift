@@ -286,6 +286,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private nonisolated static func decodeAndEnqueueAudio(packet: CompressedPacket, decoder: AudioDecoder, renderer: AVSampleBufferAudioRenderer) {
         audioPacketsSeen += 1
         let frames = decoder.decode(packet: packet)
+        // Usar el pts del paquete del demux como base y acumular duración por
+        // frame: el pts que el decoder C escupe tras leave callback puede estar
+        // basado en una timebase distinta de la stream timebase (EAC3) y marcar
+        // un "futuro" relativo al reloj del synchronizer, produciendo silencio
+        // por timing.
+        var accumulatedSeconds: Double = 0
         if audioPacketsSeen == 1 || audioPacketsSeen % 100 == 0 {
             audioLog("audio pkt #\(audioPacketsSeen) pts=\(packet.pts) frames=\(frames.count) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil") isReady=\(renderer.isReadyForMoreMediaData)")
         }
@@ -353,7 +359,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 continue
             }
 
-            let ptsTime = CMTime(seconds: frame.pts, preferredTimescale: 90000)
+            let presentationPts = packet.pts + accumulatedSeconds
+            accumulatedSeconds += Double(frame.sampleCount) / Double(frame.sampleRate)
+            let ptsTime = CMTime(seconds: presentationPts, preferredTimescale: 90000)
             var timing = CMSampleTimingInfo(
                 duration: CMTime(value: Int64(frame.sampleCount), timescale: CMTimeScale(frame.sampleRate)),
                 presentationTimeStamp: ptsTime,
@@ -401,7 +409,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     rms = nFloats > 0 ? Float(sqrt(sum / Double(nFloats))) : 0
                 }
-                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(frame.pts) sr=\(frame.sampleRate) ch=\(frame.channels) samples=\(frame.sampleCount) dataSize=\(frame.data.count) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil")")
+                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(presentationPts) (frame.pts=\(frame.pts)) sr=\(frame.sampleRate) ch=\(frame.channels) samples=\(frame.sampleCount) dataSize=\(frame.data.count) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil")")
             }
         }
     }
