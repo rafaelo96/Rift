@@ -146,6 +146,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         hasVideo = false
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
+        Self.audioLog("=== loadVideo CALLED === \(url.lastPathComponent) isPlaying=\(isPlaying)")
         Task.detached(priority: .userInitiated) { [weak self] in
             let d = FFmpegDemuxer()
             do {
