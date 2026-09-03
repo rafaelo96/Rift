@@ -202,8 +202,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             handleOpenURLs(urls)
         }
         .onReceive(NotificationCenter.default.publisher(for: .riftOpenVideo)) { _ in
-            // TODO(Core): la referencia llamaba `state.openVideo()` (selector de
-            // archivo → `state.loadVideo`). Pertenece a Core/Demux + UI bridge.
+            (state as? RiftPlayerState)?.openVideo()
         }
         // TODO(Core): la referencia exponía `.focusedValue(\.playerState, state)`
         // para que los comandos de menú de RiftApp leyeran el estado de
@@ -398,9 +397,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private var openVideoPrompt: some View {
         Button {
-            // TODO(Core): la referencia llamaba `state.openVideo()` (NSOpenPanel
-            // → `state.loadVideo(url)`). La apertura de archivos pertenece a
-            // Core/Demux; aquí no se implementa el selector.
+            (state as? RiftPlayerState)?.openVideo()
         } label: {
             VStack(spacing: 40) {
                 ZStack {
