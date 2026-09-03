@@ -177,7 +177,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 await self.coordinator.wait()
                 let after = Date()
                 await MainActor.run {
-                    print("RiftPlayerState: decode loop PASSED WAIT in \(after.timeIntervalSince(before))s (totalDecoded=\(totalDecoded))")
+                    print("RiftPlayerState: decode loop PASSED WAIT in \(after.timeIntervalSince(before))s (totalDecoded=\(self.totalDecoded))")
                 }
                 if Task.isCancelled { await self.coordinator.signal(); break }
                 guard let pkt = try? d.nextPacket() else {
