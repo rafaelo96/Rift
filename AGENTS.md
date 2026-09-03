@@ -112,9 +112,23 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
 2. Decoder (paquetes → CVPixelBuffer, verificable con un frame estático). ✅ Completado y validado.
 3. Sliding frame buffer (ventana en memoria, memoria estable medida). ✅ Completado y validado.
 4. Motor de interpolación (MCFI clásico: par de frames → frame generado, medido en ms). ⬜ En curso.
-5. Scheduler + display (integración con timestamps, sin HDR primero).
-6. HDR/color metadata.
-7. Reconexión con la UI existente — solo al final, cuando el pipeline ya se probó solo.
+5. Scheduler + display (integración con timestamps, sin HDR primero). ✅ AVSampleBufferDisplayLayer + AVSampleBufferRenderSynchronizer funcionando (24fps, ver el commit `RotatingVideoPlayerFallback` no se usa, el renderer activo es `HDRDisplayRenderer`).
+6. HDR/color metadata. ✅ propagada de Decode → WarpEngine → HDRDisplayRenderer → CMSampleBuffer. **Pendiente validación en pantalla EDR real** (ver lista abajo).
+7. Reconexión con la UI existente — ✅ Completado. Play/pause/seek/currentTime funcionales (confirmado por el usuario tras la sesión de debug 2025-09-02).
+
+## Notas de implementación actuales (post-reconexión UI, 2025-09-02)
+
+- **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
+- **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
+- **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).
+- **Pacing real**: lo ejerce el synchronizer con `atHostTime` en `startDisplayLoop`; el sleep de `1s/24` en el loop es solo un yield.
+- **Pantalla negra inicial** = comportamiento correcto del archivo (fade-in del MKV, pts 0–2s). No es un bug; no "arreglar" sin grabar captura real.
+
+## Limitaciones conocidas pendientes (no dejar pasar sin documentar)
+
+- **Barra/seek ±10s** no se ha confirmado que funcione con el seek actual (solo se probó click directo en la barra). Debe probarse tras este commit.
+- **NSOpenPanel (`Cmd+O` / "Open Video...")** funciona en sesión de usuario pero NO en corridas no GUI (headless CI o CLI sin WindowServer) — limit conocido, by design.
+- **Pantalla negra+pantalla solo en una ventana pequeña** fue resuelto con `HDRDisplayView`+`NSViewRepresentable`; no reducir el area del displayLayer.
 
 ## Rango de hardware soportado
 
