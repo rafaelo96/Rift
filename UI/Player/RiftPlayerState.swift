@@ -162,6 +162,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 await MainActor.run {
                     pool.add(buffer: pb, pts: pkt.pts)
+                    // 3b: mostrar PRIMER frame estático (sin loop continuo)
+                    if decoded == 1 {
+                        self.showFirstFrame(buffer: pb, pts: pkt.pts)
+                    }
                 }
                 if decoded == 1 {
                     for sec in 1...3 {
@@ -174,6 +178,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 if Task.isCancelled { break }
             }
+        }
+    }
+
+    private func showFirstFrame(buffer: CVPixelBuffer, pts: Double) {
+        guard let rend = renderer else { return }
+        let cmPts = CMTime(seconds: pts, preferredTimescale: 600)
+        let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
+        if let sbuf = rend.sampleBuffer(from: buffer, pts: cmPts, duration: dur) {
+            rend.displayLayer.enqueue(sbuf)
+            print("RiftPlayerState: 3b first frame enqueued pts \(pts) (static, no loop)")
         }
     }
 
