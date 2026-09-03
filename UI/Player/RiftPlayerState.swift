@@ -303,23 +303,43 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 continue
             }
+            // Si el PCM es 5.1+ (channels>2), downmix L/R → estéreo aquí: el
+            // renderer nativo NO consume 6ch interleaved en salida estéreo
+            // (cola silenciosa infinita), así que lo aplanamos en origen.
+            var audioData = frame.data
+            var outChannels = frame.channels
+            if frame.channels > 2 {
+                let totalFrames = frame.sampleCount
+                var stereo = [Float](repeating: 0, count: totalFrames * 2)
+                var srcIdx = 0
+                var dstIdx = 0
+                for _ in 0..<totalFrames {
+                    // Layout típico EAC3: L, R, C, LFE, SL, SR
+                    stereo[dstIdx]     = audioData.withUnsafeBytes { $0.load(fromByteOffset: srcIdx * 4, as: Float.self) }
+                    stereo[dstIdx + 1] = audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 1) * 4, as: Float.self) }
+                    srcIdx += frame.channels
+                    dstIdx += 2
+                }
+                audioData = Data(bytes: &stereo, count: stereo.count * 4)
+                outChannels = 2
+            }
             var asbd = AudioStreamBasicDescription(
                 mSampleRate: Double(frame.sampleRate),
                 mFormatID: kAudioFormatLinearPCM,
                 // Little-endian nativo (Arm/Intel): sin este flag el sistema
                 // asume big-endian y produce silencio/garbage.
                 mFormatFlags: kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-                mBytesPerPacket: UInt32(frame.channels * 4),
+                mBytesPerPacket: UInt32(outChannels * 4),
                 mFramesPerPacket: 1,
-                mBytesPerFrame: UInt32(frame.channels * 4),
-                mChannelsPerFrame: UInt32(frame.channels),
+                mBytesPerFrame: UInt32(outChannels * 4),
+                mChannelsPerFrame: UInt32(outChannels),
                 mBitsPerChannel: 32,
                 mReserved: 0
             )
             // Channel layout explícito para 5.1: sin layout tag el sistema
             // no puede rutar los 6 canales a la salida física → silencio.
             var channelLayout = AudioChannelLayout()
-            channelLayout.mChannelLayoutTag = kAudioChannelLayoutTag_MPEG_5_1_D
+            channelLayout.mChannelLayoutTag = (outChannels > 2) ? kAudioChannelLayoutTag_MPEG_5_1_D : kAudioChannelLayoutTag_Stereo
             var format: CMAudioFormatDescription?
             let fmtStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: MemoryLayout<AudioChannelLayout>.size, layout: &channelLayout, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
             guard fmtStatus == noErr, let format else {
