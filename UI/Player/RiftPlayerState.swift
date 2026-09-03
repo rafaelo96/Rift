@@ -65,6 +65,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
     private var consumerTimer: Timer?
+    private var currentTimeTimer: Timer?
 
     func togglePlay() {
         isPlaying.toggle()
@@ -74,6 +75,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         // Start display loop on first play
         if isPlaying { startDisplayLoop() }
+        // Start currentTime polling while playing
+        if isPlaying {
+            currentTimeTimer?.invalidate()
+            currentTimeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                guard let self, let sched = self.scheduler, isPlaying else { return }
+                self.currentTime = sched.synchronizer.currentTime().seconds
+            }
+        } else {
+            currentTimeTimer?.invalidate()
+            currentTimeTimer = nil
+        }
     }
     func seek(to time: Double) {
         currentTime = time
