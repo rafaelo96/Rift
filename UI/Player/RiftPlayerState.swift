@@ -175,10 +175,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             Self.audioLog("audioDecoder init FAILED: \(error)")
                         }
                         let ar = AVSampleBufferAudioRenderer()
+                        ar.volume = 1.0
+                        ar.isMuted = false
                         self.audioRenderer = ar
                         // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
                         self.scheduler?.synchronizer.addRenderer(ar)
-                        Self.audioLog("audioRenderer added to synchronizer rate=\(self.scheduler?.synchronizer.rate ?? -999)")
+                        Self.audioLog("audioRenderer added to synchronizer rate=\(self.scheduler?.synchronizer.rate ?? -999) vol=\(ar.volume) muted=\(ar.isMuted)")
                     }
                     self.availableTracks = info.tracks.map { t in
                         let kind: MediaTrack.Kind
