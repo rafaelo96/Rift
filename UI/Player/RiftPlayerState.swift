@@ -75,12 +75,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         // Start display loop on first play
         if isPlaying { startDisplayLoop() }
-        // Start currentTime polling while playing
+        updateTimePolling()
+    }
+    private func updateTimePolling() {
         if isPlaying {
             currentTimeTimer?.invalidate()
             currentTimeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                guard let self, let sched = self.scheduler, isPlaying else { return }
-                self.currentTime = sched.synchronizer.currentTime().seconds
+                guard let self else { return }
+                Task { @MainActor [weak self] in
+                    guard let self, let sched = self.scheduler else { return }
+                    self.currentTime = sched.synchronizer.currentTime().seconds
+                }
             }
         } else {
             currentTimeTimer?.invalidate()
@@ -232,6 +237,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     private func startDisplayLoop() {
         print("RiftPlayerState: startDisplayLoop called hasVideo \(hasVideo) isPlaying \(isPlaying)")
+        if !isPlaying { isPlaying = true }
+        updateTimePolling()
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
             guard let self else {
