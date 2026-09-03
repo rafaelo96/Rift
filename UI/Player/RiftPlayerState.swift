@@ -167,10 +167,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // Audio: primera pista de audio (selector queda para fase posterior)
                     if let aTrack = info.tracks.first(where: { $0.kind == .audio }) {
                         self.audioTrack = aTrack
-                        self.audioDecoder = try? AudioDecoder(codecName: aTrack.codecName)
+                        do {
+                            self.audioDecoder = try AudioDecoder(codecName: aTrack.codecName)
+                        } catch {
+                            Self.audioLog("audioDecoder init FAILED: \(error)")
+                        }
                         let ar = AVSampleBufferAudioRenderer()
                         self.audioRenderer = ar
+                        // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
                         self.scheduler?.synchronizer.addRenderer(ar)
+                        Self.audioLog("audioRenderer added to synchronizer rate=\(self.scheduler?.synchronizer.rate ?? -999)")
                     }
                     self.availableTracks = info.tracks.map { t in
                         let kind: MediaTrack.Kind
@@ -256,10 +262,32 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     // MARK: - Audio fase 1
+    // Contadores no hay problema de concurrencia: solo se escriben desde el
+    // decode loop (Task.detached) — sin aislamiento, no owned por el actor.
+    private nonisolated(unsafe) static var audioPacketsSeen = 0
+    private nonisolated(unsafe) static var audioFramesEnqueued = 0
+    private nonisolated(unsafe) static var audioFailures = 0
+
+    private nonisolated static func audioLog(_ s: String) {
+        let line = s + "\n"
+        if let h = FileHandle(forWritingAtPath: "/tmp/rift_audio.log") {
+            h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: "/tmp/rift_audio.log", contents: line.data(using: .utf8))
+        }
+    }
+
     private nonisolated static func decodeAndEnqueueAudio(packet: CompressedPacket, decoder: AudioDecoder, renderer: AVSampleBufferAudioRenderer) {
+        audioPacketsSeen += 1
         let frames = decoder.decode(packet: packet)
+        if audioPacketsSeen == 1 || audioPacketsSeen % 100 == 0 {
+            audioLog("audio pkt #\(audioPacketsSeen) pts=\(packet.pts) frames=\(frames.count) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil") isReady=\(renderer.isReadyForMoreMediaData)")
+        }
         for frame in frames {
-            guard frame.sampleCount > 0, frame.sampleRate > 0, frame.channels > 0 else { continue }
+            guard frame.sampleCount > 0, frame.sampleRate > 0, frame.channels > 0 else {
+                audioFailures += 1
+                continue
+            }
             var asbd = AudioStreamBasicDescription(
                 mSampleRate: Double(frame.sampleRate),
                 mFormatID: kAudioFormatLinearPCM,
@@ -272,7 +300,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 mReserved: 0
             )
             var format: CMAudioFormatDescription?
-            guard CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format) == noErr, let format else { continue }
+            let fmtStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
+            guard fmtStatus == noErr, let format else {
+                if audioFailures < 5 { audioLog("audio format create FAIL status=\(fmtStatus) sr=\(frame.sampleRate) ch=\(frame.channels)") }
+                audioFailures += 1
+                continue
+            }
 
             // Copiar PCM a un block buffer propio (Data se dealloca al salir;
             // el block buffer debe ser dueño de los bytes).
@@ -305,7 +338,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 sampleBufferOut: &sampleBuffer
             )
             guard statusSB == noErr, let sampleBuffer else { continue }
+            if !renderer.isReadyForMoreMediaData {
+                // No encolar si el renderer está lleno: mejor perder el frame
+                // que bloquear al loop de decode.
+                continue
+            }
             renderer.enqueue(sampleBuffer)
+            audioFramesEnqueued += 1
+            if audioFramesEnqueued <= 3 || audioFramesEnqueued % 50 == 0 {
+                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(frame.pts)")
+            }
         }
     }
 
