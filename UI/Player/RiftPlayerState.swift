@@ -299,7 +299,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             var asbd = AudioStreamBasicDescription(
                 mSampleRate: Double(frame.sampleRate),
                 mFormatID: kAudioFormatLinearPCM,
-                mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+                // Little-endian nativo (Arm/Intel): sin este flag el sistema
+                // asume big-endian y produce silencio/garbage.
+                mFormatFlags: kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
                 mBytesPerPacket: UInt32(frame.channels * 4),
                 mFramesPerPacket: 1,
                 mBytesPerFrame: UInt32(frame.channels * 4),
