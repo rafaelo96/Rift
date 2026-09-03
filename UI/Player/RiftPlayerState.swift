@@ -144,6 +144,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
+        // Limpiar log de diagnóstico audio por corrida (no append).
+        try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
         Task.detached(priority: .userInitiated) { [weak self] in
             let d = FFmpegDemuxer()
             do {
@@ -287,6 +289,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         for frame in frames {
             guard frame.sampleCount > 0, frame.sampleRate > 0, frame.channels > 0 else {
                 audioFailures += 1
+                if audioFailures <= 5 {
+                    audioLog("audio SKIP guard sc=\(frame.sampleCount) sr=\(frame.sampleRate) ch=\(frame.channels)")
+                }
                 continue
             }
             var asbd = AudioStreamBasicDescription(
@@ -313,12 +318,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             var blockBuffer: CMBlockBuffer?
             let dataSize = frame.data.count
             let statusBB = CMBlockBufferCreateEmpty(allocator: kCFAllocatorDefault, capacity: UInt32(dataSize), flags: 0, blockBufferOut: &blockBuffer)
-            guard statusBB == noErr, let blockBuffer else { continue }
+            guard statusBB == noErr, let blockBuffer else {
+                if audioFailures < 5 { audioLog("audio blockBuffer FAIL status=\(statusBB) size=\(dataSize)") }
+                audioFailures += 1
+                continue
+            }
             let copyOK = frame.data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> OSStatus in
                 guard let base = ptr.baseAddress else { return -1 }
                 return CMBlockBufferReplaceDataBytes(with: base, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: dataSize)
             }
-            guard copyOK == noErr else { continue }
+            guard copyOK == noErr else {
+                if audioFailures < 5 { audioLog("audio replaceBytes FAIL status=\(copyOK)") }
+                audioFailures += 1
+                continue
+            }
 
             let ptsTime = CMTime(seconds: frame.pts, preferredTimescale: 90000)
             var timing = CMSampleTimingInfo(
@@ -338,7 +351,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 sampleSizeArray: nil,
                 sampleBufferOut: &sampleBuffer
             )
-            guard statusSB == noErr, let sampleBuffer else { continue }
+            guard statusSB == noErr, let sampleBuffer else {
+                if audioFailures < 5 { audioLog("audio sampleBuffer FAIL status=\(statusSB)") }
+                audioFailures += 1
+                continue
+            }
             if !renderer.isReadyForMoreMediaData {
                 audioDroppedNotReady += 1
                 if audioDroppedNotReady == 1 || audioDroppedNotReady % 100 == 0 {
