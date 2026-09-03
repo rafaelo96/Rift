@@ -166,9 +166,9 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         .onAppear {
             state.startHideTimer()
             setupKeyboardMonitor()
-            // TODO(Core): al abrir con archivo adjunto, la referencia procesaba
-            // `AppDelegate.takePendingOpenURLs()` para cargar el video con
-            // `state.loadVideo(url)`. Sin Core/ no hay carga de video.
+            for url in AppDelegate.takePendingOpenURLs() {
+                (state as? RiftPlayerState)?.loadVideo(url)
+            }
             generateParticles()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 interactiveReady = true

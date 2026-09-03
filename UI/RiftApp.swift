@@ -11,15 +11,11 @@ extension Notification.Name {
 struct RiftApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    // TODO(Core): el estado real de reproducción lo proveerá la implementación
-    // de `PlayerStateProviding` cuando Core/ exista (Core/Scheduler +
-    // Core/Decode). Mientras tanto se usa el stub de preview únicamente para
-    // que la capa UI compile y se previsualice de forma aislada.
-    @StateObject private var state = PlayerStatePreviewStub()
+    @StateObject private var state = RiftPlayerState()
 
     var body: some Scene {
         WindowGroup("Rift") {
-            ContentView<PlayerStatePreviewStub>(state: state)
+            ContentView<RiftPlayerState>(state: state)
                 .frame(minWidth: 780, minHeight: 480)
                 .onAppear {
                     AppDelegate.bringPlayerWindowToFront()
