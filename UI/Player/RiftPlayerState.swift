@@ -197,19 +197,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             guard let self else { return }
             var decoded = 0
             while true {
-                await MainActor.run {
-                    print("RiftPlayerState: decode loop ABOUT TO WAIT (totalDecoded=\(self.totalDecoded))")
-                }
-                let before = Date()
                 await self.coordinator.wait()
-                let after = Date()
-                await MainActor.run {
-                    print("RiftPlayerState: decode loop PASSED WAIT in \(after.timeIntervalSince(before))s (totalDecoded=\(self.totalDecoded))")
-                }
                 if Task.isCancelled { await self.coordinator.signal(); break }
                 guard let pkt = try? d.nextPacket() else {
                     await self.coordinator.signal()
-                    print("RiftPlayerState: decode loop ended")
+                    print("RiftPlayerState: decode loop ended (decoded=\(decoded))")
                     break
                 }
                 if pkt.streamIndex != targetIndex {
@@ -221,23 +213,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     continue
                 }
                 decoded += 1
-                await MainActor.run { self.totalDecoded = decoded }
-                if decoded <= 5 || decoded % 24 == 0 {
-                    print("RiftPlayerState: decoded frame \(decoded) pts \(pkt.pts)")
-                }
                 await MainActor.run {
+                    self.totalDecoded = decoded
                     pool.add(buffer: pb, pts: pkt.pts)
                     if decoded == 1 {
                         self.startDisplayLoop()
-                    }
-                }
-                if decoded == 1 {
-                    for sec in 1...10 {
-                        Task { @MainActor [weak self] in
-                            try? await Task.sleep(nanoseconds: UInt64(sec) * 1_000_000_000)
-                            guard let self else { return }
-                            print("RiftPlayerState: wall-clock \(sec)s after first decode, total decoded=\(self.totalDecoded) pool.count=\(self.framePool?.count ?? -1)")
-                        }
                     }
                 }
                 if Task.isCancelled { break }
@@ -246,7 +226,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func startDisplayLoop() {
-        print("RiftPlayerState: startDisplayLoop called hasVideo \(hasVideo) isPlaying \(isPlaying)")
         if !isPlaying { isPlaying = true }
         updateTimePolling()
         if let sched = scheduler, sched.synchronizer.rate == 0 {
@@ -254,18 +233,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
-            guard let self else {
-                print("RiftPlayerState: startDisplayLoop task self nil")
-                return
-            }
-            print("RiftPlayerState: startDisplayLoop task started pool=\(self.framePool != nil) renderer=\(self.renderer != nil)")
+            guard let self else { return }
             while true {
-                if Task.isCancelled {
-                    print("RiftPlayerState: startDisplayLoop cancelled")
-                    break
-                }
+                if Task.isCancelled { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
-                    print("RiftPlayerState: startDisplayLoop missing pool/rend/sched")
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
@@ -301,11 +272,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 await self.coordinator.signal()
                 try? await Task.sleep(nanoseconds: 1_000_000_000 / 24)
-                if Task.isCancelled { print("RiftPlayerState: startDisplayLoop cancelled loop"); break }
+                if Task.isCancelled { break }
             }
-            print("RiftPlayerState: startDisplayLoop task ended")
         }
-        print("RiftPlayerState: startDisplayLoop scheduled, task \(String(describing: displayTask))")
     }
 
     private func startSimulatedConsumer() {
