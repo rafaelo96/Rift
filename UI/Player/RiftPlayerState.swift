@@ -101,6 +101,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let sched = scheduler {
             sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: CMTime(seconds: time, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
+        // Tras el flush, el pool vacío puede dejar al decodeLoop bloqueado en
+        // wait() sin nadie que lo despierte (displayLoop no señaliza sin
+        // frames). Restaurar el cupo del semáforo señalando explícitamente.
+        Task { [weak self] in
+            guard let self else { return }
+            for _ in 0..<4 { await self.coordinator.signal() }
+        }
     }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
     func setVolume(_ v: Double) { volume = v }
