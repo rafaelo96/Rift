@@ -310,8 +310,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 mBitsPerChannel: 32,
                 mReserved: 0
             )
+            // Channel layout explícito para 5.1: sin layout tag el sistema
+            // no puede rutar los 6 canales a la salida física → silencio.
+            var channelLayout = AudioChannelLayout()
+            channelLayout.mChannelLayoutTag = kAudioChannelLayoutTag_MPEG_5_1_D
             var format: CMAudioFormatDescription?
-            let fmtStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
+            let fmtStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: MemoryLayout<AudioChannelLayout>.size, layout: &channelLayout, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
             guard fmtStatus == noErr, let format else {
                 if audioFailures < 5 { audioLog("audio format create FAIL status=\(fmtStatus) sr=\(frame.sampleRate) ch=\(frame.channels)") }
                 audioFailures += 1
