@@ -72,7 +72,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Rift",
-            dependencies: ["Contracts", "Demux", "Decode", "FramePool", "Scheduler", "Rendering"],
+            dependencies: ["Contracts", "Demux", "Decode", "DecodeAudio", "FramePool", "Scheduler", "Rendering"],
             path: "UI"
         ),
         // Core/Demux — split into a pure C target (shim over libavformat) and
