@@ -317,7 +317,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // el block buffer debe ser dueño de los bytes).
             var blockBuffer: CMBlockBuffer?
             let dataSize = frame.data.count
-            let statusBB = CMBlockBufferCreateEmpty(allocator: kCFAllocatorDefault, capacity: UInt32(dataSize), flags: 0, blockBufferOut: &blockBuffer)
+            // CMBlockBufferCreateWithMemoryBlock con memoryBlock=nil y
+            // blockAllocator=default: CM aloca y posee la memoria; luego
+            // ReplaceDataBytes funciona (CreateEmpty no tiene backing store).
+            let statusBB = CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault,
+                                                              memoryBlock: nil,
+                                                              blockLength: dataSize,
+                                                              blockAllocator: kCFAllocatorDefault,
+                                                              customBlockSource: nil,
+                                                              offsetToData: 0,
+                                                              dataLength: dataSize,
+                                                              flags: 0,
+                                                              blockBufferOut: &blockBuffer)
             guard statusBB == noErr, let blockBuffer else {
                 if audioFailures < 5 { audioLog("audio blockBuffer FAIL status=\(statusBB) size=\(dataSize)") }
                 audioFailures += 1
