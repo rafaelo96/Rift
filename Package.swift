@@ -62,6 +62,7 @@ let package = Package(
         .executable(name: "FramePoolProbe", targets: ["FramePoolProbe"]),
         .executable(name: "MVProbe", targets: ["MVProbe"]),
         .executable(name: "SchedulerProbe", targets: ["SchedulerProbe"]),
+        .executable(name: "DecodeAudioProbe", targets: ["DecodeAudioProbe"]),
     ],
     targets: [
         .target(
@@ -117,6 +118,34 @@ let package = Package(
             name: "DecodeProbe",
             dependencies: ["Demux", "Decode"],
             path: "Core/Decode/Tools"
+        ),
+        // Core/DecodeAudio — FFmpeg libavcodec decode of audio packets (EAC3
+        // → PCM float32). Separated from Core/Decode (which is VT-only).
+        .target(
+            name: "CDecodeAudioShim",
+            path: "Core/DecodeAudio/CSource",
+            cSettings: [
+                .headerSearchPath("include"),
+                .unsafeFlags(["-I\(ffmpegPrefix_)/include"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L\(ffmpegPrefix_)/lib",
+                    "-lavcodec",
+                    "-lavutil",
+                ]),
+            ]
+        ),
+        .target(
+            name: "DecodeAudio",
+            dependencies: ["CDecodeAudioShim", "Demux"],
+            path: "Core/DecodeAudio",
+            sources: ["Swift"]
+        ),
+        .executableTarget(
+            name: "DecodeAudioProbe",
+            dependencies: ["Demux", "DecodeAudio"],
+            path: "Core/DecodeAudio/Tools"
         ),
         // Core/FramePool — bounded sliding window over decoded frames for
         // Interpolation and Scheduler. Consumes Core/Decode output as-is.
