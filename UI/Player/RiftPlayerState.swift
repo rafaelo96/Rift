@@ -12,12 +12,21 @@ import AppKit
 import CoreMedia
 import CoreVideo
 
-actor DecodeCoordinator {
-    private let sema: DispatchSemaphore
-    init(capacity: Int) { sema = DispatchSemaphore(value: capacity) }
-    func wait() { sema.wait() }
-    func signal() { sema.signal() }
+actor AsyncSemaphore {
+    private var count: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    init(value: Int) { count = value }
+    func wait() async {
+        if count > 0 { count -= 1; return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func signal() {
+        if waiters.isEmpty { count += 1 }
+        else { waiters.removeFirst().resume() }
+    }
 }
+
+typealias DecodeCoordinator = AsyncSemaphore
 
 @MainActor
 final class RiftPlayerState: PlayerStateProviding, ObservableObject {
@@ -52,7 +61,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
     private var sourceFrameRate: Double?
-    private let coordinator = DecodeCoordinator(capacity: 4)
+    private let coordinator = DecodeCoordinator(value: 4)
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
     private var consumerTimer: Timer?
@@ -161,8 +170,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             guard let self else { return }
             var decoded = 0
             while true {
-                if Task.isCancelled { break }
+                await MainActor.run {
+                    print("RiftPlayerState: decode loop ABOUT TO WAIT (totalDecoded=\(totalDecoded))")
+                }
+                let before = Date()
                 await self.coordinator.wait()
+                let after = Date()
+                await MainActor.run {
+                    print("RiftPlayerState: decode loop PASSED WAIT in \(after.timeIntervalSince(before))s (totalDecoded=\(totalDecoded))")
+                }
                 if Task.isCancelled { await self.coordinator.signal(); break }
                 guard let pkt = try? d.nextPacket() else {
                     await self.coordinator.signal()
@@ -203,33 +219,57 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func startDisplayLoop() {
+        print("RiftPlayerState: startDisplayLoop called hasVideo \(hasVideo) isPlaying \(isPlaying)")
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self else {
+                print("RiftPlayerState: startDisplayLoop task self nil")
+                return
+            }
+            print("RiftPlayerState: startDisplayLoop task started pool=\(self.framePool != nil) renderer=\(self.renderer != nil)")
             var nextIndex = 0
             while true {
-                if Task.isCancelled { break }
-                guard let pool = self.framePool, let rend = self.renderer else {
+                if Task.isCancelled {
+                    print("RiftPlayerState: startDisplayLoop cancelled")
+                    break
+                }
+                guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
+                    print("RiftPlayerState: startDisplayLoop missing pool/rend/sched")
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
                 let frames = pool.frames
                 guard nextIndex < frames.count else {
+                    // No new frame yet, wait a bit
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
                 let f = frames[nextIndex]
                 let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
                 let dur = CMTime(seconds: 1.0/24.0, preferredTimescale: 600)
+                // Log isReady and synchronizer rate
+                let isReady = rend.displayLayer.isReadyForMoreMediaData
+                let rate = sched.synchronizer.rate
+                print("RiftPlayerState: displayLoop will enqueue idx \(nextIndex) pts \(f.pts) isReady \(isReady) syncRate \(rate)")
                 if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                    if sched.synchronizer.rate == 0 {
+                        print("RiftPlayerState: synchronizer.setRate 1.0 at pts \(pts.seconds) host \(CMClockGetTime(CMClockGetHostTimeClock()).seconds)")
+                        sched.synchronizer.setRate(1.0, time: pts, atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+                        print("RiftPlayerState: synchronizer.rate after set \(sched.synchronizer.rate)")
+                    }
                     rend.displayLayer.enqueue(sbuf)
+                    print("RiftPlayerState: displayLayer.enqueue done isReady \(rend.displayLayer.isReadyForMoreMediaData) status \(rend.displayLayer.status.rawValue)")
+                } else {
+                    print("RiftPlayerState: sampleBuffer creation FAILED")
                 }
                 nextIndex += 1
-                Task { await self.coordinator.signal() }
+                await self.coordinator.signal()
                 try? await Task.sleep(nanoseconds: 1_000_000_000 / 24)
-                if Task.isCancelled { break }
+                if Task.isCancelled { print("RiftPlayerState: startDisplayLoop cancelled loop"); break }
             }
+            print("RiftPlayerState: startDisplayLoop task ended")
         }
+        print("RiftPlayerState: startDisplayLoop scheduled, task \(String(describing: displayTask))")
     }
 
     private func startSimulatedConsumer() {
