@@ -280,6 +280,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
                 let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
                 if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                    // Presentar inmediatamente: el pacing lo gobierna el flujo
+                    // decode↔display (pool+semaphore), y la pausa se garantiza
+                    // porque en rate==0 este loop no encola ningún frame.
+                    if let attachments = CMSampleBufferGetSampleAttachmentsArray(sbuf, createIfNecessary: true) {
+                        let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+                        CFDictionarySetValue(dict,
+                            Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                            Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+                    }
                     rend.displayLayer.enqueue(sbuf)
                     pool.removeFirst()
                 }
