@@ -255,6 +255,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             sched.synchronizer.setRate(1.0, time: pts, atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
                             print("RiftPlayerState: synchronizer.rate after set \(sched.synchronizer.rate)")
                         }
+                        // Force immediate display to diagnose timing vs rendering issue
+                        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sbuf, createIfNecessary: true) {
+                            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+                            CFDictionarySetValue(dict,
+                                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+                        }
                         rend.displayLayer.enqueue(sbuf)
                         print("RiftPlayerState: displayLayer.enqueue done isReady \(rend.displayLayer.isReadyForMoreMediaData) status \(rend.displayLayer.status.rawValue)")
                         // Retirar el frame consumido del pool para que el próximo
