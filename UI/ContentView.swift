@@ -2,6 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
 import Contracts
+import AVFoundation
+
+private struct PlayerStateFocusedKey: FocusedValueKey {
+    typealias Value = RiftPlayerState
+}
+extension FocusedValues {
+    var playerState: RiftPlayerState? {
+        get { self[PlayerStateFocusedKey.self] }
+        set { self[PlayerStateFocusedKey.self] = newValue }
+    }
+}
 
 // MARK: - App icon from SVG
 
@@ -15,6 +26,73 @@ private struct RiftLogo: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 160, height: 160)
         }
+    }
+}
+
+private struct PlayerView: NSViewRepresentable {
+    var player: AVPlayer?
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        let layer = AVPlayerLayer(player: player)
+        layer.videoGravity = .resizeAspect
+        layer.needsDisplayOnBoundsChange = true
+        view.layer = layer
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let layer = nsView.layer as? AVPlayerLayer {
+            if layer.player !== player { layer.player = player }
+            layer.videoGravity = .resizeAspect
+        }
+    }
+}
+
+private class HDRDisplayNSView: NSView {
+    var displayLayer: AVSampleBufferDisplayLayer? {
+        didSet {
+            if let old = oldValue, old.superlayer === self.layer {
+                old.removeFromSuperlayer()
+            }
+            if let l = displayLayer {
+                self.layer?.addSublayer(l)
+                l.videoGravity = .resizeAspect
+                l.needsDisplayOnBoundsChange = true
+                l.isOpaque = true
+                needsLayout = true
+            }
+        }
+    }
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer = CALayer()
+        layer?.backgroundColor = NSColor.black.cgColor
+    }
+    required init?(coder: NSCoder) { super.init(coder: coder); wantsLayer = true; layer = CALayer() }
+    override func layout() {
+        super.layout()
+        displayLayer?.frame = bounds
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let l = displayLayer {
+            l.frame = bounds
+        }
+    }
+}
+
+private struct HDRDisplayView: NSViewRepresentable {
+    var displayLayer: AVSampleBufferDisplayLayer?
+    func makeNSView(context: Context) -> NSView {
+        let view = HDRDisplayNSView(frame: .zero)
+        view.displayLayer = displayLayer
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let view = nsView as? HDRDisplayNSView else { return }
+        view.displayLayer = displayLayer
+        view.needsLayout = true
     }
 }
 
@@ -64,14 +142,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
 
             if state.hasVideo {
-                // TODO(Core): selección y montaje del renderer de video.
-                // En la referencia esto decidía entre DirectFFmpegPlayerView,
-                // RiftPlayerView (Metal) y NativeVideoPlayerView basándose en
-                // `state.playbackBackend`, `state.directPlaybackURL`,
-                // `state.usesNativeVideoLayer`, `MTLCreateSystemDefaultDevice()`
-                // y `state.player` (AVPlayer). Esa lógica pertenece a
-                // Core/Rendering + Core/Scheduler y NO se recrea aquí.
-                videoPlaceholder
+                videoContentView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
                     .overlay(videoVignette)
                     .transition(.opacity.combined(with: .scale(scale: 1.01)))
@@ -224,6 +296,17 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var videoContentView: some View {
+        if let rift = state as? RiftPlayerState, let dl = rift.displayLayer {
+            HDRDisplayView(displayLayer: dl)
+        } else if let rift = state as? RiftPlayerState, let p = rift.player {
+            PlayerView(player: p)
+        } else {
+            videoPlaceholder
+        }
     }
 
     // MARK: - Keyboard & mouse monitoring
