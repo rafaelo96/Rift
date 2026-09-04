@@ -377,7 +377,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 audioFailures += 1
                 continue
             }
-            let copyOK = frame.data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> OSStatus in
+            let copyOK = audioData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> OSStatus in
                 guard let base = ptr.baseAddress else { return -1 }
                 return CMBlockBufferReplaceDataBytes(with: base, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: dataSize)
             }
@@ -385,6 +385,26 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 if audioFailures < 5 { audioLog("audio replaceBytes FAIL status=\(copyOK)") }
                 audioFailures += 1
                 continue
+            }
+            // LOG: RMS/min/max de audioData post-downmix (primeros 10 packets)
+            if audioPacketsSeen <= 10 {
+                audioData.withUnsafeBytes { ptr in
+                    guard let base = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+                    let n = ptr.count / MemoryLayout<Float>.stride
+                    if n > 0 {
+                        var minSample = Float.greatestFiniteMagnitude
+                        var maxSample = -Float.greatestFiniteMagnitude
+                        var sumSquares: Double = 0
+                        for i in 0..<n {
+                            let v = base[i]
+                            if v < minSample { minSample = v }
+                            if v > maxSample { maxSample = v }
+                            sumSquares += Double(v) * Double(v)
+                        }
+                        let rms = sqrt(sumSquares / Double(max(n, 1)))
+                        audioLog("DEBUG audio pkt #\(audioPacketsSeen) post-downmix: min=\(minSample) max=\(maxSample) rms=\(rms) samples=\(n)")
+                    }
+                }
             }
 
             let presentationPts = packet.pts + accumulatedSeconds
@@ -424,10 +444,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             if audioFramesEnqueued <= 3 || audioFramesEnqueued % 50 == 0 {
                 // Medir RMS del PCM justo antes del enqueue para descartar
                 // que el buffer tenga silencio digital.
+                // USAMOS audioData (post-downmix) EN VEZ DE frame.data para
+                // ser coherente con el buffer real que se envía al renderer.
                 var rms: Float = 0
                 var peak: Float = 0
-                let nFloats = frame.data.count / MemoryLayout<Float>.size
-                frame.data.withUnsafeBytes { ptr in
+                let nFloats = audioData.count / MemoryLayout<Float>.size
+                audioData.withUnsafeBytes { ptr in
                     guard let base = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
                     var sum: Double = 0
                     for i in 0..<nFloats {
@@ -437,7 +459,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     rms = nFloats > 0 ? Float(sqrt(sum / Double(nFloats))) : 0
                 }
-                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(presentationPts) (frame.pts=\(frame.pts)) sr=\(frame.sampleRate) ch=\(frame.channels) samples=\(frame.sampleCount) dataSize=\(frame.data.count) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil")")
+                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(presentationPts) (frame.pts=\(frame.pts)) sr=\(frame.sampleRate) ch=\(outChannels) samples=\(frame.sampleCount) dataSize=\(dataSize) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil")")
             }
         }
     }
