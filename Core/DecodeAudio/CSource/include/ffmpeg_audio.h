@@ -57,6 +57,10 @@ int rift_audio_decode_flush(RiftAudioDecCtx *ctx,
 /* Last error string on this context (empty if none). */
 const char *rift_audio_decode_last_error(RiftAudioDecCtx *ctx);
 
+/* Sample format name ("fltp", "flt", "s16", ...) of the most recently
+ * decoded frame on this context, or NULL if none yet. For diagnostics. */
+const char *rift_audio_decode_last_sample_fmt(RiftAudioDecCtx *ctx);
+
 void rift_audio_decode_close(RiftAudioDecCtx *ctx);
 
 #ifdef __cplusplus

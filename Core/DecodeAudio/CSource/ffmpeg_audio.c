@@ -17,6 +17,8 @@ struct RiftAudioDecCtx {
      * into this scratch so the consumer always gets channels interleaved. */
     float *interleave_buf;
     size_t interleave_buf_size; /* in floats */
+    char last_sample_fmt[32];   /* name of the most recent frame format */
+    int has_format;
 };
 
 RiftAudioDecCtx *rift_audio_decode_open(const char *codec_name,
@@ -114,6 +116,15 @@ int rift_audio_decode_packet(RiftAudioDecCtx *ctx,
             out->pts_seconds = packet_pts_seconds;
         }
 
+        /* Convert to interleaved float32 */
+        {
+            /* Diagnostic track: record format name of the decoded frame */
+            const char *fmtname = av_get_sample_fmt_name((enum AVSampleFormat)ctx->frame->format);
+            if (fmtname) {
+                snprintf(ctx->last_sample_fmt, sizeof(ctx->last_sample_fmt), "%s", fmtname);
+            }
+            ctx->has_format = 1;
+        }
         /* Convert to interleaved float32. EAC3 decodes to planar float
          * (AV_SAMPLE_FMT_FLTP), so we interleave into a scratch buffer. */
         const float *pcmsrc = NULL;
@@ -170,6 +181,10 @@ int rift_audio_decode_flush(RiftAudioDecCtx *ctx,
 
 const char *rift_audio_decode_last_error(RiftAudioDecCtx *ctx) {
     return ctx ? ctx->last_error : "";
+}
+
+const char *rift_audio_decode_last_sample_fmt(RiftAudioDecCtx *ctx) {
+    return (ctx && ctx->has_format) ? ctx->last_sample_fmt : "none";
 }
 
 void rift_audio_decode_close(RiftAudioDecCtx *ctx) {

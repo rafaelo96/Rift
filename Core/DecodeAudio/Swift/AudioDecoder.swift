@@ -12,6 +12,12 @@ public final class AudioDecoder {
     private var ctx: OpaquePointer?
     private var capacity: Int
 
+    /// Nombre del sample_fmt crudo del último frame decodificado (diagnóstico).
+    public var lastSampleFmtName: String {
+        guard let ctx else { return "nil" }
+        return String(cString: rift_audio_decode_last_sample_fmt(ctx))
+    }
+
     /// `capacity` es el número máximo de frames por decodificación (EAC3 genera 1 frame por packet).
     public init(codecName: String = "eac3", capacity: Int = 4) throws {
         var err = [CChar](repeating: 0, count: 256)

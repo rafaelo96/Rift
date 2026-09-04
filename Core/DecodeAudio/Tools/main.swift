@@ -25,6 +25,7 @@ print("audio track: [\(audioTrack.streamIndex)] \(audioTrack.codecName)")
 
 let decoder = try AudioDecoder(codecName: audioTrack.codecName)
 print("decoder opened OK")
+var firstFormatPrinted = false
 
 var packetsSeen = 0
 var framesDecoded = 0
@@ -43,6 +44,10 @@ while true {
     let frames = decoder.decode(packet: pkt)
     for f in frames {
         framesDecoded += 1
+        if !firstFormatPrinted {
+            print("lastSampleFmtName: \(decoder.lastSampleFmtName)")
+            firstFormatPrinted = true
+        }
         if firstPts == nil { firstPts = f.pts }
         lastPts = f.pts
         totalSamples += Int64(f.sampleCount) * Int64(f.channels)
