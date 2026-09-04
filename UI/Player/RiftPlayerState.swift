@@ -313,10 +313,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 var stereo = [Float](repeating: 0, count: totalFrames * 2)
                 var srcIdx = 0
                 var dstIdx = 0
+                // Layout EAC3 5.1: FL, FR, FC, LFE, BL, BR → L/R con centro
+                // atenuado 0.707 y clamp a [-1,1] para evitar clipping.
                 for _ in 0..<totalFrames {
-                    // Layout típico EAC3: L, R, C, LFE, SL, SR
-                    stereo[dstIdx]     = audioData.withUnsafeBytes { $0.load(fromByteOffset: srcIdx * 4, as: Float.self) }
-                    stereo[dstIdx + 1] = audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 1) * 4, as: Float.self) }
+                    let FL = audioData.withUnsafeBytes { $0.load(fromByteOffset: srcIdx * 4, as: Float.self) }
+                    let FR = audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 1) * 4, as: Float.self) }
+                    let FC = frame.channels >= 3
+                        ? audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 2) * 4, as: Float.self) }
+                        : 0
+                    let L = min(1.0, max(-1.0, 0.5 * FL + 0.5 * FC))
+                    let R = min(1.0, max(-1.0, 0.5 * FR + 0.5 * FC))
+                    stereo[dstIdx]     = L
+                    stereo[dstIdx + 1] = R
                     srcIdx += frame.channels
                     dstIdx += 2
                 }
