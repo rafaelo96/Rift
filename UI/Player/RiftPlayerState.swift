@@ -198,7 +198,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.statusMessage = "Ready"
                     self.conversionProgress = 1.0
                     self.startDecodeLoop()
-                    self.startSimulatedConsumer() // TODO(3c): reemplazar por Scheduler.synchronizer real
                 }
             } catch {
                 await MainActor.run {
@@ -523,8 +522,4 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    private func startSimulatedConsumer() {
-        // Deprecated en 3c: ahora el display loop real consume y señaliza
-        consumerTimer?.invalidate()
-    }
 }
