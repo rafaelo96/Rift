@@ -181,7 +181,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.audioRenderer = ar
                         // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
                         self.scheduler?.synchronizer.addRenderer(ar)
-                        Self.audioLog("audioRenderer added to synchronizer rate=\(self.scheduler?.synchronizer.rate ?? -999) vol=\(ar.volume) muted=\(ar.isMuted)")
+                        if let sync = self.scheduler?.synchronizer {
+                            let syncId = ObjectIdentifier(sync)
+                            Self.audioLog("audioRenderer added to synchronizer rate=\(sync.rate) vol=\(ar.volume) muted=\(ar.isMuted) synchronizerId=\(syncId)")
+                        } else {
+                            Self.audioLog("audioRenderer added to synchronizer rate=nil vol=\(ar.volume) muted=\(ar.isMuted)")
+                        }
                     }
                     self.availableTracks = info.tracks.map { t in
                         let kind: MediaTrack.Kind
@@ -468,7 +473,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
         if let sched = scheduler, sched.synchronizer.rate == 0 {
+            let syncId = ObjectIdentifier(sched.synchronizer)
             sched.synchronizer.setRate(1.0, time: CMTime(seconds: currentTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+            Self.audioLog("synchronizer.setRate(1.0) synchronizerId=\(syncId) rate=\(sched.synchronizer.rate)")
         }
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
