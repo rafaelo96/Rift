@@ -327,6 +327,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 audioData = Data(bytes: &stereo, count: stereo.count * 4)
                 outChannels = 2
             }
+            // DEBUG: log channels/sizes post-downmix
+            if audioPacketsSeen == 1 {
+                audioLog("DEBUG audio pkt #1 post-downmix: frame.channels=\(frame.channels) outChannels=\(outChannels) audioData.count=\(audioData.count) frame.data.count=\(frame.data.count) ASBD_channels=2 ASBD_bytesPerFrame=\(UInt32(outChannels * 4)) ASBD_bytesPerPacket=\(UInt32(outChannels * 4))")
+            }
             var asbd = AudioStreamBasicDescription(
                 mSampleRate: Double(frame.sampleRate),
                 mFormatID: kAudioFormatLinearPCM,
@@ -355,7 +359,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // Copiar PCM a un block buffer propio (Data se dealloca al salir;
             // el block buffer debe ser dueño de los bytes).
             var blockBuffer: CMBlockBuffer?
-            let dataSize = frame.data.count
+            let dataSize = audioData.count  // USO CORREGIDO: usar data post-downmix (2 ch), no frame.data (6 ch)
             // CMBlockBufferCreateWithMemoryBlock con memoryBlock=nil y
             // blockAllocator=default: CM aloca y posee la memoria; luego
             // ReplaceDataBytes funciona (CreateEmpty no tiene backing store).
