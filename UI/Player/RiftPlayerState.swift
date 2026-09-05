@@ -691,19 +691,29 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 // Consumir el frame más viejo de la ventana deslizante.
                 let f = pool.oldest() ?? {
-                    // No hay frames disponibles todavía; esperar y reintentar.
                     return Optional<Frame>.none
                 }()
                 guard let f else {
-                    try? await Task.sleep(nanoseconds: 33_000_000) // ~30fps poll
+                    try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
+                // Pacer contra el reloj del synchronizer (igual que el audio):
+                // esperar hasta que el reloj alcance el pts de este frame, en
+                // lugar de un sleep fijo (que deriva y desincroniza A/V).
+                let target = f.pts
+                while true {
+                    if Task.isCancelled { break }
+                    let clk = sched.synchronizer.currentTime().seconds
+                    if clk >= target - 0.001 { break }
+                    let delta = target - clk
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, delta) * 1_000_000_000))
+                }
+                if Task.isCancelled { break }
                 let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
                 let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
                 if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
-                    // Presentar inmediatamente: el pacing lo gobierna el flujo
-                    // decode↔display (pool+semaphore), y la pausa se garantiza
-                    // porque en rate==0 este loop no encola ningún frame.
+                    // DisplayImmediately: ya que pacamos contra el reloj arriba,
+                    // presentamos al instante al encolar.
                     if let attachments = CMSampleBufferGetSampleAttachmentsArray(sbuf, createIfNecessary: true) {
                         let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
                         CFDictionarySetValue(dict,
@@ -719,7 +729,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     pool.removeFirst()
                 }
                 await self.coordinator.signal()
-                try? await Task.sleep(nanoseconds: 1_000_000_000 / 24)
                 if Task.isCancelled { break }
             }
         }
