@@ -74,6 +74,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var sourceURL: URL?
     private var subtitleTrack: TrackInfo?
     private var subtitleCues: [SubtitleCue] = []
+    private var subtitleCueCache: [Int: [SubtitleCue]] = [:]
 
     func togglePlay() {
         isPlaying.toggle()
@@ -185,7 +186,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 // Subtítulos: detectar la primera pista subrip (la lectura de cues
                 // se hace en un Task en background, no aquí, para no bloquear el
                 // primer frame de video — recorrer 17GB tarda ~8s).
-                let subTrack = info.tracks.first(where: { $0.kind == .other && $0.codecName == "subrip" })
+                let subTrack: TrackInfo? = {
+                    var found: TrackInfo? = nil
+                    for track in info.tracks {
+                        if track.kind == .other && track.codecName == "subrip" {
+                            found = track
+                            break
+                        }
+                    }
+                    return found
+                }()
                 await MainActor.run {
                     guard let self else { return }
                     self.demuxer = d
@@ -227,17 +237,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.statusMessage = "Ready"
                     self.conversionProgress = 1.0
                     self.startDecodeLoop()
-                }
-                // Subtítulos en background (paralelo al video): leer cues sin
-                // bloquear el primer frame. Si abre un demuxer propio, no compite
-                // con el de video. Actualiza subtitleCues al terminar.
-                if let subTrack {
-                    let subURL = url
-                    let subStream = subTrack.streamIndex
-                    Task.detached(priority: .utility) { [weak self] in
-                        let cues = Self.readSubtitleCues(url: subURL, trackStreamIndex: subStream)
-                        await MainActor.run {
-                            self?.subtitleCues = cues
+                    // Subtítulos: cargar la primera pista en background (paralelo
+                    // al video) vía cache, sin bloquear el primer frame.
+                    if let subTrack {
+                        self.ensureSubtitleCues(url: url, streamIndex: subTrack.streamIndex) {
+                            self.subtitleCues = self.subtitleCueCache[subTrack.streamIndex] ?? []
+                            self.updateActiveSubtitle(at: self.currentTime)
                         }
                     }
                 }
@@ -338,6 +343,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             cues.append(SubtitleCue(start: packet.pts, end: end, text: trimmed))
         }
         return cues
+    }
+
+    private func ensureSubtitleCues(url: URL, streamIndex: Int, done: @escaping () -> Void) {
+        let cached = subtitleCueCache[streamIndex]
+        if cached != nil {
+            done()
+            return
+        }
+        Task.detached(priority: .utility) { [weak self] in
+            let cues = Self.readSubtitleCues(url: url, trackStreamIndex: streamIndex)
+            await MainActor.run {
+                self?.subtitleCueCache[streamIndex] = cues
+                done()
+            }
+        }
     }
 
     private func startAudioLoop(url: URL, trackStreamIndex: Int, codecName: String, startTime: Double) {
