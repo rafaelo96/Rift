@@ -285,6 +285,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
                     if let aTrack = audioTracksAll.first {
                         self.audioTrack = aTrack
+                        self.selectedAudioTrackIndex = aTrack.streamIndex
                         let ar = AVSampleBufferAudioRenderer()
                         ar.volume = 1.0
                         ar.isMuted = false

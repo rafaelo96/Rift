@@ -269,7 +269,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             glassPill(
                 title: NSLocalizedString("Audio", comment: ""),
                 systemName: "music.note.list",
-                isActive: state.selectedAudioTrackIndex != 0,
+                isActive: state.selectedAudioTrackIndex != (state.audioTracks.first?.id ?? 0),
                 hint: NSLocalizedString("Audio Track", comment: "")
             )
         }
