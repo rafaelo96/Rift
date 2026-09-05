@@ -76,6 +76,26 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var subtitleCues: [SubtitleCue] = []
     private var subtitleCueCache: [Int: [SubtitleCue]] = [:]
 
+    // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
+    // frecuentes; si no está, se usa streamTitle o el índice como fallback.
+    private static let languageNames: [String: String] = [
+        "spa": "Español", "eng": "Inglés", "fre": "Francés", "fra": "Francés",
+        "deu": "Alemán", "ger": "Alemán", "ita": "Italiano", "por": "Portugués",
+        "jpn": "Japonés", "kor": "Coreano", "chi": "Chino", "zho": "Chino",
+        "rus": "Ruso", "ara": "Árabe", "hin": "Hindi",
+    ]
+
+    /// Etiqueta legible para una pista de subtítulos (se compone en UI, no en Demux).
+    private static nonisolated func subtitleLabel(for track: TrackInfo, index: Int) -> String {
+        if let code = track.streamLanguage?.lowercased(), let name = languageNames[code] {
+            return name
+        }
+        if let title = track.streamTitle, !title.isEmpty {
+            return title
+        }
+        return "Subtítulo \(index + 1)"
+    }
+
     func togglePlay() {
         isPlaying.toggle()
         if let sched = scheduler {
@@ -244,11 +264,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.scheduler?.synchronizer.addRenderer(ar)
                         self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime)
                     }
-                    self.availableTracks = info.tracks.map { t in
-                        let kind: MediaTrack.Kind
-                        switch t.kind { case .video: kind = .video; case .audio: kind = .audio; default: kind = .subtitle }
-                        return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: t.codecName, languageCode: nil)
-                    }
+                    self.availableTracks = {
+                        var subtitleOrdinal = 0
+                        return info.tracks.map { t in
+                            let kind: MediaTrack.Kind
+                            switch t.kind { case .video: kind = .video; case .audio: kind = .audio; default: kind = .subtitle }
+                            let label: String
+                            if kind == .subtitle {
+                                label = Self.subtitleLabel(for: t, index: subtitleOrdinal)
+                                subtitleOrdinal += 1
+                            } else {
+                                label = t.codecName
+                            }
+                            return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: label, languageCode: t.streamLanguage)
+                        }
+                    }()
                     self.audioTracks = info.tracks.filter { $0.kind == .audio }.enumerated().map { idx, t in AudioTrack(id: idx, label: t.codecName, language: nil) }
                     self.hasVideo = true
                     self.statusMessage = "Ready"
