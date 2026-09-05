@@ -139,7 +139,7 @@ guard let video = info.tracks.first(where: { $0.kind == .video }) else {
 print("video: \(video.width ?? 0)x\(video.height ?? 0) \(video.codecName) "
     + "ct=\(video.colorTransfer.map(String.init) ?? "-") "
     + "cp=\(video.colorPrimaries.map(String.init) ?? "-")")
-print(String(format: "extradata : %d bytes (hvcC)", video.codecExtradata.count))
+print("extradata : \(video.codecExtradata.count) bytes (\(video.codecName))")
 print("VT hardware decode supported (HEVC): \(VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC))")
 
 let decoder = VTDecoder()
