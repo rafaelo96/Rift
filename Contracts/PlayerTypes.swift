@@ -4,17 +4,17 @@ import Foundation
 
 public enum InterpolationMode: String, CaseIterable, Sendable {
     case disabled
-    case rife2x
-    case rife4x
-    case rifeAdaptive
+    case motion2x
+    case motion4x
+    case motionAdaptive
     case motion2Intense
 
     public var displayName: String {
         switch self {
         case .disabled: "Off"
-        case .rife2x: "RIFE 2x"
-        case .rife4x: "RIFE 4x"
-        case .rifeAdaptive: "Adaptive"
+        case .motion2x: "Motion 2x"
+        case .motion4x: "Motion 4x"
+        case .motionAdaptive: "Adaptive"
         case .motion2Intense: "Motion² Intenso"
         }
     }
