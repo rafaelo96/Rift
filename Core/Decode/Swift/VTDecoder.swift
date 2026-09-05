@@ -16,9 +16,16 @@ import Demux
 // accumulated and nothing is ever written to disk.
 
 public final class VTDecoder: VideoDecoding {
+    /// Dispatch exhaustivo por códec: cada caso fuerza a manejar su parser y su
+    /// API de CMVideoFormatDescription explícitamente (y pixel format en makeSession).
+    private enum CodecConfig {
+        case avc(AVCConfiguration)
+        case hevc(HEVCConfiguration)
+    }
+
     private var session: VTDecompressionSession?
     private var formatDescription: CMFormatDescription?
-    private var config: HEVCConfiguration?
+    private var config: CodecConfig?
     private var track: TrackInfo?
 
     /// Written on the VT callback thread, read right after the synchronous
@@ -36,18 +43,27 @@ public final class VTDecoder: VideoDecoding {
             throw DecodeError.unsupportedFormat("track \(track.streamIndex) is not video")
         }
         guard !track.codecExtradata.isEmpty else {
-            throw DecodeError.unsupportedFormat("video track has no codec extradata (hvcC)")
+            throw DecodeError.unsupportedFormat("video track has no codec extradata")
         }
 
-        let config: HEVCConfiguration
-        do {
-            config = try HEVCConfiguration.parse(track.codecExtradata)
-        } catch let error as HEVCConfigurationError {
-            throw DecodeError.malformedHvcC(error.description)
+        let config: CodecConfig
+        switch track.codecName.lowercased() {
+        case "h264", "avc":
+            do {
+                config = .avc(try AVCConfiguration.parse(track.codecExtradata))
+            } catch let error as AVCConfigurationError {
+                throw DecodeError.malformedAvcC(error.description)
+            }
+        case "hevc", "h265":
+            do {
+                config = .hevc(try HEVCConfiguration.parse(track.codecExtradata))
+            } catch let error as HEVCConfigurationError {
+                throw DecodeError.malformedHvcC(error.description)
+            }
+        default:
+            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc")
         }
-        guard !config.parameterSets.isEmpty else {
-            throw DecodeError.missingParameterSets
-        }
+
         self.config = config
         self.track = track
 
@@ -118,14 +134,19 @@ public final class VTDecoder: VideoDecoding {
 
     // MARK: - Format description & session
 
-    private func makeFormatDescription(_ config: HEVCConfiguration) throws -> CMFormatDescription {
-        let sets = config.parameterSets
+    private func makeFormatDescription(_ config: CodecConfig) throws -> CMFormatDescription {
+        switch config {
+        case .hevc(let hevc):
+            return try makeHEVCFormatDescription(hevc.parameterSets.map { $0.bytes }, nalUnitHeaderLength: hevc.nalUnitHeaderLength)
+        case .avc(let avc):
+            return try makeAVCFormatDescription(avc.parameterSets.map { $0.bytes }, nalUnitHeaderLength: avc.nalUnitHeaderLength)
+        }
+    }
 
-        // The parameter sets must stay alive only for the duration of the
-        // create call (VideoToolbox copies them).
+    private func makeHEVCFormatDescription(_ sets: [[UInt8]], nalUnitHeaderLength: Int) throws -> CMFormatDescription {
         let storage: [UnsafeMutablePointer<UInt8>] = sets.map { ps in
-            let p = UnsafeMutablePointer<UInt8>.allocate(capacity: ps.bytes.count)
-            p.initialize(from: ps.bytes, count: ps.bytes.count)
+            let p = UnsafeMutablePointer<UInt8>.allocate(capacity: ps.count)
+            p.initialize(from: ps, count: ps.count)
             return p
         }
         let pointers = UnsafeMutablePointer<UnsafePointer<UInt8>>.allocate(capacity: sets.count)
@@ -137,7 +158,7 @@ public final class VTDecoder: VideoDecoding {
         }
         for i in 0..<sets.count {
             pointers[i] = UnsafePointer(storage[i])
-            sizes[i] = sets[i].bytes.count
+            sizes[i] = sets[i].count
         }
 
         var fmt: CMFormatDescription?
@@ -146,8 +167,41 @@ public final class VTDecoder: VideoDecoding {
             parameterSetCount: sets.count,
             parameterSetPointers: pointers,
             parameterSetSizes: UnsafePointer(sizes),
-            nalUnitHeaderLength: Int32(config.nalUnitHeaderLength),
+            nalUnitHeaderLength: Int32(nalUnitHeaderLength),
             extensions: nil,
+            formatDescriptionOut: &fmt
+        )
+        guard status == noErr, let fmt else {
+            throw DecodeError.formatDescriptionFailed(status)
+        }
+        return fmt
+    }
+
+    private func makeAVCFormatDescription(_ sets: [[UInt8]], nalUnitHeaderLength: Int) throws -> CMFormatDescription {
+        let storage: [UnsafeMutablePointer<UInt8>] = sets.map { ps in
+            let p = UnsafeMutablePointer<UInt8>.allocate(capacity: ps.count)
+            p.initialize(from: ps, count: ps.count)
+            return p
+        }
+        let pointers = UnsafeMutablePointer<UnsafePointer<UInt8>>.allocate(capacity: sets.count)
+        let sizes = UnsafeMutablePointer<Int>.allocate(capacity: sets.count)
+        defer {
+            pointers.deallocate()
+            sizes.deallocate()
+            storage.forEach { $0.deallocate() }
+        }
+        for i in 0..<sets.count {
+            pointers[i] = UnsafePointer(storage[i])
+            sizes[i] = sets[i].count
+        }
+
+        var fmt: CMFormatDescription?
+        let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
+            allocator: kCFAllocatorDefault,
+            parameterSetCount: sets.count,
+            parameterSetPointers: pointers,
+            parameterSetSizes: UnsafePointer(sizes),
+            nalUnitHeaderLength: Int32(nalUnitHeaderLength),
             formatDescriptionOut: &fmt
         )
         guard status == noErr, let fmt else {
