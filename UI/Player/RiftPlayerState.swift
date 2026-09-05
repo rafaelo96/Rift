@@ -113,6 +113,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func seek(to time: Double) {
         audioTask?.cancel()
         currentTime = time
+        // Actualizar el subtítulo de inmediato (los cues ya están todos en
+        // memoria desde el inicio, no hace falta releer ni reiniciar ningún loop).
+        updateActiveSubtitle(at: time)
         try? demuxer?.seek(to: time); decoder?.flush(); framePool?.flush()
         // Vaciar también las colas de video y audio (frames/buffers encolados
         // del segmento anterior) para que no se "pegue" contenido viejo.
