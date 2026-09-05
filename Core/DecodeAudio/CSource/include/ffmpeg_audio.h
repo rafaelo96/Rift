@@ -34,10 +34,12 @@ typedef struct {
 
 /* Returns NULL on failure; error_buffer receives a human-readable message.
  * `extradata`/`extradata_size` is the codec-private data (e.g. AAC
- * AudioSpecificConfig) which MUST be set on the codec context before it is
- * opened. May be NULL/0 for codecs that are self-contained per-packet (EAC3). */
+ * AudioSpecificConfig) and `sample_rate`/`channels` the stream audio params,
+ * all of which MUST be set on the codec context before it is opened. They may
+ * be NULL/0 for codecs that are self-contained per-packet (EAC3). */
 RiftAudioDecCtx *rift_audio_decode_open(const char *codec_name,
                                         const uint8_t *extradata, int extradata_size,
+                                        int sample_rate, int channels,
                                         char *error_buffer, size_t error_buffer_size);
 
 /* Decodes one compressed packet. Returns:

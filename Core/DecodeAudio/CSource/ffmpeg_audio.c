@@ -23,6 +23,7 @@ struct RiftAudioDecCtx {
 
 RiftAudioDecCtx *rift_audio_decode_open(const char *codec_name,
                                         const uint8_t *extradata, int extradata_size,
+                                        int sample_rate, int channels,
                                         char *error_buffer, size_t error_buffer_size) {
     const AVCodec *dec = avcodec_find_decoder_by_name(codec_name);
     if (!dec) {
@@ -43,6 +44,16 @@ RiftAudioDecCtx *rift_audio_decode_open(const char *codec_name,
         if (error_buffer) snprintf(error_buffer, error_buffer_size, "Failed to allocate codec context");
         free(ctx);
         return NULL;
+    }
+
+    /* Stream audio params (sample rate, channels) must be set BEFORE
+     * avcodec_open2 — codecs like AAC require them (they are not self-contained
+     * per-packet like EAC3). */
+    if (sample_rate > 0) {
+        ctx->dec_ctx->sample_rate = sample_rate;
+    }
+    if (channels > 0) {
+        av_channel_layout_default(&ctx->dec_ctx->ch_layout, channels);
     }
 
     /* Codec-private data (e.g. AAC AudioSpecificConfig) must be set BEFORE
