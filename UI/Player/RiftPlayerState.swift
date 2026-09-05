@@ -182,10 +182,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let dec = VTDecoder()
                 try dec.prepare(track: v)
-                // Subtítulos: leer cues de la primera pista subrip (texto minúsculo,
-                // se lee completo de una vez, sin loop continuo ni pacing).
+                // Subtítulos: detectar la primera pista subrip (la lectura de cues
+                // se hace en un Task en background, no aquí, para no bloquear el
+                // primer frame de video — recorrer 17GB tarda ~8s).
                 let subTrack = info.tracks.first(where: { $0.kind == .other && $0.codecName == "subrip" })
-                let subCues = subTrack.map { Self.readSubtitleCues(url: url, trackStreamIndex: $0.streamIndex) } ?? []
                 await MainActor.run {
                     guard let self else { return }
                     self.demuxer = d
@@ -196,7 +196,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.framePool = SlidingFramePool(capacity: 4)
                     self.scheduler = FrameScheduler(mode: .native24)
                     self.subtitleTrack = subTrack
-                    self.subtitleCues = subCues
+                    self.subtitleCues = []
                     // CLAVE: sin esto el synchronizer retrasa el arranque del
                     // reloj hasta tener preroll suficiente en TODOS los renderers,
                     // y con buffers de 32ms el audio se atasca (isReady=false
@@ -227,6 +227,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.statusMessage = "Ready"
                     self.conversionProgress = 1.0
                     self.startDecodeLoop()
+                }
+                // Subtítulos en background (paralelo al video): leer cues sin
+                // bloquear el primer frame. Si abre un demuxer propio, no compite
+                // con el de video. Actualiza subtitleCues al terminar.
+                if let subTrack {
+                    let subURL = url
+                    let subStream = subTrack.streamIndex
+                    Task.detached(priority: .utility) { [weak self] in
+                        let cues = Self.readSubtitleCues(url: subURL, trackStreamIndex: subStream)
+                        await MainActor.run {
+                            self?.subtitleCues = cues
+                        }
+                    }
                 }
             } catch {
                 await MainActor.run {
