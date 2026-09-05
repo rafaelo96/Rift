@@ -162,7 +162,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) { interpolationMode = m }
     func selectAudioTrack(_ i: Int) { selectedAudioTrackIndex = i }
-    func selectPipelineTrack(_ t: MediaTrack?) { selectedSubtitleTrack = t }
+    func selectPipelineTrack(_ t: MediaTrack?) {
+        selectedSubtitleTrack = t
+        guard let t, let url = sourceURL else {
+            // "None": desactivar subtítulos.
+            subtitleCues = []
+            currentSubtitleText = nil
+            return
+        }
+        let streamIndex = t.index
+        // Reflejar el cambio de inmediato con lo ya cacheado (o vacío mientras
+        // se lee en background), y recargar si aún no está en cache.
+        subtitleCues = subtitleCueCache[streamIndex] ?? []
+        updateActiveSubtitle(at: currentTime)
+        ensureSubtitleCues(url: url, streamIndex: streamIndex) {
+            self.subtitleCues = self.subtitleCueCache[streamIndex] ?? []
+            self.updateActiveSubtitle(at: self.currentTime)
+        }
+    }
     func toggleVisualEnhancements() { visualEnhancementsEnabled.toggle() }
 
     func loadVideo(_ url: URL) {
