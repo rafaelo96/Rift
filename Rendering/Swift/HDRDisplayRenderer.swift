@@ -10,9 +10,11 @@ public final class HDRDisplayRenderer {
     public let displayLayer: AVSampleBufferDisplayLayer
     public let synchronizer: AVSampleBufferRenderSynchronizer
 
-    public init() {
+    public init(synchronizer: AVSampleBufferRenderSynchronizer? = nil) {
         let layer = AVSampleBufferDisplayLayer()
-        let sync = AVSampleBufferRenderSynchronizer()
+        // Permite compartir el synchronizer con otros renderers (p.ej. el audio):
+        // video y audio deben vivir en el MISMO reloj para reproducirse en sync.
+        let sync = synchronizer ?? AVSampleBufferRenderSynchronizer()
         // EDR: necesario para que PQ/BT.2020 no se aplaste a SDR
         layer.wantsExtendedDynamicRangeContent = true
         // El headroom lo elige el sistema según la pantalla EDR; no forzar aquí.

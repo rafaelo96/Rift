@@ -68,8 +68,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private let coordinator = DecodeCoordinator(value: 4)
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
+    private var audioTask: Task<Void, Never>?
     private var consumerTimer: Timer?
     private var currentTimeTimer: Timer?
+    private var sourceURL: URL?
 
     func togglePlay() {
         isPlaying.toggle()
@@ -84,11 +86,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func updateTimePolling() {
         if isPlaying {
             currentTimeTimer?.invalidate()
+            var tick = 0
             currentTimeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 guard let self else { return }
                 Task { @MainActor [weak self] in
                     guard let self, let sched = self.scheduler else { return }
                     self.currentTime = sched.synchronizer.currentTime().seconds
+                    tick += 1
+                    if tick % 10 == 0 {
+                        Self.audioLog("CLOCK sync.rate=\(sched.synchronizer.rate) currentTime=\(self.currentTime) hasVideo=\(self.hasVideo)")
+                    }
                 }
             }
         } else {
@@ -97,17 +104,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
     func seek(to time: Double) {
+        audioTask?.cancel()
         currentTime = time
         try? demuxer?.seek(to: time); decoder?.flush(); framePool?.flush()
         // Vaciar también las colas de video y audio (frames/buffers encolados
         // del segmento anterior) para que no se "pegue" contenido viejo.
         if let rend = renderer { rend.displayLayer.flush() }
         audioRenderer?.flush()
-        if let aTrack = audioTrack {
-            audioDecoder = try? AudioDecoder(codecName: aTrack.codecName) // reset del decoder para el nuevo segmento
-        }
         if let sched = scheduler {
             sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: CMTime(seconds: time, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+        }
+        if let url = sourceURL, let aTrack = audioTrack {
+            startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time)
         }
         // Tras el flush, el pool vacío puede dejar al decodeLoop bloqueado en
         // wait() sin nadie que lo despierte (displayLoop no señaliza sin
@@ -122,14 +130,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func cyclePlaybackRate() {}
     func closeVideo() {
         decodeTask?.cancel(); decodeTask = nil
+        audioTask?.cancel(); audioTask = nil
+        displayTask?.cancel(); displayTask = nil
         consumerTimer?.invalidate(); consumerTimer = nil
-        demuxer?.close(); decoder?.close()
-        demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
-        audioDecoder = nil; audioRenderer = nil; audioTrack = nil
-        hasVideo = false; isPlaying = false
+        currentTimeTimer?.invalidate(); currentTimeTimer = nil
         if let sched = scheduler {
             sched.synchronizer.setRate(0, time: .zero)
         }
+        renderer?.flush()
+        audioRenderer?.flush()
+        demuxer?.close(); decoder?.close()
+        demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
+        audioDecoder = nil; audioRenderer = nil; audioTrack = nil
+        sourceURL = nil
+        hasVideo = false; isPlaying = false
     }
     func startHideTimer() {}
     func stopHideTimer() {}
@@ -141,6 +155,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func toggleVisualEnhancements() { visualEnhancementsEnabled.toggle() }
 
     func loadVideo(_ url: URL) {
+        audioTask?.cancel()
+        sourceURL = url
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
@@ -166,15 +182,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.sourceFrameRate = v.frameRate
                     self.framePool = SlidingFramePool(capacity: 4)
                     self.scheduler = FrameScheduler(mode: .native24)
-                    self.renderer = HDRDisplayRenderer()
+                    // CLAVE: sin esto el synchronizer retrasa el arranque del
+                    // reloj hasta tener preroll suficiente en TODOS los renderers,
+                    // y con buffers de 32ms el audio se atasca (isReady=false
+                    // perpetuo) sin llegar nunca a reproducir.
+                    self.scheduler?.synchronizer.delaysRateChangeUntilHasSufficientMediaData = false
+                    // Video y audio comparten el MISMO synchronizer para
+                    // reproducirse en sync (el displayLayer y el audioRenderer
+                    // viven en el reloj del scheduler).
+                    self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
                     // Audio: primera pista de audio (selector queda para fase posterior)
                     if let aTrack = info.tracks.first(where: { $0.kind == .audio }) {
                         self.audioTrack = aTrack
-                        do {
-                            self.audioDecoder = try AudioDecoder(codecName: aTrack.codecName)
-                        } catch {
-                            Self.audioLog("audioDecoder init FAILED: \(error)")
-                        }
                         let ar = AVSampleBufferAudioRenderer()
                         ar.volume = 1.0
                         ar.isMuted = false
@@ -187,6 +206,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         } else {
                             Self.audioLog("audioRenderer added to synchronizer rate=nil vol=\(ar.volume) muted=\(ar.isMuted)")
                         }
+                        self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime)
                     }
                     self.availableTracks = info.tracks.map { t in
                         let kind: MediaTrack.Kind
@@ -224,10 +244,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func startDecodeLoop() {
         guard let d = demuxer, let dec = decoder, let pool = framePool else { return }
         let targetIndex = videoTrack?.streamIndex ?? -1
-        // Extraer refs de audio en el MainActor antes de entrar al Task.detached
-        let aTrack = audioTrack
-        let aDec = audioDecoder
-        let aRend = audioRenderer
         decodeTask?.cancel()
         decodeTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
@@ -239,15 +255,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     await self.coordinator.signal()
                     print("RiftPlayerState: decode loop ended (decoded=\(decoded))")
                     break
-                }
-                // Audio: se decodifica y encola al audioRenderer de inmediato,
-                // sin consumir un cupo del pool de video (el backpressure de
-                // video no debe gobernar el audio).
-                if let aIndex = aTrack?.streamIndex, pkt.streamIndex == aIndex,
-                   let aDec, let aRend {
-                    Self.decodeAndEnqueueAudio(packet: pkt, decoder: aDec, renderer: aRend)
-                    await self.coordinator.signal()
-                    continue
                 }
                 if pkt.streamIndex != targetIndex {
                     await self.coordinator.signal()
@@ -287,6 +294,196 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
+    private struct PreparedAudioBuffer {
+        let sampleBuffer: CMSampleBuffer
+        let outputChannels: Int
+        let dataSize: Int
+        let rms: Float
+        let peak: Float
+    }
+
+    private func startAudioLoop(url: URL, trackStreamIndex: Int, codecName: String, startTime: Double) {
+        audioTask?.cancel()
+        guard let renderer = audioRenderer, let sync = scheduler?.synchronizer else {
+            Self.audioLog("audioLoop SKIP: renderer/synchronizer missing")
+            return
+        }
+
+        let startPTS = max(0, startTime)
+        let maxAheadSeconds = 0.25
+        audioTask = Task.detached(priority: .userInitiated) {
+            let audioDemuxer = FFmpegDemuxer()
+            defer { audioDemuxer.close() }
+
+            do {
+                _ = try audioDemuxer.open(url: url)
+                if startPTS > 0 {
+                    try? audioDemuxer.seek(to: startPTS)
+                }
+                let decoder = try AudioDecoder(codecName: codecName)
+                var packetsSeen = 0
+                var framesEnqueued = 0
+                var framesSkippedBeforeStart = 0
+                var failures = 0
+
+                Self.audioLog("audioLoop START track=\(trackStreamIndex) codec=\(codecName) start=\(startPTS) ahead=\(maxAheadSeconds)")
+
+                while !Task.isCancelled {
+                    guard let packet = try? audioDemuxer.nextPacket() else { break }
+                    guard packet.streamIndex == trackStreamIndex else { continue }
+
+                    packetsSeen += 1
+                    let frames = decoder.decode(packet: packet)
+                    var accumulatedSeconds = 0.0
+
+                    for frame in frames {
+                        if Task.isCancelled { break }
+                        guard frame.sampleCount > 0, frame.sampleRate > 0, frame.channels > 0 else {
+                            failures += 1
+                            continue
+                        }
+
+                        let frameDuration = Double(frame.sampleCount) / Double(frame.sampleRate)
+                        let presentationPTS = packet.pts + accumulatedSeconds
+                        accumulatedSeconds += frameDuration
+
+                        if presentationPTS + frameDuration < startPTS - 0.02 {
+                            framesSkippedBeforeStart += 1
+                            continue
+                        }
+
+                        while !Task.isCancelled {
+                            let rawClock = sync.currentTime().seconds
+                            let clock = rawClock.isFinite ? rawClock : startPTS
+                            if presentationPTS <= clock + maxAheadSeconds { break }
+                            try? await Task.sleep(nanoseconds: 10_000_000)
+                        }
+                        if Task.isCancelled { break }
+
+                        guard let prepared = Self.makeAudioSampleBuffer(from: frame, presentationPts: presentationPTS) else {
+                            failures += 1
+                            continue
+                        }
+
+                        renderer.enqueue(prepared.sampleBuffer)
+                        framesEnqueued += 1
+
+                        if framesEnqueued <= 3 || framesEnqueued % 100 == 0 {
+                            let rawClock = sync.currentTime().seconds
+                            let clock = rawClock.isFinite ? rawClock : startPTS
+                            let ahead = presentationPTS - clock
+                            Self.audioLog("audioLoop enqueue #\(framesEnqueued) pts=\(presentationPTS) clock=\(clock) ahead=\(ahead) ch=\(prepared.outputChannels) size=\(prepared.dataSize) rms=\(prepared.rms) peak=\(prepared.peak) status=\(renderer.status.rawValue) ready=\(renderer.isReadyForMoreMediaData) err=\(renderer.error?.localizedDescription ?? "nil")")
+                        }
+                    }
+                }
+
+                Self.audioLog("audioLoop END packets=\(packetsSeen) enqueued=\(framesEnqueued) skippedBeforeStart=\(framesSkippedBeforeStart) failures=\(failures) cancelled=\(Task.isCancelled)")
+            } catch {
+                Self.audioLog("audioLoop FAILED: \(error)")
+            }
+        }
+    }
+
+    private nonisolated static func makeAudioSampleBuffer(from frame: AudioDecoder.DecodedAudioFrame, presentationPts: Double) -> PreparedAudioBuffer? {
+        guard frame.sampleCount > 0, frame.sampleRate > 0, frame.channels > 0 else { return nil }
+        let bytesPerFloat = MemoryLayout<Float>.stride
+        guard frame.data.count >= frame.sampleCount * frame.channels * bytesPerFloat else { return nil }
+
+        var audioData = frame.data
+        var outChannels = frame.channels
+        if frame.channels > 2 {
+            let totalFrames = frame.sampleCount
+            var stereo = [Float](repeating: 0, count: totalFrames * 2)
+            let centerGain: Float = 0.70710678
+            frame.data.withUnsafeBytes { ptr in
+                guard let samples = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+                for sampleIndex in 0..<totalFrames {
+                    let srcIdx = sampleIndex * frame.channels
+                    let dstIdx = sampleIndex * 2
+                    let fl = samples[srcIdx]
+                    let fr = samples[srcIdx + 1]
+                    let fc = frame.channels >= 3 ? samples[srcIdx + 2] : 0
+                    stereo[dstIdx] = min(1.0, max(-1.0, fl + centerGain * fc))
+                    stereo[dstIdx + 1] = min(1.0, max(-1.0, fr + centerGain * fc))
+                }
+            }
+            audioData = stereo.withUnsafeBufferPointer { Data(buffer: $0) }
+            outChannels = 2
+        }
+
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: Double(frame.sampleRate),
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: UInt32(outChannels * bytesPerFloat),
+            mFramesPerPacket: 1,
+            mBytesPerFrame: UInt32(outChannels * bytesPerFloat),
+            mChannelsPerFrame: UInt32(outChannels),
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        var channelLayout = AudioChannelLayout()
+        channelLayout.mChannelLayoutTag = (outChannels > 2) ? kAudioChannelLayoutTag_MPEG_5_1_D : kAudioChannelLayoutTag_Stereo
+        var format: CMAudioFormatDescription?
+        let fmtStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: MemoryLayout<AudioChannelLayout>.size, layout: &channelLayout, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
+        guard fmtStatus == noErr, let format else { return nil }
+
+        let dataSize = audioData.count
+        var blockBuffer: CMBlockBuffer?
+        let statusBB = CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault,
+                                                          memoryBlock: nil,
+                                                          blockLength: dataSize,
+                                                          blockAllocator: kCFAllocatorDefault,
+                                                          customBlockSource: nil,
+                                                          offsetToData: 0,
+                                                          dataLength: dataSize,
+                                                          flags: 0,
+                                                          blockBufferOut: &blockBuffer)
+        guard statusBB == noErr, let blockBuffer else { return nil }
+
+        let copyOK = audioData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> OSStatus in
+            guard let base = ptr.baseAddress else { return -1 }
+            return CMBlockBufferReplaceDataBytes(with: base, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: dataSize)
+        }
+        guard copyOK == noErr else { return nil }
+
+        let ptsTime = CMTime(seconds: presentationPts, preferredTimescale: 90000)
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: Int64(frame.sampleCount), timescale: CMTimeScale(frame.sampleRate)),
+            presentationTimeStamp: ptsTime,
+            decodeTimeStamp: .invalid
+        )
+        var sampleBuffer: CMSampleBuffer?
+        let statusSB = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: blockBuffer,
+            formatDescription: format,
+            sampleCount: CMItemCount(frame.sampleCount),
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &sampleBuffer
+        )
+        guard statusSB == noErr, let sampleBuffer else { return nil }
+
+        var rms: Float = 0
+        var peak: Float = 0
+        let nFloats = audioData.count / bytesPerFloat
+        audioData.withUnsafeBytes { ptr in
+            guard let base = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+            var sum: Double = 0
+            for i in 0..<nFloats {
+                let value = base[i]
+                sum += Double(value) * Double(value)
+                peak = max(peak, abs(value))
+            }
+            rms = nFloats > 0 ? Float(sqrt(sum / Double(nFloats))) : 0
+        }
+
+        return PreparedAudioBuffer(sampleBuffer: sampleBuffer, outputChannels: outChannels, dataSize: dataSize, rms: rms, peak: peak)
+    }
+
     private nonisolated static func decodeAndEnqueueAudio(packet: CompressedPacket, decoder: AudioDecoder, renderer: AVSampleBufferAudioRenderer) {
         audioPacketsSeen += 1
         let frames = decoder.decode(packet: packet)
@@ -317,12 +514,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 var stereo = [Float](repeating: 0, count: totalFrames * 2)
                 var srcIdx = 0
                 var dstIdx = 0
-                // Downmix 5.1→stereo: tomar canales izquierdos y derechos directos.
+                // Downmix 5.1→stereo: FL/FR + canal central (voces/diálogo) a 0.707.
+                // El diálogo vive en el centro (FC); sin él solo suena música/efectos.
                 for _ in 0..<totalFrames {
                     let FL = audioData.withUnsafeBytes { $0.load(fromByteOffset: srcIdx * 4, as: Float.self) }
                     let FR = audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 1) * 4, as: Float.self) }
-                    let L = min(1.0, max(-1.0, FL))
-                    let R = min(1.0, max(-1.0, FR))
+                    let FC = frame.channels >= 3
+                        ? audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 2) * 4, as: Float.self) }
+                        : 0
+                    let L = min(1.0, max(-1.0, FL + 0.707 * FC))
+                    let R = min(1.0, max(-1.0, FR + 0.707 * FC))
                     stereo[dstIdx]     = L
                     stereo[dstIdx + 1] = R
                     srcIdx += frame.channels
@@ -363,7 +564,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // Copiar PCM a un block buffer propio (Data se dealloca al salir;
             // el block buffer debe ser dueño de los bytes).
             var blockBuffer: CMBlockBuffer?
-            let dataSize = audioData.count  // USO CORREGIDO: usar data post-downmix (2 ch), no frame.data (6 ch)
+            let dataSize = audioData.count
             // CMBlockBufferCreateWithMemoryBlock con memoryBlock=nil y
             // blockAllocator=default: CM aloca y posee la memoria; luego
             // ReplaceDataBytes funciona (CreateEmpty no tiene backing store).
@@ -436,13 +637,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 audioFailures += 1
                 continue
             }
-            if !renderer.isReadyForMoreMediaData {
-                audioDroppedNotReady += 1
-                if audioDroppedNotReady == 1 || audioDroppedNotReady % 100 == 0 {
-                    audioLog("audio SKIP (not ready) #\(audioDroppedNotReady) pts=\(frame.pts)")
-                }
-                continue
-            }
+            // No descartar por isReadyForMoreMediaData: el renderer acepta
+            // buffers aunque reporte isReady=false (eso solo indica que tiene
+            // suficiente en cola). El pacing real lo gobierna el synchronizer.
             renderer.enqueue(sampleBuffer)
             audioFramesEnqueued += 1
             if audioFramesEnqueued <= 3 || audioFramesEnqueued % 50 == 0 {
@@ -463,7 +660,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     rms = nFloats > 0 ? Float(sqrt(sum / Double(nFloats))) : 0
                 }
-                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(presentationPts) (frame.pts=\(frame.pts)) sr=\(frame.sampleRate) ch=\(outChannels) samples=\(frame.sampleCount) dataSize=\(dataSize) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil")")
+                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(presentationPts) (frame.pts=\(frame.pts)) sr=\(frame.sampleRate) ch=\(outChannels) samples=\(frame.sampleCount) dataSize=\(dataSize) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil") vol=\(renderer.volume) muted=\(renderer.isMuted) dev=\(renderer.audioOutputDeviceUniqueID ?? "nil")")
             }
         }
     }
@@ -479,6 +676,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            var videoFrameCount = 0
             while true {
                 if Task.isCancelled { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
@@ -513,6 +711,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
                     }
                     rend.displayLayer.enqueue(sbuf)
+                    videoFrameCount += 1
+                    if videoFrameCount == 1 || videoFrameCount % 24 == 0 {
+                        let clk = sched.synchronizer.currentTime().seconds
+                        Self.audioLog("VIDEO frame #\(videoFrameCount) pts=\(f.pts) clock=\(clk) videoAhead=\(f.pts - clk)")
+                    }
                     pool.removeFirst()
                 }
                 await self.coordinator.signal()

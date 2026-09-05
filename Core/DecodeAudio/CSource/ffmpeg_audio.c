@@ -93,6 +93,13 @@ int rift_audio_decode_packet(RiftAudioDecCtx *ctx,
     }
 
     int count = 0;
+    /* PTS unificado: el reloj del stream es el de packet_pts_seconds (lo que
+     * el demuxer ya expresó en st->time_base, la misma referencia del video).
+     * No usamos frame->time_base porque el codec EAC3 puede cambiarlo a mitad
+     * de decodificación, desconectando el audio del reloj del synchronizer.
+     * Para frames adicionales del MISMO paquete acumulamos la duración real
+     * de muestras (nb_samples / sample_rate). */
+    double frame_pts_seconds = packet_pts_seconds;
     while (count < max_frames) {
         ret = avcodec_receive_frame(ctx->dec_ctx, ctx->frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -107,14 +114,8 @@ int rift_audio_decode_packet(RiftAudioDecCtx *ctx,
         out->sample_rate = ctx->frame->sample_rate;
         out->channels = ctx->frame->ch_layout.nb_channels;
         out->pts_90khz = ctx->frame->pts;
-        /* Seconds: frame->pts is in dec_ctx timebase; if unknown we compute
-         * from pkt_timebase if available, else assume time_base;
-         * simplified: use pkt_timebase via av_rescale. */
-        if (ctx->frame->time_base.num != 0 && ctx->frame->time_base.den != 0) {
-            out->pts_seconds = ctx->frame->pts * av_q2d(ctx->frame->time_base);
-        } else {
-            out->pts_seconds = packet_pts_seconds;
-        }
+        out->pts_seconds = frame_pts_seconds;
+        frame_pts_seconds += (double)out->nb_samples / (double)out->sample_rate;
 
         /* Convert to interleaved float32 */
         {

@@ -643,9 +643,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private func handleOpenURLs(_ urls: [URL]) {
-        guard urls.first != nil else { return }
-        // TODO(Core): la referencia llamaba `state.loadVideo(url)` sobre las URLs
-        // recibidas por el sistema (arrastrar al icono / abrir con Rift) y luego
-        // `AppDelegate.bringPlayerWindowToFront()`.
+        guard let url = urls.first else { return }
+        (state as? RiftPlayerState)?.loadVideo(url)
+        AppDelegate.bringPlayerWindowToFront()
     }
 }
