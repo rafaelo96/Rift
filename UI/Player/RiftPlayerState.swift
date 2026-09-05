@@ -164,7 +164,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: CMTime(seconds: time, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
         if let url = sourceURL, let aTrack = audioTrack {
-            startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time)
+            startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time, extradata: aTrack.codecExtradata)
         }
         // Tras el flush, el pool vacío puede dejar al decodeLoop bloqueado en
         // wait() sin nadie que lo despierte (displayLoop no señaliza sin
@@ -207,7 +207,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         audioTrack = track
         // Reiniciar el audio con la pista elegida (mismo patrón que seek): el
         // audioRenderer ya está en el synchronizer, solo se relanza el loop.
-        startAudioLoop(url: url, trackStreamIndex: track.streamIndex, codecName: track.codecName, startTime: currentTime)
+        startAudioLoop(url: url, trackStreamIndex: track.streamIndex, codecName: track.codecName, startTime: currentTime, extradata: track.codecExtradata)
     }
     func selectPipelineTrack(_ t: MediaTrack?) {
         selectedSubtitleTrack = t
@@ -292,7 +292,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.audioRenderer = ar
                         // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
                         self.scheduler?.synchronizer.addRenderer(ar)
-                        self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime)
+                        self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime, extradata: aTrack.codecExtradata)
                     }
                     self.availableTracks = {
                         var subtitleOrdinal = 0
@@ -441,7 +441,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    private func startAudioLoop(url: URL, trackStreamIndex: Int, codecName: String, startTime: Double) {
+    private func startAudioLoop(url: URL, trackStreamIndex: Int, codecName: String, startTime: Double, extradata: [UInt8] = []) {
         audioTask?.cancel()
         guard let renderer = audioRenderer, let sync = scheduler?.synchronizer else {
             Self.audioLog("audioLoop SKIP: renderer/synchronizer missing")
@@ -459,7 +459,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 if startPTS > 0 {
                     try? audioDemuxer.seek(to: startPTS)
                 }
-                let decoder = try AudioDecoder(codecName: codecName)
+                let decoder = try AudioDecoder(codecName: codecName, extradata: extradata)
                 var framesEnqueued = 0
                 var framesSkippedBeforeStart = 0
                 var failures = 0
