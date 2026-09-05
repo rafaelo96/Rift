@@ -72,6 +72,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var consumerTimer: Timer?
     private var currentTimeTimer: Timer?
     private var sourceURL: URL?
+    private var subtitleTrack: TrackInfo?
+    private var subtitleCues: [SubtitleCue] = []
 
     func togglePlay() {
         isPlaying.toggle()
@@ -167,6 +169,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let dec = VTDecoder()
                 try dec.prepare(track: v)
+                // Subtítulos: leer cues de la primera pista subrip (texto minúsculo,
+                // se lee completo de una vez, sin loop continuo ni pacing).
+                let subTrack = info.tracks.first(where: { $0.kind == .other && $0.codecName == "subrip" })
+                let subCues = subTrack.map { Self.readSubtitleCues(url: url, trackStreamIndex: $0.streamIndex) } ?? []
                 await MainActor.run {
                     guard let self else { return }
                     self.demuxer = d
@@ -176,6 +182,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.sourceFrameRate = v.frameRate
                     self.framePool = SlidingFramePool(capacity: 4)
                     self.scheduler = FrameScheduler(mode: .native24)
+                    self.subtitleTrack = subTrack
+                    self.subtitleCues = subCues
                     // CLAVE: sin esto el synchronizer retrasa el arranque del
                     // reloj hasta tener preroll suficiente en TODOS los renderers,
                     // y con buffers de 32ms el audio se atasca (isReady=false
@@ -282,6 +290,28 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let dataSize: Int
         let rms: Float
         let peak: Float
+    }
+
+    private struct SubtitleCue {
+        let start: Double
+        let end: Double
+        let text: String
+    }
+
+    private static nonisolated func readSubtitleCues(url: URL, trackStreamIndex: Int) -> [SubtitleCue] {
+        let demuxer = FFmpegDemuxer()
+        defer { demuxer.close() }
+        guard (try? demuxer.open(url: url)) != nil else { return [] }
+        var cues: [SubtitleCue] = []
+        while let packet = try? demuxer.nextPacket() {
+            guard packet.streamIndex == trackStreamIndex else { continue }
+            guard let text = String(bytes: packet.data, encoding: .utf8) else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let end = packet.duration > 0 ? packet.pts + packet.duration : packet.pts + 3.0
+            cues.append(SubtitleCue(start: packet.pts, end: end, text: trimmed))
+        }
+        return cues
     }
 
     private func startAudioLoop(url: URL, trackStreamIndex: Int, codecName: String, startTime: Double) {
