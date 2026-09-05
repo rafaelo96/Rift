@@ -279,6 +279,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: label, languageCode: t.streamLanguage)
                         }
                     }()
+                    // Al cargar, la primera pista de subtítulos queda seleccionada
+                    // (se muestran por defecto), reflejando el estado en el popover.
+                    if let subTrack {
+                        self.selectedSubtitleTrack = self.availableTracks.first { $0.kind == .subtitle && $0.index == subTrack.streamIndex }
+                    }
                     self.audioTracks = info.tracks.filter { $0.kind == .audio }.enumerated().map { idx, t in AudioTrack(id: idx, label: t.codecName, language: nil) }
                     self.hasVideo = true
                     self.statusMessage = "Ready"
