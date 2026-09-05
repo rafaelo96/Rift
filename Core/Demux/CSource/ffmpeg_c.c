@@ -90,6 +90,19 @@ int rift_demux_track_info(RiftDemuxCtx *ctx, int index, RiftTrackInfoC *out) {
     const char *name = avcodec_get_name(par->codec_id);
     out->codec_name = name ? name : "?";
 
+    /* Stream title (raw "title" metadata, e.g. the language label of a
+     * subtitle track). NULL if the stream has no such tag. */
+    {
+        AVDictionaryEntry *tag = av_dict_get(st->metadata, "title", NULL, 0);
+        out->stream_title = tag ? tag->value : NULL;
+    }
+    /* Stream language code (raw "language" metadata, e.g. "spa"/"eng").
+     * NULL if the stream has no such tag. Exposed raw, not interpreted. */
+    {
+        AVDictionaryEntry *tag = av_dict_get(st->metadata, "language", NULL, 0);
+        out->stream_language = tag ? tag->value : NULL;
+    }
+
     out->width = par->width;
     out->height = par->height;
 

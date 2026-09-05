@@ -36,6 +36,8 @@ public final class FFmpegDemuxer: Demuxing {
                 streamIndex: Int(raw.stream_index),
                 kind: TrackKind(rawValue: Int(raw.kind)) ?? .other,
                 codecName: raw.codec_name.map { String(cString: $0) } ?? "?",
+                streamTitle: raw.stream_title.map { String(cString: $0) },
+                streamLanguage: raw.stream_language.map { String(cString: $0) },
                 width: raw.width > 0 ? Int(raw.width) : nil,
                 height: raw.height > 0 ? Int(raw.height) : nil,
                 frameRate: raw.frame_rate > 0 ? raw.frame_rate : nil,

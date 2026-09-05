@@ -41,6 +41,8 @@ typedef struct {
     int32_t     stream_index;
     int         kind;             /* RiftTrackKindC */
     const char *codec_name;       /* static string from avcodec_get_name */
+    const char *stream_title;     /* raw stream->metadata "title", NULL if none */
+    const char *stream_language;  /* raw stream->metadata "language" (iso639), NULL if none */
     int         width;
     int         height;
     double      frame_rate;       /* 0 if unknown */

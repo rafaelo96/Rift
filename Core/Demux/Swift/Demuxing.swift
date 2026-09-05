@@ -17,6 +17,12 @@ public struct TrackInfo: Equatable {
     public let streamIndex: Int
     public let kind: TrackKind
     public let codecName: String
+    /// Raw stream title metadata ("title" tag), e.g. the language label of a
+    /// subtitle track. Nil when the container exposes none.
+    public let streamTitle: String?
+    /// Raw stream language code ("language" tag, e.g. "spa"/"eng"). Nil when
+    /// the container exposes none. Exposed raw, not interpreted.
+    public let streamLanguage: String?
     public let width: Int?
     public let height: Int?
     public let frameRate: Double?
@@ -38,6 +44,8 @@ public struct TrackInfo: Equatable {
         streamIndex: Int,
         kind: TrackKind,
         codecName: String,
+        streamTitle: String?,
+        streamLanguage: String?,
         width: Int?,
         height: Int?,
         frameRate: Double?,
@@ -49,6 +57,8 @@ public struct TrackInfo: Equatable {
         self.streamIndex = streamIndex
         self.kind = kind
         self.codecName = codecName
+        self.streamTitle = streamTitle
+        self.streamLanguage = streamLanguage
         self.width = width
         self.height = height
         self.frameRate = frameRate
