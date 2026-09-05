@@ -22,6 +22,7 @@ struct RiftAudioDecCtx {
 };
 
 RiftAudioDecCtx *rift_audio_decode_open(const char *codec_name,
+                                        const uint8_t *extradata, int extradata_size,
                                         char *error_buffer, size_t error_buffer_size) {
     const AVCodec *dec = avcodec_find_decoder_by_name(codec_name);
     if (!dec) {
@@ -42,6 +43,20 @@ RiftAudioDecCtx *rift_audio_decode_open(const char *codec_name,
         if (error_buffer) snprintf(error_buffer, error_buffer_size, "Failed to allocate codec context");
         free(ctx);
         return NULL;
+    }
+
+    /* Codec-private data (e.g. AAC AudioSpecificConfig) must be set BEFORE
+     * avcodec_open2. Allocate a copy owned by the context. */
+    if (extradata && extradata_size > 0) {
+        ctx->dec_ctx->extradata = av_mallocz(extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
+        if (!ctx->dec_ctx->extradata) {
+            if (error_buffer) snprintf(error_buffer, error_buffer_size, "OOM on extradata");
+            avcodec_free_context(&ctx->dec_ctx);
+            free(ctx);
+            return NULL;
+        }
+        memcpy(ctx->dec_ctx->extradata, extradata, extradata_size);
+        ctx->dec_ctx->extradata_size = extradata_size;
     }
 
     /* Force decode to PCM float32 planar/interleaved as appropriate */
