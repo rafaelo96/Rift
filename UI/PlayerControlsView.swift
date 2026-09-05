@@ -195,7 +195,9 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 audioTrackButton
             }
 
-            subtitleButton
+            if state.availableTracks.filter({ $0.kind == .subtitle }).count > 0 {
+                subtitleButton
+            }
         }
     }
 
