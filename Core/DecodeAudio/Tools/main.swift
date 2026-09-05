@@ -23,7 +23,7 @@ guard let audioTrack = info.tracks.first(where: { $0.kind == .audio }) else {
 print("=== DecodeAudioProbe ===")
 print("audio track: [\(audioTrack.streamIndex)] \(audioTrack.codecName)")
 
-let decoder = try AudioDecoder(codecName: audioTrack.codecName)
+let decoder = try AudioDecoder(codecName: audioTrack.codecName, extradata: audioTrack.codecExtradata, sampleRate: audioTrack.sampleRate ?? 0, channels: audioTrack.channelCount ?? 0)
 print("decoder opened OK")
 var firstFormatPrinted = false
 
