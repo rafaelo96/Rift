@@ -212,6 +212,9 @@ public final class VTDecoder: VideoDecoding {
 
     private func makeSession(_ formatDescription: CMFormatDescription) throws -> VTDecompressionSession {
         let track = self.track!
+        guard let config else {
+            throw DecodeError.notPrepared
+        }
 
         let decoderSpecification: [CFString: Any] = [
             kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: true,
@@ -219,8 +222,16 @@ public final class VTDecoder: VideoDecoding {
 
         let width = max(track.width ?? 0, 16)
         let height = max(track.height ?? 0, 16)
+
+        // Pixel format condicional: HEVC (10-bit) vs H.264 (8-bit SDR).
+        let pixelFormat: Int
+        switch config {
+        case .hevc: pixelFormat = Int(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange)
+        case .avc:  pixelFormat = Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        }
+
         let destination: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange),
+            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
             kCVPixelBufferWidthKey as String: width,
             kCVPixelBufferHeightKey as String: height,
             kCVPixelBufferIOSurfacePropertiesKey as String: [
