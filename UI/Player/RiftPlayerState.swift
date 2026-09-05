@@ -93,11 +93,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self, let sched = self.scheduler else { return }
                     self.currentTime = sched.synchronizer.currentTime().seconds
+                    self.updateActiveSubtitle(at: self.currentTime)
                 }
             }
         } else {
             currentTimeTimer?.invalidate()
             currentTimeTimer = nil
+        }
+    }
+    private func updateActiveSubtitle(at time: Double) {
+        let active = subtitleCues.first { cue in
+            cue.start <= time && time < cue.end
+        }
+        let newText = active?.text
+        if newText != currentSubtitleText {
+            currentSubtitleText = newText
         }
     }
     func seek(to time: Double) {
