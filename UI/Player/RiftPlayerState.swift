@@ -483,15 +483,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     continue
                 }
                 // Pacer contra el reloj del synchronizer (igual que el audio):
-                // esperar hasta que el reloj alcance el pts de este frame, en
-                // lugar de un sleep fijo (que deriva y desincroniza A/V).
+                // esperar hasta que el reloj alcance el pts de este frame. Usamos
+                // un poll corto en vez de dormir la delta completa, y si el frame
+                // está más de 1s en el futuro (tras un seek el reloj puede quedar
+                // desalineado del pts del primer frame) lo presentamos de inmediato
+                // para no dejar la imagen congelada.
                 let target = f.pts
                 while true {
                     if Task.isCancelled { break }
                     let clk = sched.synchronizer.currentTime().seconds
                     if clk >= target - 0.001 { break }
-                    let delta = target - clk
-                    try? await Task.sleep(nanoseconds: UInt64(max(0, delta) * 1_000_000_000))
+                    if target - clk > 1.0 { break }
+                    try? await Task.sleep(nanoseconds: 10_000_000)
                 }
                 if Task.isCancelled { break }
                 let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
