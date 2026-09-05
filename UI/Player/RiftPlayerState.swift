@@ -86,16 +86,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func updateTimePolling() {
         if isPlaying {
             currentTimeTimer?.invalidate()
-            var tick = 0
             currentTimeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 guard let self else { return }
                 Task { @MainActor [weak self] in
                     guard let self, let sched = self.scheduler else { return }
                     self.currentTime = sched.synchronizer.currentTime().seconds
-                    tick += 1
-                    if tick % 10 == 0 {
-                        Self.audioLog("CLOCK sync.rate=\(sched.synchronizer.rate) currentTime=\(self.currentTime) hasVideo=\(self.hasVideo)")
-                    }
                 }
             }
         } else {
@@ -162,7 +157,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         hasVideo = false
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
-        Self.audioLog("=== loadVideo CALLED === \(url.lastPathComponent) isPlaying=\(isPlaying)")
         Task.detached(priority: .userInitiated) { [weak self] in
             let d = FFmpegDemuxer()
             do {
@@ -200,12 +194,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.audioRenderer = ar
                         // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
                         self.scheduler?.synchronizer.addRenderer(ar)
-                        if let sync = self.scheduler?.synchronizer {
-                            let syncId = ObjectIdentifier(sync)
-                            Self.audioLog("audioRenderer added to synchronizer rate=\(sync.rate) vol=\(ar.volume) muted=\(ar.isMuted) synchronizerId=\(syncId)")
-                        } else {
-                            Self.audioLog("audioRenderer added to synchronizer rate=nil vol=\(ar.volume) muted=\(ar.isMuted)")
-                        }
                         self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime)
                     }
                     self.availableTracks = info.tracks.map { t in
@@ -277,13 +265,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    // MARK: - Audio fase 1
-    // Contadores no hay problema de concurrencia: solo se escriben desde el
-    // decode loop (Task.detached) — sin aislamiento, no owned por el actor.
-    private nonisolated(unsafe) static var audioPacketsSeen = 0
-    private nonisolated(unsafe) static var audioFramesEnqueued = 0
-    private nonisolated(unsafe) static var audioFailures = 0
-    private nonisolated(unsafe) static var audioDroppedNotReady = 0
+    // MARK: - Audio
 
     private nonisolated static func audioLog(_ s: String) {
         let line = s + "\n"
@@ -321,18 +303,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try? audioDemuxer.seek(to: startPTS)
                 }
                 let decoder = try AudioDecoder(codecName: codecName)
-                var packetsSeen = 0
                 var framesEnqueued = 0
                 var framesSkippedBeforeStart = 0
                 var failures = 0
-
-                Self.audioLog("audioLoop START track=\(trackStreamIndex) codec=\(codecName) start=\(startPTS) ahead=\(maxAheadSeconds)")
 
                 while !Task.isCancelled {
                     guard let packet = try? audioDemuxer.nextPacket() else { break }
                     guard packet.streamIndex == trackStreamIndex else { continue }
 
-                    packetsSeen += 1
                     let frames = decoder.decode(packet: packet)
                     var accumulatedSeconds = 0.0
 
@@ -367,17 +345,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
                         renderer.enqueue(prepared.sampleBuffer)
                         framesEnqueued += 1
-
-                        if framesEnqueued <= 3 || framesEnqueued % 100 == 0 {
-                            let rawClock = sync.currentTime().seconds
-                            let clock = rawClock.isFinite ? rawClock : startPTS
-                            let ahead = presentationPTS - clock
-                            Self.audioLog("audioLoop enqueue #\(framesEnqueued) pts=\(presentationPTS) clock=\(clock) ahead=\(ahead) ch=\(prepared.outputChannels) size=\(prepared.dataSize) rms=\(prepared.rms) peak=\(prepared.peak) status=\(renderer.status.rawValue) ready=\(renderer.isReadyForMoreMediaData) err=\(renderer.error?.localizedDescription ?? "nil")")
-                        }
                     }
                 }
-
-                Self.audioLog("audioLoop END packets=\(packetsSeen) enqueued=\(framesEnqueued) skippedBeforeStart=\(framesSkippedBeforeStart) failures=\(failures) cancelled=\(Task.isCancelled)")
             } catch {
                 Self.audioLog("audioLoop FAILED: \(error)")
             }
@@ -484,199 +453,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         return PreparedAudioBuffer(sampleBuffer: sampleBuffer, outputChannels: outChannels, dataSize: dataSize, rms: rms, peak: peak)
     }
 
-    private nonisolated static func decodeAndEnqueueAudio(packet: CompressedPacket, decoder: AudioDecoder, renderer: AVSampleBufferAudioRenderer) {
-        audioPacketsSeen += 1
-        let frames = decoder.decode(packet: packet)
-        // Usar el pts del paquete del demux como base y acumular duración por
-        // frame: el pts que el decoder C escupe tras leave callback puede estar
-        // basado en una timebase distinta de la stream timebase (EAC3) y marcar
-        // un "futuro" relativo al reloj del synchronizer, produciendo silencio
-        // por timing.
-        var accumulatedSeconds: Double = 0
-        if audioPacketsSeen == 1 || audioPacketsSeen % 100 == 0 {
-            audioLog("audio pkt #\(audioPacketsSeen) pts=\(packet.pts) frames=\(frames.count) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil") isReady=\(renderer.isReadyForMoreMediaData)")
-        }
-        for frame in frames {
-            guard frame.sampleCount > 0, frame.sampleRate > 0, frame.channels > 0 else {
-                audioFailures += 1
-                if audioFailures <= 5 {
-                    audioLog("audio SKIP guard sc=\(frame.sampleCount) sr=\(frame.sampleRate) ch=\(frame.channels)")
-                }
-                continue
-            }
-            // Si el PCM es 5.1+ (channels>2), downmix L/R → estéreo aquí: el
-            // renderer nativo NO consume 6ch interleaved en salida estéreo
-            // (cola silenciosa infinita), así que lo aplanamos en origen.
-            var audioData = frame.data
-            var outChannels = frame.channels
-            if frame.channels > 2 {
-                let totalFrames = frame.sampleCount
-                var stereo = [Float](repeating: 0, count: totalFrames * 2)
-                var srcIdx = 0
-                var dstIdx = 0
-                // Downmix 5.1→stereo: FL/FR + canal central (voces/diálogo) a 0.707.
-                // El diálogo vive en el centro (FC); sin él solo suena música/efectos.
-                for _ in 0..<totalFrames {
-                    let FL = audioData.withUnsafeBytes { $0.load(fromByteOffset: srcIdx * 4, as: Float.self) }
-                    let FR = audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 1) * 4, as: Float.self) }
-                    let FC = frame.channels >= 3
-                        ? audioData.withUnsafeBytes { $0.load(fromByteOffset: (srcIdx + 2) * 4, as: Float.self) }
-                        : 0
-                    let L = min(1.0, max(-1.0, FL + 0.707 * FC))
-                    let R = min(1.0, max(-1.0, FR + 0.707 * FC))
-                    stereo[dstIdx]     = L
-                    stereo[dstIdx + 1] = R
-                    srcIdx += frame.channels
-                    dstIdx += 2
-                }
-                audioData = Data(bytes: &stereo, count: stereo.count * 4)
-                outChannels = 2
-            }
-            // DEBUG: log channels/sizes post-downmix
-            if audioPacketsSeen == 1 {
-                audioLog("DEBUG audio pkt #1 post-downmix: frame.channels=\(frame.channels) outChannels=\(outChannels) audioData.count=\(audioData.count) frame.data.count=\(frame.data.count) ASBD_channels=2 ASBD_bytesPerFrame=\(UInt32(outChannels * 4)) ASBD_bytesPerPacket=\(UInt32(outChannels * 4))")
-            }
-            var asbd = AudioStreamBasicDescription(
-                mSampleRate: Double(frame.sampleRate),
-                mFormatID: kAudioFormatLinearPCM,
-                // Little-endian nativo (Arm/Intel): sin este flag el sistema
-                // asume big-endian y produce silencio/garbage.
-                mFormatFlags: kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-                mBytesPerPacket: UInt32(outChannels * 4),
-                mFramesPerPacket: 1,
-                mBytesPerFrame: UInt32(outChannels * 4),
-                mChannelsPerFrame: UInt32(outChannels),
-                mBitsPerChannel: 32,
-                mReserved: 0
-            )
-            // Channel layout explícito para 5.1: sin layout tag el sistema
-            // no puede rutar los 6 canales a la salida física → silencio.
-            var channelLayout = AudioChannelLayout()
-            channelLayout.mChannelLayoutTag = (outChannels > 2) ? kAudioChannelLayoutTag_MPEG_5_1_D : kAudioChannelLayoutTag_Stereo
-            var format: CMAudioFormatDescription?
-            let fmtStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: MemoryLayout<AudioChannelLayout>.size, layout: &channelLayout, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
-            guard fmtStatus == noErr, let format else {
-                if audioFailures < 5 { audioLog("audio format create FAIL status=\(fmtStatus) sr=\(frame.sampleRate) ch=\(frame.channels)") }
-                audioFailures += 1
-                continue
-            }
-
-            // Copiar PCM a un block buffer propio (Data se dealloca al salir;
-            // el block buffer debe ser dueño de los bytes).
-            var blockBuffer: CMBlockBuffer?
-            let dataSize = audioData.count
-            // CMBlockBufferCreateWithMemoryBlock con memoryBlock=nil y
-            // blockAllocator=default: CM aloca y posee la memoria; luego
-            // ReplaceDataBytes funciona (CreateEmpty no tiene backing store).
-            let statusBB = CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault,
-                                                              memoryBlock: nil,
-                                                              blockLength: dataSize,
-                                                              blockAllocator: kCFAllocatorDefault,
-                                                              customBlockSource: nil,
-                                                              offsetToData: 0,
-                                                              dataLength: dataSize,
-                                                              flags: 0,
-                                                              blockBufferOut: &blockBuffer)
-            guard statusBB == noErr, let blockBuffer else {
-                if audioFailures < 5 { audioLog("audio blockBuffer FAIL status=\(statusBB) size=\(dataSize)") }
-                audioFailures += 1
-                continue
-            }
-            let copyOK = audioData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> OSStatus in
-                guard let base = ptr.baseAddress else { return -1 }
-                return CMBlockBufferReplaceDataBytes(with: base, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: dataSize)
-            }
-            guard copyOK == noErr else {
-                if audioFailures < 5 { audioLog("audio replaceBytes FAIL status=\(copyOK)") }
-                audioFailures += 1
-                continue
-            }
-            // LOG: RMS/min/max de audioData post-downmix (primeros 10 packets)
-            if audioPacketsSeen <= 10 {
-                audioData.withUnsafeBytes { ptr in
-                    guard let base = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
-                    let n = ptr.count / MemoryLayout<Float>.stride
-                    if n > 0 {
-                        var minSample = Float.greatestFiniteMagnitude
-                        var maxSample = -Float.greatestFiniteMagnitude
-                        var sumSquares: Double = 0
-                        for i in 0..<n {
-                            let v = base[i]
-                            if v < minSample { minSample = v }
-                            if v > maxSample { maxSample = v }
-                            sumSquares += Double(v) * Double(v)
-                        }
-                        let rms = sqrt(sumSquares / Double(max(n, 1)))
-                        audioLog("DEBUG audio pkt #\(audioPacketsSeen) post-downmix: min=\(minSample) max=\(maxSample) rms=\(rms) samples=\(n)")
-                    }
-                }
-            }
-
-            let presentationPts = packet.pts + accumulatedSeconds
-            accumulatedSeconds += Double(frame.sampleCount) / Double(frame.sampleRate)
-            let ptsTime = CMTime(seconds: presentationPts, preferredTimescale: 90000)
-            var timing = CMSampleTimingInfo(
-                duration: CMTime(value: Int64(frame.sampleCount), timescale: CMTimeScale(frame.sampleRate)),
-                presentationTimeStamp: ptsTime,
-                decodeTimeStamp: ptsTime
-            )
-            var sampleBuffer: CMSampleBuffer?
-            let statusSB = CMSampleBufferCreateReady(
-                allocator: kCFAllocatorDefault,
-                dataBuffer: blockBuffer,
-                formatDescription: format,
-                sampleCount: CMItemCount(frame.sampleCount),
-                sampleTimingEntryCount: 1,
-                sampleTimingArray: &timing,
-                sampleSizeEntryCount: 0,
-                sampleSizeArray: nil,
-                sampleBufferOut: &sampleBuffer
-            )
-            guard statusSB == noErr, let sampleBuffer else {
-                if audioFailures < 5 { audioLog("audio sampleBuffer FAIL status=\(statusSB)") }
-                audioFailures += 1
-                continue
-            }
-            // No descartar por isReadyForMoreMediaData: el renderer acepta
-            // buffers aunque reporte isReady=false (eso solo indica que tiene
-            // suficiente en cola). El pacing real lo gobierna el synchronizer.
-            renderer.enqueue(sampleBuffer)
-            audioFramesEnqueued += 1
-            if audioFramesEnqueued <= 3 || audioFramesEnqueued % 50 == 0 {
-                // Medir RMS del PCM justo antes del enqueue para descartar
-                // que el buffer tenga silencio digital.
-                // USAMOS audioData (post-downmix) EN VEZ DE frame.data para
-                // ser coherente con el buffer real que se envía al renderer.
-                var rms: Float = 0
-                var peak: Float = 0
-                let nFloats = audioData.count / MemoryLayout<Float>.size
-                audioData.withUnsafeBytes { ptr in
-                    guard let base = ptr.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
-                    var sum: Double = 0
-                    for i in 0..<nFloats {
-                        let v = base[i]
-                        sum += Double(v) * Double(v)
-                        peak = max(peak, abs(v))
-                    }
-                    rms = nFloats > 0 ? Float(sqrt(sum / Double(nFloats))) : 0
-                }
-                audioLog("audio enqueue #\(audioFramesEnqueued) pts=\(presentationPts) (frame.pts=\(frame.pts)) sr=\(frame.sampleRate) ch=\(outChannels) samples=\(frame.sampleCount) dataSize=\(dataSize) rms=\(rms) peak=\(peak) rendererStatus=\(renderer.status.rawValue) err=\(renderer.error?.localizedDescription ?? "nil") vol=\(renderer.volume) muted=\(renderer.isMuted) dev=\(renderer.audioOutputDeviceUniqueID ?? "nil")")
-            }
-        }
-    }
-
     private func startDisplayLoop() {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
         if let sched = scheduler, sched.synchronizer.rate == 0 {
-            let syncId = ObjectIdentifier(sched.synchronizer)
             sched.synchronizer.setRate(1.0, time: CMTime(seconds: currentTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
-            Self.audioLog("synchronizer.setRate(1.0) synchronizerId=\(syncId) rate=\(sched.synchronizer.rate)")
         }
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            var videoFrameCount = 0
             while true {
                 if Task.isCancelled { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
@@ -721,11 +506,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
                     }
                     rend.displayLayer.enqueue(sbuf)
-                    videoFrameCount += 1
-                    if videoFrameCount == 1 || videoFrameCount % 24 == 0 {
-                        let clk = sched.synchronizer.currentTime().seconds
-                        Self.audioLog("VIDEO frame #\(videoFrameCount) pts=\(f.pts) clock=\(clk) videoAhead=\(f.pts - clk)")
-                    }
                     pool.removeFirst()
                 }
                 await self.coordinator.signal()

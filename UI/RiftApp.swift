@@ -65,7 +65,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var fallbackWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSLog("RIFT-DIAG applicationDidFinishLaunching")
         if let lang = UserDefaults.standard.stringArray(forKey: "AppleLanguages")?.first,
            ["en", "es"].contains(lang) {
             UserDefaults.standard.set([lang], forKey: "AppleLanguages")
@@ -79,7 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            !path.isEmpty {
             // Retrasar para que ContentView se monte y su onReceive esté activo.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                NSLog("RIFT-DIAG auto-open (delayed): \(path)")
                 Self.enqueueOpenURLs([URL(fileURLWithPath: path)])
             }
         }
