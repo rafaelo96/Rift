@@ -73,14 +73,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         Self.bringPlayerWindowToFront()
         Self.createFallbackWindowIfNeeded()
-        // Auto-carga para pruebas automatizadas (CI/headless): RIFT_OPEN_FILE=/ruta/al.mkv
-        if let path = ProcessInfo.processInfo.environment["RIFT_OPEN_FILE"],
-           !path.isEmpty {
-            // Retrasar para que ContentView se monte y su onReceive esté activo.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                Self.enqueueOpenURLs([URL(fileURLWithPath: path)])
-            }
-        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

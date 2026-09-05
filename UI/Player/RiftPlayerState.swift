@@ -362,7 +362,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 if Task.isCancelled { await self.coordinator.signal(); break }
                 guard let pkt = try? d.nextPacket() else {
                     await self.coordinator.signal()
-                    print("RiftPlayerState: decode loop ended (decoded=\(decoded))")
                     break
                 }
                 if pkt.streamIndex != targetIndex {
