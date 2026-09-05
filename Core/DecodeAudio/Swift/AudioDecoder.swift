@@ -19,13 +19,15 @@ public final class AudioDecoder {
     }
 
     /// `capacity` es el número máximo de frames por decodificación (EAC3 genera 1 frame por packet).
-    public init(codecName: String = "eac3", extradata: [UInt8] = [], capacity: Int = 4) throws {
+    public init(codecName: String = "eac3", extradata: [UInt8] = [], sampleRate: Int = 0, channels: Int = 0, capacity: Int = 4) throws {
         var err = [CChar](repeating: 0, count: 256)
         ctx = extradata.withUnsafeBufferPointer { extraste in
             rift_audio_decode_open(
                 codecName,
                 extraste.baseAddress,
                 Int32(extraste.count),
+                Int32(sampleRate),
+                Int32(channels),
                 &err,
                 256
             )
