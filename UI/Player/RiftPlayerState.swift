@@ -78,7 +78,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var subtitleCueCache: [Int: [SubtitleCue]] = [:]
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
-    // frecuentes; si no está, se usa streamTitle o el índice como fallback.
+    // frecuentes; si no está, se usa streamTitle o índice como fallback.
     private static let languageNames: [String: String] = [
         "spa": "Español", "eng": "Inglés", "fre": "Francés", "fra": "Francés",
         "deu": "Alemán", "ger": "Alemán", "ita": "Italiano", "por": "Portugués",
@@ -86,15 +86,32 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         "rus": "Ruso", "ara": "Árabe", "hin": "Hindi",
     ]
 
+    /// Nombre legible de un código de idioma (compartido entre audio y subtítulos).
+    private static nonisolated func languageName(for code: String?) -> String? {
+        guard let code = code?.lowercased() else { return nil }
+        return languageNames[code]
+    }
+
     /// Etiqueta legible para una pista de subtítulos (se compone en UI, no en Demux).
     private static nonisolated func subtitleLabel(for track: TrackInfo, index: Int) -> String {
-        if let code = track.streamLanguage?.lowercased(), let name = languageNames[code] {
+        if let name = languageName(for: track.streamLanguage) {
             return name
         }
         if let title = track.streamTitle, !title.isEmpty {
             return title
         }
         return "Subtítulo \(index + 1)"
+    }
+
+    /// Etiqueta legible para una pista de audio (comparte languageName con subtítulos).
+    private static nonisolated func audioLabel(for track: TrackInfo) -> String {
+        if let name = languageName(for: track.streamLanguage) {
+            return name
+        }
+        if let title = track.streamTitle, !title.isEmpty {
+            return title
+        }
+        return track.codecName
     }
 
     func togglePlay() {
@@ -296,7 +313,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if let subTrack {
                         self.selectedSubtitleTrack = self.availableTracks.first { $0.kind == .subtitle && $0.index == subTrack.streamIndex }
                     }
-                    self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: t.codecName, language: t.streamLanguage) }
+                    self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: Self.audioLabel(for: t), language: t.streamLanguage) }
                     self.hasVideo = true
                     self.statusMessage = "Ready"
                     self.conversionProgress = 1.0
