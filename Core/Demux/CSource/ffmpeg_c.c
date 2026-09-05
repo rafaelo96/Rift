@@ -115,6 +115,15 @@ int rift_demux_track_info(RiftDemuxCtx *ctx, int index, RiftTrackInfoC *out) {
 
     out->duration_seconds = ts_to_seconds(st->duration, st->time_base);
 
+    /* Audio params (raw; 0 for video/other tracks). Demux only reports the
+     * primitives — deciding anything about them belongs to DecodeAudio. */
+    out->sample_rate = par->sample_rate > 0 ? par->sample_rate : 0;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 0, 0)
+    out->channels = par->ch_layout.nb_channels > 0 ? par->ch_layout.nb_channels : 0;
+#else
+    out->channels = par->channels > 0 ? par->channels : 0;
+#endif
+
     /* Raw color metadata. Whether this is "HDR" is a decision for the
      * Rendering layer later; Demux only reports the primitives. */
     out->color_trc = par->color_trc;

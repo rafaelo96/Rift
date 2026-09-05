@@ -42,6 +42,8 @@ public final class FFmpegDemuxer: Demuxing {
                 height: raw.height > 0 ? Int(raw.height) : nil,
                 frameRate: raw.frame_rate > 0 ? raw.frame_rate : nil,
                 duration: raw.duration_seconds,
+                sampleRate: raw.sample_rate > 0 ? Int(raw.sample_rate) : nil,
+                channelCount: raw.channels > 0 ? Int(raw.channels) : nil,
                 colorTransfer: raw.color_trc >= 0 ? Int(raw.color_trc) : nil,
                 colorPrimaries: raw.color_primaries >= 0 ? Int(raw.color_primaries) : nil,
                 codecExtradata: Array(UnsafeBufferPointer(start: raw.extradata, count: Int(raw.extradata_size)))

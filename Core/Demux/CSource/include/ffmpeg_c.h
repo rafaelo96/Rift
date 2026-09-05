@@ -47,6 +47,8 @@ typedef struct {
     int         height;
     double      frame_rate;       /* 0 if unknown */
     double      duration_seconds; /* 0 if unknown */
+    int         sample_rate;      /* audio sample rate (0 if N/A, e.g. video) */
+    int         channels;         /* audio channel count (0 if N/A) */
     int         color_trc;        /* raw AVColorTransferCharacteristic (PQ/HLG/…). NO boolean */
     int         color_primaries;  /* raw AVColorPrimaries */
     int         extradata_size;   /* CodecPrivate / VPS+SPS+PPS for HEVC (0 if none) */

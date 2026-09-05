@@ -27,6 +27,10 @@ public struct TrackInfo: Equatable {
     public let height: Int?
     public let frameRate: Double?
     public let duration: Double
+    /// Audio sample rate (nil for video/other tracks).
+    public let sampleRate: Int?
+    /// Audio channel count (nil for video/other tracks).
+    public let channelCount: Int?
 
     /// Raw AVColorTransferCharacteristic (e.g. SMPTE2084/PQ for HDR10,
     /// SMPTE2086/HLG for HLG). Demux only reports the primitive — deciding
@@ -50,6 +54,8 @@ public struct TrackInfo: Equatable {
         height: Int?,
         frameRate: Double?,
         duration: Double,
+        sampleRate: Int?,
+        channelCount: Int?,
         colorTransfer: Int?,
         colorPrimaries: Int?,
         codecExtradata: [UInt8]
@@ -63,6 +69,8 @@ public struct TrackInfo: Equatable {
         self.height = height
         self.frameRate = frameRate
         self.duration = duration
+        self.sampleRate = sampleRate
+        self.channelCount = channelCount
         self.colorTransfer = colorTransfer
         self.colorPrimaries = colorPrimaries
         self.codecExtradata = codecExtradata
