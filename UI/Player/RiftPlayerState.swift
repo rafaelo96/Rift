@@ -62,6 +62,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
     private var audioTrack: TrackInfo?
+    private var audioTrackInfos: [Int: TrackInfo] = [:]
     private var audioDecoder: AudioDecoder?
     private var audioRenderer: AVSampleBufferAudioRenderer?
     private var sourceFrameRate: Double?
@@ -173,6 +174,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         demuxer?.close(); decoder?.close()
         demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
         audioDecoder = nil; audioRenderer = nil; audioTrack = nil
+        audioTrackInfos = [:]
         sourceURL = nil
         hasVideo = false; isPlaying = false
     }
@@ -181,7 +183,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func resetHideTimer() {}
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) { interpolationMode = m }
-    func selectAudioTrack(_ i: Int) { selectedAudioTrackIndex = i }
+    func selectAudioTrack(_ streamIndex: Int) {
+        guard streamIndex != selectedAudioTrackIndex else { return }
+        selectedAudioTrackIndex = streamIndex
+        guard let url = sourceURL, let track = audioTrackInfos[streamIndex] else { return }
+        audioTrack = track
+        // Reiniciar el audio con la pista elegida (mismo patrón que seek): el
+        // audioRenderer ya está en el synchronizer, solo se relanza el loop.
+        startAudioLoop(url: url, trackStreamIndex: track.streamIndex, codecName: track.codecName, startTime: currentTime)
+    }
     func selectPipelineTrack(_ t: MediaTrack?) {
         selectedSubtitleTrack = t
         guard let t, let url = sourceURL else {
@@ -253,8 +263,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // reproducirse en sync (el displayLayer y el audioRenderer
                     // viven en el reloj del scheduler).
                     self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
-                    // Audio: primera pista de audio (selector queda para fase posterior)
-                    if let aTrack = info.tracks.first(where: { $0.kind == .audio }) {
+                    // Audio: guardar todas las pistas reales y arrancar la primera.
+                    let audioTracksAll = info.tracks.filter { $0.kind == .audio }
+                    self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
+                    if let aTrack = audioTracksAll.first {
                         self.audioTrack = aTrack
                         let ar = AVSampleBufferAudioRenderer()
                         ar.volume = 1.0
@@ -284,7 +296,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if let subTrack {
                         self.selectedSubtitleTrack = self.availableTracks.first { $0.kind == .subtitle && $0.index == subTrack.streamIndex }
                     }
-                    self.audioTracks = info.tracks.filter { $0.kind == .audio }.enumerated().map { idx, t in AudioTrack(id: idx, label: t.codecName, language: nil) }
+                    self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: t.codecName, language: t.streamLanguage) }
                     self.hasVideo = true
                     self.statusMessage = "Ready"
                     self.conversionProgress = 1.0
