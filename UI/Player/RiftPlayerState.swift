@@ -296,6 +296,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.sourceFrameRate = v.frameRate
                     self.framePool = SlidingFramePool(capacity: 4)
                     self.scheduler = FrameScheduler(mode: .native24)
+                    self.timingLogStart = DispatchTime.now().uptimeNanoseconds
                     self.subtitleTrack = subTrack
                     self.subtitleCues = []
                     // CLAVE: sin esto el synchronizer retrasa el arranque del
@@ -637,6 +638,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         return PreparedAudioBuffer(sampleBuffer: sampleBuffer, outputChannels: outChannels, dataSize: dataSize, rms: rms, peak: peak)
     }
 
+    // MARK: - Debug timing log to file
+
+    /// Timestamp de inicio del logging. Se reinicia cada vez que se carga un video.
+    private var timingLogStart: UInt64 = 0
+
+    /// Debug: log de timing por par — escrito a /tmp/rift_timing.csv para diagnóstico rápido de overhead.
+    private func logTiming(pairIndex: Int, pairMS: Double, meMS: Double, warpMS: Double) {
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - timingLogStart) / 1_000_000.0
+        let line = "\(Int(elapsed)),\(pairIndex),\(String(format: "%.2f", pairMS)),\(String(format: "%.2f", meMS)),\(String(format: "%.2f", warpMS))\n"
+        FileManager.default.createFile(atPath: "/tmp/rift_timing.csv", contents: line.data(using: .utf8))
+    }
+
     /// Espera hasta que el reloj del synchronizer alcance el pts objetivo. Si el
     /// frame está más de 1s en el futuro (p.ej. tras un seek con el reloj
     /// desalineado), lo presenta de inmediato para no dejar la imagen congelada.
@@ -783,6 +796,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     await self.coordinator.signal()
                     await self.coordinator.signal()
                     await self.coordinator.signal()
+
+                    // Debug: log a disco para diagnóstico rápido.
+                    self.logTiming(pairIndex: self.totalDecoded, pairMS: frameTimeMs, meMS: interpResult.meMS, warpMS: interpResult.warpMS)
+
                     if Task.isCancelled { break }
                     continue
                 }
