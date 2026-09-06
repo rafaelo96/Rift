@@ -16,16 +16,30 @@ import CoreMedia
 import CoreVideo
 
 actor AsyncSemaphore {
+    private let capacity: Int
     private var count: Int
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    init(value: Int) { count = value }
-    func wait() async {
-        if count > 0 { count -= 1; return }
-        await withCheckedContinuation { waiters.append($0) }
+    private var waiters: [CheckedContinuation<Bool, Never>] = []
+    init(value: Int) { capacity = value; count = value }
+    /// true si el permiso fue concedido; false si `reset()` anuló la espera
+    /// (pipeline descartado). Permite al decay loop distinguir "no hay cupo
+    /// ahora" de "mi trabajo fue invalidado" y terminar sin robar permisos.
+    func wait() async -> Bool {
+        if count > 0 { count -= 1; return true }
+        return await withCheckedContinuation { waiters.append($0) }
     }
     func signal() {
         if waiters.isEmpty { count += 1 }
-        else { waiters.removeFirst().resume() }
+        else { waiters.removeFirst().resume(returning: true) }
+    }
+    /// Restaura el cupo a su capacidad inicial y despierta los waiters colgados
+    /// con `false` (permiso anulado). Se usa al descartar un pipeline viejo en
+    /// loadVideo: un decodeTask aparcado en wait() sin manejo de cancelación
+    /// jamás se reanudaba por Task.cancel, secuestrando un permit para siempre.
+    func reset() {
+        count = capacity
+        let parked = waiters
+        waiters = []
+        for w in parked { w.resume(returning: false) }
     }
 }
 
@@ -519,81 +533,95 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     return found
                 }()
-                await MainActor.run {
-                    guard let self else { return }
-                    self.demuxer = d
-                    self.decoder = dec
-                    self.videoTrack = v
-                    self.duration = info.duration
-                    self.sourceFrameRate = v.frameRate
-                    self.framePool = SlidingFramePool(capacity: 4)
-                    self.scheduler = FrameScheduler(mode: .native24)
-                    self.syncSchedulerMode()
-                    self.timingLogStart = DispatchTime.now().uptimeNanoseconds
-                    self.subtitleTrack = subTrack
-                    self.subtitleCues = []
-                    // CLAVE: sin esto el synchronizer retrasa el arranque del
-                    // reloj hasta tener preroll suficiente en TODOS los renderers,
-                    // y con buffers de 32ms el audio se atasca (isReady=false
-                    // perpetuo) sin llegar nunca a reproducir.
-                    self.scheduler?.synchronizer.delaysRateChangeUntilHasSufficientMediaData = false
-                    // Video y audio comparten el MISMO synchronizer para
-                    // reproducirse en sync (el displayLayer y el audioRenderer
-                    // viven en el reloj del scheduler).
-                    self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
-                    // Audio: guardar todas las pistas reales y arrancar la primera.
-                    let audioTracksAll = info.tracks.filter { $0.kind == .audio }
-                    self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
-                    if let aTrack = audioTracksAll.first {
-                        self.audioTrack = aTrack
-                        self.selectedAudioTrackIndex = aTrack.streamIndex
-                        let ar = AVSampleBufferAudioRenderer()
-                        ar.volume = 1.0
-                        ar.isMuted = false
-                        self.audioRenderer = ar
-                        // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
-                        self.scheduler?.synchronizer.addRenderer(ar)
-                        self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
-                    }
-                    self.availableTracks = {
-                        var subtitleOrdinal = 0
-                        return info.tracks.map { t in
-                            let kind: MediaTrack.Kind
-                            switch t.kind { case .video: kind = .video; case .audio: kind = .audio; default: kind = .subtitle }
-                            let label: String
-                            if kind == .subtitle {
-                                label = Self.subtitleLabel(for: t, index: subtitleOrdinal)
-                                subtitleOrdinal += 1
-                            } else {
-                                label = t.codecName
-                            }
-                            return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: label, languageCode: t.streamLanguage)
-                        }
-                    }()
-                    // Al cargar, la primera pista de subtítulos queda seleccionada
-                    // (se muestran por defecto), reflejando el estado en el popover.
-                    if let subTrack {
-                        self.selectedSubtitleTrack = self.availableTracks.first { $0.kind == .subtitle && $0.index == subTrack.streamIndex }
-                    }
-                    self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: Self.audioLabel(for: t), language: t.streamLanguage) }
-                    self.hasVideo = true
-                    self.statusMessage = "Ready"
-                    self.conversionProgress = 1.0
-                    self.startDecodeLoop()
-                    // Subtítulos: cargar la primera pista en background (paralelo
-                    // al video) vía cache, sin bloquear el primer frame.
-                    if let subTrack {
-                        self.ensureSubtitleCues(url: url, streamIndex: subTrack.streamIndex) {
-                            self.subtitleCues = self.subtitleCueCache[subTrack.streamIndex] ?? []
-                            self.updateActiveSubtitle(at: self.currentTime)
-                        }
-                    }
+                if let self {
+                    await self.installNewPipeline(demuxer: d, decoder: dec, videoTrack: v, info: info, subTrack: subTrack, url: url)
                 }
             } catch {
                 await MainActor.run {
                     self?.statusMessage = "Open failed: \(error)"
                     self?.conversionProgress = 0
                 }
+            }
+        }
+    }
+
+    /// Instala el pipeline recién abierto (demuxer/decoder/pool/scheduler/
+    /// renderer/audio). Antes descarta el pipeline anterior de forma segura:
+    /// root cause del loadVideo-while-playing (display loop en silencio tras
+    /// reopen) — el decodeTask viejo podía quedar aparcado en coordinator.wait()
+    /// (wait no maneja cancelación) y los frames del pool viejo jamás devolvían
+    /// su permit, dejando al decode nuevo sin cupo y al pool sin llenarse.
+    @MainActor
+    private func installNewPipeline(demuxer d: FFmpegDemuxer, decoder dec: VTDecoder, videoTrack v: TrackInfo, info: ContainerInfo, subTrack: TrackInfo?, url: URL) async {
+        self.decodeTask?.cancel()
+        await self.coordinator.reset()
+        self.framePool?.flush()
+        self.decodeTask = nil
+        self.demuxer = d
+        self.decoder = dec
+        self.videoTrack = v
+        self.duration = info.duration
+        self.sourceFrameRate = v.frameRate
+        self.framePool = SlidingFramePool(capacity: 4)
+        self.scheduler = FrameScheduler(mode: .native24)
+        self.syncSchedulerMode()
+        self.timingLogStart = DispatchTime.now().uptimeNanoseconds
+        self.subtitleTrack = subTrack
+        self.subtitleCues = []
+        // CLAVE: sin esto el synchronizer retrasa el arranque del
+        // reloj hasta tener preroll suficiente en TODOS los renderers,
+        // y con buffers de 32ms el audio se atasca (isReady=false
+        // perpetuo) sin llegar nunca a reproducir.
+        self.scheduler?.synchronizer.delaysRateChangeUntilHasSufficientMediaData = false
+        // Video y audio comparten el MISMO synchronizer para
+        // reproducirse en sync (el displayLayer y el audioRenderer
+        // viven en el reloj del scheduler).
+        self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
+        // Audio: guardar todas las pistas reales y arrancar la primera.
+        let audioTracksAll = info.tracks.filter { $0.kind == .audio }
+        self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
+        if let aTrack = audioTracksAll.first {
+            self.audioTrack = aTrack
+            self.selectedAudioTrackIndex = aTrack.streamIndex
+            let ar = AVSampleBufferAudioRenderer()
+            ar.volume = 1.0
+            ar.isMuted = false
+            self.audioRenderer = ar
+            // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
+            self.scheduler?.synchronizer.addRenderer(ar)
+            self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
+        }
+        self.availableTracks = {
+            var subtitleOrdinal = 0
+            return info.tracks.map { t in
+                let kind: MediaTrack.Kind
+                switch t.kind { case .video: kind = .video; case .audio: kind = .audio; default: kind = .subtitle }
+                let label: String
+                if kind == .subtitle {
+                    label = Self.subtitleLabel(for: t, index: subtitleOrdinal)
+                    subtitleOrdinal += 1
+                } else {
+                    label = t.codecName
+                }
+                return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: label, languageCode: t.streamLanguage)
+            }
+        }()
+        // Al cargar, la primera pista de subtítulos queda seleccionada
+        // (se muestran por defecto), reflejando el estado en el popover.
+        if let subTrack {
+            self.selectedSubtitleTrack = self.availableTracks.first { $0.kind == .subtitle && $0.index == subTrack.streamIndex }
+        }
+        self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: Self.audioLabel(for: t), language: t.streamLanguage) }
+        self.hasVideo = true
+        self.statusMessage = "Ready"
+        self.conversionProgress = 1.0
+        self.startDecodeLoop()
+        // Subtítulos: cargar la primera pista en background (paralelo
+        // al video) vía cache, sin bloquear el primer frame.
+        if let subTrack {
+            self.ensureSubtitleCues(url: url, streamIndex: subTrack.streamIndex) {
+                self.subtitleCues = self.subtitleCueCache[subTrack.streamIndex] ?? []
+                self.updateActiveSubtitle(at: self.currentTime)
             }
         }
     }
@@ -619,8 +647,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             guard let self else { return }
             var decoded = 0
             while true {
-                await self.coordinator.wait()
-                if Task.isCancelled { await self.coordinator.signal(); break }
+                let granted = await self.coordinator.wait()
+                if Task.isCancelled || !granted {
+                    // Cancelado con permiso concedido → devolverlo; anulado por
+                    // reset() → el permit ya no es nuestro (nunca se otorgó).
+                    if granted { await self.coordinator.signal() }
+                    break
+                }
                 guard let pkt = try? d.nextPacket() else {
                     await self.coordinator.signal()
                     break
@@ -641,7 +674,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.startDisplayLoop()
                     }
                 }
-                if Task.isCancelled { break }
+                if Task.isCancelled {
+                    // Devolver el permit del frame ya añadido (su pool será
+                    // descartado/flusheado por el teardown de loadVideo).
+                    await self.coordinator.signal()
+                    break
+                }
             }
         }
     }
