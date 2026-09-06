@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import os
 import Contracts
 import Demux
 import Decode
@@ -76,6 +77,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var subtitleTrack: TrackInfo?
     private var subtitleCues: [SubtitleCue] = []
     private var subtitleCueCache: [Int: [SubtitleCue]] = [:]
+
+    // MARK: - Interpolation benchmark (baseline del display loop)
+    private var benchSamples: [Double] = []
+    private let benchLog = OSLog(subsystem: "com.rift.player", category: "InterpolationBench")
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
     // frecuentes; si no está, se usa streamTitle o índice como fallback.
@@ -654,6 +659,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try? await Task.sleep(nanoseconds: 10_000_000)
                 }
                 if Task.isCancelled { break }
+                let workStart = DispatchTime.now().uptimeNanoseconds
                 let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
                 let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
                 if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
@@ -667,6 +673,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     rend.displayLayer.enqueue(sbuf)
                     pool.removeFirst()
+                }
+                let workEnd = DispatchTime.now().uptimeNanoseconds
+                let frameTimeMs = Double(workEnd - workStart) / 1_000_000
+                benchSamples.append(frameTimeMs)
+                if benchSamples.count >= 60 {
+                    let avg = benchSamples.reduce(0, +) / Double(benchSamples.count)
+                    let sorted = benchSamples.sorted()
+                    let p99 = sorted[Int(Double(sorted.count - 1) * 0.99)]
+                    os_log("DisplayLoop baseline: avg=%.2fms p99=%.2fms samples=%d", log: benchLog, type: .info, avg, p99, benchSamples.count)
+                    benchSamples.removeAll()
                 }
                 await self.coordinator.signal()
                 if Task.isCancelled { break }
