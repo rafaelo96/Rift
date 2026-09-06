@@ -14,6 +14,14 @@ struct WarpUniforms {
     float occThresh; // px, err > thresh => occluded
 };
 
+struct UpscaleUniforms {
+    uint srcW;
+    uint srcH;
+    uint outW;
+    uint outH;
+    uint fmt10; // 1 = 10-bit (work-plane luma already >>6, write <<6 back), 0 = 8-bit
+};
+
 static inline float4 sampleBilinearU16(texture2d<uint, access::read> tex, float2 p, int w, int h) {
     // clamp
     p = clamp(p, float2(0,0), float2(float(w-1), float(h-1)));
@@ -91,5 +99,45 @@ kernel void warpBlend(
     // also handle single-side occlusion more explicitly: if err large, prefer the sample with smaller err direction?
     // v1 approx is sufficient for v1 prototype; OBMC omitted.
     outTex.write(uint(out + 0.5), gid);
+}
+
+// Bilinear upscale of the work-plane warp result to full resolution.
+// srcTex = work-plane luma texture (values 0..1023 for 10-bit, or 8-bit in high
+// byte for 8-bit — matches scaledLuma), outTex = full-res luma of the output
+// CVPixelBuffer. Output scalar is re-packed to the target bit depth.
+kernel void upscaleLuma(
+    texture2d<uint, access::read>  srcTex [[texture(0)]],
+    texture2d<uint, access::write> outTex [[texture(1)]],
+    constant UpscaleUniforms &u     [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= u.outW || gid.y >= u.outH) return;
+
+    float2 p = float2(float(gid.x) + 0.5, float(gid.y) + 0.5)
+             * float2(float(u.srcW), float(u.srcH))
+             / float2(float(u.outW), float(u.outH));
+    p -= 0.5;
+    p = clamp(p, float2(0,0), float2(float(u.srcW-1), float(u.srcH-1)));
+
+    int2 i0 = int2(floor(p));
+    i0 = clamp(i0, int2(0,0), int2(int(u.srcW)-1, int(u.srcH)-1));
+    int2 i1 = min(i0 + int2(1,0), int2(int(u.srcW)-1, int(u.srcH)-1));
+    int2 i2 = min(i0 + int2(0,1), int2(int(u.srcW)-1, int(u.srcH)-1));
+    int2 i3 = min(i0 + int2(1,1), int2(int(u.srcW)-1, int(u.srcH)-1));
+    float2 f = fract(p);
+
+    float v00 = float(srcTex.read(uint2(uint(i0.x), uint(i0.y))).x);
+    float v10 = float(srcTex.read(uint2(uint(i1.x), uint(i1.y))).x);
+    float v01 = float(srcTex.read(uint2(uint(i2.x), uint(i2.y))).x);
+    float v11 = float(srcTex.read(uint2(uint(i3.x), uint(i3.y))).x);
+    float v0 = mix(v00, v10, f.x);
+    float v1 = mix(v01, v11, f.x);
+    float v = mix(v0, v1, f.y);
+
+    uint outVal = uint(v + 0.5);
+    if (u.fmt10) {
+        outVal = outVal << 6; // work-plane value 0..1023 -> 10-bit in high bits
+    }
+    outTex.write(outVal, gid);
 }
 """

@@ -430,6 +430,7 @@ print(String(format: "decoding from %.2f s (≈%.0f%%) until %d luma planes are 
              seekTime, seekFraction * 100.0, pairCount + 1))
 
 var frames: [Data] = []
+var frameBuffers: [CVPixelBuffer] = []
 var readPackets = 0
 while frames.count < pairCount + 1 && readPackets < 100_000 {
     guard let packet = try? demuxer.nextPacket() else { break }
@@ -438,6 +439,7 @@ while frames.count < pairCount + 1 && readPackets < 100_000 {
     guard let buf = try? decoder.decodeFrame(packet) else { continue }
     guard let luma = scaledLuma(buf) else { continue }
     frames.append(luma)
+    frameBuffers.append(buf)
 }
 decoder.close()
 demuxer.close()
@@ -478,8 +480,8 @@ do {
 }
 let warpEngine: WarpEngine
 do {
-    guard let dev = MTLCreateSystemDefaultDevice() else { print("WARP INIT FAILED: no Metal device"); exit(3) }
-    warpEngine = try WarpEngine(device: dev)
+    guard MTLCreateSystemDefaultDevice() != nil else { print("WARP INIT FAILED: no Metal device"); exit(3) }
+    warpEngine = try WarpEngine(msl: warpShadersMSL)
 } catch {
     print("WARP INIT FAILED: \(error)")
     exit(3)
@@ -694,6 +696,54 @@ print(String(format: "Combined ME+warp per pair : mean=%.3f ms (%.1f%% of 41.7ms
              combined, combined/41.7*100.0, 41.7 - combined, combined <= 41.7 ? "dentro" : "EXCEDE"))
 if combined > 41.7 {
     print("NOTA: OBMC omitido v1; si se añade, re-medir presupuesto.")
+}
+
+// --- Pipeline real: MotionCompensator sobre CVPixelBuffer full-res ---
+// Mide el flujo de producción tal cual lo usa la UI: la luma se extrae y se baja
+// a work-plane en host (MotionCompensator.scaledLuma), el ME corre en work-plane,
+// el warp corrido AHORA en work-plane, y el upscale bilinear sube el luma a la
+// resolución nativa del CVPixelBuffer de salida. CbCr se copia de I0 y los
+// attachments HDR se propagan. Desglose ME / Warp / Upscale por par.
+if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
+    let mc: MotionCompensator
+    do {
+        mc = try MotionCompensator(config: .default)
+    } catch {
+        print("PIPELINE INIT FAILED: \(error)")
+        print("\nOK — MVProbe finished (pipeline skipped)")
+        exit(3)
+    }
+    var pipelineME: [Double] = []
+    var pipelineWarp: [Double] = []
+    var pipelineUpscale: [Double] = []
+    var pipelineTotal: [Double] = []
+    print("\n--- pipeline real (MotionCompensator, full-res CVPixelBuffer, warp work-plane + upscale) ---")
+    for i in 0..<pairCount {
+        let s = DispatchTime.now().uptimeNanoseconds
+        let r = mc.interpolateWithTimings(I0: frameBuffers[i], I1: frameBuffers[i + 1], t: 0.5)
+        let tot = Double(DispatchTime.now().uptimeNanoseconds - s) / 1_000_000.0
+        pipelineME.append(r.meMS)
+        pipelineWarp.append(r.warpMS)
+        pipelineUpscale.append(r.upscaleMS)
+        pipelineTotal.append(tot)
+        print(String(format: "  pipeline %4d: ME %.3f + Warp %.3f + Upscale %.3f = %.3f ms (pb %@)",
+                     i + 1, r.meMS, r.warpMS, r.upscaleMS, tot,
+                     r.pixelBuffer != nil ? "ok" : "NIL"))
+    }
+    let pME = stats(pipelineME)
+    let pWarp = stats(pipelineWarp)
+    let pUp = stats(pipelineUpscale)
+    let pTot = stats(pipelineTotal)
+    let pCombined = pME.mean + pWarp.mean + pUp.mean
+    print("\n--- pipeline real per-pair timings (ms) ---")
+    print(String(format: "  %-12@ %10@ %10@ %10@", "stage" as NSString, "mean" as NSString, "p50" as NSString, "p95" as NSString))
+    print(String(format: "  %-12@ %10.3f %10.3f %10.3f", "ME" as NSString, pME.mean, pME.p50, pME.p95))
+    print(String(format: "  %-12@ %10.3f %10.3f %10.3f", "Warp" as NSString, pWarp.mean, pWarp.p50, pWarp.p95))
+    print(String(format: "  %-12@ %10.3f %10.3f %10.3f", "Upscale" as NSString, pUp.mean, pUp.p50, pUp.p95))
+    print(String(format: "  %-12@ %10.3f %10.3f %10.3f", "Total(host)" as NSString, pTot.mean, pTot.p50, pTot.p95))
+    print(String(format: "  Comb ME+Warp+Up : mean=%.3f ms (%.1f%% of 41.7ms budget) — margen %.1f ms %@",
+                 pCombined, pCombined / 41.7 * 100.0, 41.7 - pCombined,
+                 pCombined <= 41.7 ? "dentro" : "EXCEDE"))
 }
 
 // Quality verdict — computed from the metrics accumulated INSIDE the main loop

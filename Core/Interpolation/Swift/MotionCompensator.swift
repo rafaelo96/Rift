@@ -10,11 +10,13 @@ public struct InterpolationResult {
     public let pixelBuffer: CVPixelBuffer?
     public let meMS: Double
     public let warpMS: Double
+    public let upscaleMS: Double
 
-    public init(pixelBuffer: CVPixelBuffer?, meMS: Double, warpMS: Double) {
+    public init(pixelBuffer: CVPixelBuffer?, meMS: Double, warpMS: Double, upscaleMS: Double = 0) {
         self.pixelBuffer = pixelBuffer
         self.meMS = meMS
         self.warpMS = warpMS
+        self.upscaleMS = upscaleMS
     }
 }
 
@@ -137,18 +139,18 @@ public final class MotionCompensator {
         }
 
         let g = me.grids[0]
-        let warpStart = DispatchTime.now().uptimeNanoseconds
-        let (pb, gpuWarpMS) = warp.interpolatePixelBuffer(
+        let (pb, gpuWarpMS, upscaleMS) = warp.interpolatePixelBuffer(
             I0: I0, I1: I1,
+            luma0: luma0, luma1: luma1,
+            workWidth: config.workWidth, workHeight: config.workHeight,
             mv: mvField,
             gridW: g.w, gridH: g.h,
             blockSize: config.blockSize,
             t: t,
             occThresh: 1.0
         )
-        let totalWarpMS = Double(DispatchTime.now().uptimeNanoseconds - warpStart) / 1_000_000.0
         _ = pairTimes
-        return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: totalWarpMS)
+        return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: gpuWarpMS, upscaleMS: upscaleMS)
     }
 
     // MARK: - Luma extraction + downscale (host)
@@ -175,7 +177,8 @@ public final class MotionCompensator {
         guard let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else { return nil }
 
         let fmt = CVPixelBufferGetPixelFormatType(buffer)
-        let is10Bit = (fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange)
+        let is10Bit = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+            || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
 
         // 1. Extraer luma de forma veloz usando UnsafeMutablePointer para evitar bounds-checking en Debug
         var src = [UInt16](repeating: 0, count: sw * sh)
