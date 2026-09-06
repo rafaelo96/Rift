@@ -9,6 +9,7 @@ import DecodeAudio
 import FramePool
 import Scheduler
 import Rendering
+import Interpolation
 import UniformTypeIdentifiers
 import AppKit
 import CoreMedia
@@ -59,6 +60,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var framePool: SlidingFramePool?
     private var scheduler: FrameScheduler?
     private var renderer: HDRDisplayRenderer?
+    /// Motor MCFI. Se inicializa lazy la primera vez que se necesita (cuando
+    /// `interpolationMode != .disabled`) y se libera en closeVideo(). Es stateful
+    /// solo en buffers Metal internos; cada `interpolate()` es autocontenida.
+    private var compensator: MotionCompensator?
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
@@ -195,6 +200,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         audioRenderer?.flush()
         demuxer?.close(); decoder?.close()
         demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
+        compensator = nil
         audioDecoder = nil; audioRenderer = nil; audioTrack = nil
         audioTrackInfos = [:]
         sourceURL = nil
@@ -204,7 +210,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func stopHideTimer() {}
     func resetHideTimer() {}
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
-    func setInterpolationMode(_ m: InterpolationMode) { interpolationMode = m }
+    func setInterpolationMode(_ m: InterpolationMode) {
+        interpolationMode = m
+        // Forzar re-inicialización lazy del motor en el próximo par — evita que
+        // un cambio de modo en vivo use un compensator con configuración vieja.
+        compensator = nil
+    }
     func selectAudioTrack(_ streamIndex: Int) {
         guard streamIndex != selectedAudioTrackIndex else { return }
         selectedAudioTrackIndex = streamIndex
@@ -615,6 +626,39 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         return PreparedAudioBuffer(sampleBuffer: sampleBuffer, outputChannels: outChannels, dataSize: dataSize, rms: rms, peak: peak)
     }
 
+    /// Espera hasta que el reloj del synchronizer alcance el pts objetivo. Si el
+    /// frame está más de 1s en el futuro (p.ej. tras un seek con el reloj
+    /// desalineado), lo presenta de inmediato para no dejar la imagen congelada.
+    private func waitUntilDisplayClock(atLeast pts: Double) async {
+        guard let sched = self.scheduler else { return }
+        while !Task.isCancelled {
+            let clk = sched.synchronizer.currentTime().seconds
+            if clk >= pts - 0.001 { return }
+            if pts - clk > 1.0 { return }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    /// Encola un frame en el displayLayer con DisplayImmediately=true (pacer
+    /// contra el reloj ya se hizo antes). Helper compartido entre el modo nativo
+    /// y el modo interpolado para evitar duplicar el patrón.
+    private func enqueueForDisplay(rend: HDRDisplayRenderer, pixelBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime) {
+        guard let sbuf = rend.sampleBuffer(from: pixelBuffer, pts: pts, duration: duration) else { return }
+        self.markDisplayImmediately(sbuf)
+        rend.displayLayer.enqueue(sbuf)
+    }
+
+    /// Marca el CMSampleBuffer para presentación inmediata (sin esperar más).
+    /// Replica el patrón inline que ya usaba el modo nativo.
+    private func markDisplayImmediately(_ sbuf: CMSampleBuffer) {
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sbuf, createIfNecessary: true) {
+            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+            CFDictionarySetValue(dict,
+                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+        }
+    }
+
     private func startDisplayLoop() {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
@@ -636,6 +680,89 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try? await Task.sleep(nanoseconds: 50_000_000)
                     continue
                 }
+                // ¿Interpolación activa? motion2x es el único modo cableado en MVP.
+                // motion4x / motionAdaptive / motion2Intense caen a motion2x con log.
+                let interpOn = self.interpolationMode != .disabled
+                if interpOn {
+                    // ¿Quedan al menos 2 frames para formar un par?
+                    guard let (i0, i1) = pool.reservePair() else {
+                        try? await Task.sleep(nanoseconds: 10_000_000)
+                        continue
+                    }
+                    // Pacer contra el reloj del synchronizer para el primer frame (I0).
+                    await self.waitUntilDisplayClock(atLeast: i0.pts)
+                    if Task.isCancelled { break }
+
+                    let workStart = DispatchTime.now().uptimeNanoseconds
+                    let pairDur = max(i1.pts - i0.pts, 0.001)
+                    let halfDur = pairDur * 0.5
+                    let midPts = i0.pts + halfDur
+                    let timescale: CMTimeScale = 600
+
+                    // Compensator lazy (se re-crea si cambió el modo en vivo).
+                    let comp: MotionCompensator
+                    if let existing = self.compensator {
+                        comp = existing
+                    } else {
+                        do {
+                            let created = try MotionCompensator(config: .default)
+                            self.compensator = created
+                            comp = created
+                        } catch {
+                            // Si falla la creación del motor, fallback al frame nativo
+                            // para no romper la reproducción. Logueamos y degradamos.
+                            os_log("MotionCompensator init failed: %{public}@ — falling back to native", log: self.benchLog, type: .error, "\(error)")
+                            let pts = CMTime(seconds: i0.pts, preferredTimescale: timescale)
+                            let dur = CMTime(seconds: pairDur, preferredTimescale: timescale)
+                            self.enqueueForDisplay(rend: rend, pixelBuffer: i0.pixelBuffer, pts: pts, duration: dur)
+                            pool.consumePair()
+                            await self.coordinator.signal()
+                            if Task.isCancelled { break }
+                            continue
+                        }
+                    }
+
+                    // I0: pts = i0.pts, dur = halfDur
+                    self.enqueueForDisplay(rend: rend, pixelBuffer: i0.pixelBuffer,
+                                           pts: CMTime(seconds: i0.pts, preferredTimescale: timescale),
+                                           duration: CMTime(seconds: halfDur, preferredTimescale: timescale))
+
+                    // Frame interpolado a t=0.5. Si falla (contenido problemático),
+                    // seguimos mostrando solo I0/I1 sin interp — no rompemos reproducción.
+                    if let interpPB = comp.interpolate(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5) {
+                        self.enqueueForDisplay(rend: rend, pixelBuffer: interpPB,
+                                               pts: CMTime(seconds: midPts, preferredTimescale: timescale),
+                                               duration: CMTime(seconds: halfDur, preferredTimescale: timescale))
+                    }
+
+                    // I1: pts = i1.pts, dur = la mitad del par (presenta a 48fps para el slot I1;
+                    // un par real son 2 frames, los partimos en 4 slots de pairDur/2).
+                    self.enqueueForDisplay(rend: rend, pixelBuffer: i1.pixelBuffer,
+                                           pts: CMTime(seconds: i1.pts, preferredTimescale: timescale),
+                                           duration: CMTime(seconds: halfDur, preferredTimescale: timescale))
+
+                    pool.consumePair()
+
+                    let workEnd = DispatchTime.now().uptimeNanoseconds
+                    let frameTimeMs = Double(workEnd - workStart) / 1_000_000
+                    benchSamples.append(frameTimeMs)
+                    if benchSamples.count >= 60 {
+                        let avg = benchSamples.reduce(0, +) / Double(benchSamples.count)
+                        let sorted = benchSamples.sorted()
+                        let p99 = sorted[Int(Double(sorted.count - 1) * 0.99)]
+                        os_log("DisplayLoop motion2x: avg=%.2fms p99=%.2fms samples=%d", log: benchLog, type: .info, avg, p99, benchSamples.count)
+                        benchSamples.removeAll()
+                    }
+                    // 3 frames encolados por par (I0 + interp + I1) → 3 signals al
+                    // coordinator para mantener el ritmo del decode loop.
+                    await self.coordinator.signal()
+                    await self.coordinator.signal()
+                    await self.coordinator.signal()
+                    if Task.isCancelled { break }
+                    continue
+                }
+
+                // ---- Modo nativo (.disabled): flujo 1:1 original ----
                 // Consumir el frame más viejo de la ventana deslizante.
                 let f = pool.oldest() ?? {
                     return Optional<Frame>.none
@@ -644,33 +771,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
-                // Pacer contra el reloj del synchronizer (igual que el audio):
-                // esperar hasta que el reloj alcance el pts de este frame. Usamos
-                // un poll corto en vez de dormir la delta completa, y si el frame
-                // está más de 1s en el futuro (tras un seek el reloj puede quedar
-                // desalineado del pts del primer frame) lo presentamos de inmediato
-                // para no dejar la imagen congelada.
-                let target = f.pts
-                while true {
-                    if Task.isCancelled { break }
-                    let clk = sched.synchronizer.currentTime().seconds
-                    if clk >= target - 0.001 { break }
-                    if target - clk > 1.0 { break }
-                    try? await Task.sleep(nanoseconds: 10_000_000)
-                }
+                await self.waitUntilDisplayClock(atLeast: f.pts)
                 if Task.isCancelled { break }
                 let workStart = DispatchTime.now().uptimeNanoseconds
                 let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
                 let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
                 if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
-                    // DisplayImmediately: ya que pacamos contra el reloj arriba,
-                    // presentamos al instante al encolar.
-                    if let attachments = CMSampleBufferGetSampleAttachmentsArray(sbuf, createIfNecessary: true) {
-                        let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-                        CFDictionarySetValue(dict,
-                            Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                            Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-                    }
+                    self.markDisplayImmediately(sbuf)
                     rend.displayLayer.enqueue(sbuf)
                     pool.removeFirst()
                 }
