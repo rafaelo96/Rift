@@ -68,6 +68,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Usado por el interpolador en background para evitar dependencia
     /// directa con reservePair/consumePair.
     private var lastShownFrames: [Frame] = []
+    /// Bloqueo para asegurar que solo haya 1 frame interpolándose a la vez.
+    /// Evita saturar la GPU y sobreescribir los recursos Metal del compensator.
+    private var isInterpolating = false
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
@@ -216,6 +219,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         demuxer?.close(); decoder?.close()
         demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
         compensator = nil
+        isInterpolating = false
         audioDecoder = nil; audioRenderer = nil; audioTrack = nil
         audioTrackInfos = [:]
         sourceURL = nil
@@ -692,6 +696,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Sin tocar el display loop ni el pool — el loop nativo mantiene su ciclo.
     private func spawnInterpolatedPair(i0: Frame, i1: Frame) {
         guard interpolationMode != .disabled else { return }
+        guard !isInterpolating else { return }
         if compensator == nil {
             do {
                 let created = try MotionCompensator(config: .default)
@@ -702,6 +707,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         guard let comp = compensator else { return }
 
+        isInterpolating = true
         Task.detached { @Sendable [benchLog] in
             let t0 = DispatchTime.now().uptimeNanoseconds
             let interp = comp.interpolate(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
@@ -714,11 +720,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             guard let pb = interp else {
                 os_log("spawnInterp: interpolate returned nil after %.1fms (i0=%.3f i1=%.3f)",
                        log: benchLog, type: .error, interpMs, i0.pts, i1.pts)
+                await MainActor.run { [weak self] in self?.isInterpolating = false }
                 return
             }
 
             await MainActor.run { [weak self] in
-                guard let self, let sbuf = self.renderer?.sampleBuffer(from: pb, pts: CMTime(seconds: midPTS, preferredTimescale: 600), duration: CMTime(seconds: dur, preferredTimescale: 600)) else { return }
+                guard let self else { return }
+                self.isInterpolating = false
+                
+                guard let sbuf = self.renderer?.sampleBuffer(from: pb, pts: CMTime(seconds: midPTS, preferredTimescale: 600), duration: CMTime(seconds: dur, preferredTimescale: 600)) else { return }
 
                 let clockNow = self.scheduler?.synchronizer.currentTime().seconds ?? midPTS
                 let late = midPTS < clockNow
