@@ -118,6 +118,23 @@ public final class WarpEngine {
                 }
             }
         }
+        // Copia plano CbCr de I0 al buffer interpolado. MVP solo warp-ea luma;
+        // el chroma de I0 es una aproximación suficiente para el frame intermedio
+        // (la diferencia de chroma entre I0 e I1 es imperceptible a 24→48fps).
+        // Sin esto, el plano CbCr queda sin inicializar → frames verdes.
+        if CVPixelBufferGetPlaneCount(out) >= 2,
+           let dstCbCr = CVPixelBufferGetBaseAddressOfPlane(out, 1),
+           let srcCbCr = CVPixelBufferGetBaseAddressOfPlane(I0, 1) {
+            let cbcrH = CVPixelBufferGetHeightOfPlane(out, 1)
+            let dstBPR = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
+            let srcBPR = CVPixelBufferGetBytesPerRowOfPlane(I0, 1)
+            let copyW = min(dstBPR, srcBPR)
+            for y in 0..<cbcrH {
+                memcpy(dstCbCr.advanced(by: y * dstBPR),
+                       srcCbCr.advanced(by: y * srcBPR),
+                       copyW)
+            }
+        }
         CVPixelBufferUnlockBaseAddress(I0, .readOnly)
         CVPixelBufferUnlockBaseAddress(out, [])
         propagateHDR(from: I0, to: out)

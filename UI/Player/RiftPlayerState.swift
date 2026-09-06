@@ -720,6 +720,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
                 self.markDisplayImmediately(sbuf)
                 self.renderer?.displayLayer.enqueue(sbuf)
+                if !self.isArtificialInterpolationActive {
+                    self.isArtificialInterpolationActive = true
+                }
             }
         }
     }
