@@ -187,12 +187,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// guardando el modo solicitado para reintento tras seek/load.
     private func disableInterpolation(reason: String) {
         let was = interpolationMode
-        if was != .disabled { fallbackFailedMode = was }
         interpolationMode = .disabled
         scheduler?.setMode(.native24)
         isArtificialInterpolationActive = false
         fallbackDisabled = true
-        os_log("Interpolation fallback: %{public}@", log: benchLog, type: .default, reason)
+        if was != .disabled {
+            fallbackFailedMode = was
+            os_log("Interpolation fallback: %{public}@ (modo %{public}@ guardado para reintento tras seek/load)",
+                   log: benchLog, type: .default, reason, was.rawValue)
+        } else {
+            os_log("Interpolation fallback: %{public}@", log: benchLog, type: .default, reason)
+        }
     }
 
     /// Tras un fallback, si el usuario vuelve a dar seek o cambia de archivo
@@ -260,16 +265,37 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // MARK: - Test harness (headless GUI-channel validation)
     // RIFT_AUTO_OPEN=<file> opens a video at launch; RIFT_AUTO_MODE=<mode>
     // force-activates an interpolation mode. Inert without the env vars.
+    // RIFT_AUTO_SEEK_AT=<secs> + RIFT_AUTO_SEEK_TO=<secs> schedule a seek()
+    // that many seconds after launch (used to validate rearmFallbackInterpolation
+    // after a fallback). RIFT_AUTO_REOPEN=<file> + RIFT_AUTO_REOPEN_AT=<secs>
+    // schedule a loadVideo() to validate the same rearm on file change.
     // Permite verificar el pipeline de reproducción/interpolación sin interacción
     // GUI (NSOpenPanel no funciona en corridas headless — ver AGENTS.md).
     init() {
-        guard let path = ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
+        let env = ProcessInfo.processInfo.environment
+        guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
+        let seekAt = env["RIFT_AUTO_SEEK_AT"].flatMap(Double.init)
+        let seekTo = env["RIFT_AUTO_SEEK_TO"].flatMap(Double.init)
+        let reopenAt = env["RIFT_AUTO_REOPEN_AT"].flatMap(Double.init)
+        let reopenURL = env["RIFT_AUTO_REOPEN"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard let self else { return }
             print("RIFT_AUTO_OPEN → loadVideo \(url.lastPathComponent)")
             self.loadVideo(url)
+            if let seekAt, let seekTo {
+                try? await Task.sleep(nanoseconds: UInt64(seekAt * 1e9))
+                guard !Task.isCancelled else { return }
+                os_log("RIFT_AUTO_SEEK_AT → seek(to: %.0f)", log: benchLog, type: .info, seekTo)
+                self.seek(to: seekTo)
+            }
+            if let reopenAt, let reopenURL {
+                try? await Task.sleep(nanoseconds: UInt64(reopenAt * 1e9))
+                guard !Task.isCancelled else { return }
+                os_log("RIFT_AUTO_REOPEN_AT → loadVideo %{public}@", log: benchLog, type: .info, reopenURL.lastPathComponent)
+                self.loadVideo(reopenURL)
+            }
         }
     }
 
