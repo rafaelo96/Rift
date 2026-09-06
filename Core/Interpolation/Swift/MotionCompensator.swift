@@ -100,7 +100,7 @@ public final class MotionCompensator {
         }
 
         do {
-            self.warp = try WarpEngine(device: device)
+            self.warp = try WarpEngine(msl: warpShadersMSL)
         } catch {
             throw Error.warpInitFailed("\(error)")
         }
@@ -138,7 +138,7 @@ public final class MotionCompensator {
 
         let g = me.grids[0]
         let warpStart = DispatchTime.now().uptimeNanoseconds
-        let pb = warp.interpolatePixelBuffer(
+        let (pb, gpuWarpMS) = warp.interpolatePixelBuffer(
             I0: I0, I1: I1,
             mv: mvField,
             gridW: g.w, gridH: g.h,
@@ -146,9 +146,9 @@ public final class MotionCompensator {
             t: t,
             occThresh: 1.0
         )
-        let warpMS = Double(DispatchTime.now().uptimeNanoseconds - warpStart) / 1_000_000.0
-        _ = pairTimes // reservado para diagnóstico futuro (stages por nivel)
-        return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: warpMS)
+        let totalWarpMS = Double(DispatchTime.now().uptimeNanoseconds - warpStart) / 1_000_000.0
+        _ = pairTimes
+        return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: totalWarpMS)
     }
 
     // MARK: - Luma extraction + downscale (host)
