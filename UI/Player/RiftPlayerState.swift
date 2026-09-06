@@ -95,6 +95,35 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private let interpolationWarmupPairs = 5
     /// Moving-average window for the budget gate (post-warmup).
     private let interpolationTimingWindow = 10
+
+    // MARK: - Throughput deficit gate (pairs/s measurement)
+    /// Seconds of pair-completion timestamps kept for the sliding window.
+    private let throughputWindowSeconds = 3.0
+    /// Minimum pairs/s to consider the pipeline keeping up with realtime.
+    /// Expressed as fraction of source framerate: 0.95× ≈ 22.8 pairs/s for 24fps.
+    /// Triggers only after `throughputRequiredWeakWindows` consecutive evaluations.
+    private let throughputMinRatio = 0.95
+    /// Number of consecutive weak evaluations (each spanning `throughputWindowSeconds`)
+    /// before the gate fires (avoids reacting to a single isolated burst).
+    private let throughputRequiredWeakWindows = 2
+    /// Seconds after the first completed pair before any evaluation runs.
+    /// The interp pipeline is slow to reach steady state (decoder cold start,
+    /// Metal shader JIT, initial pool fill), so early windows read artificially
+    /// low and must not trip the gate (measured: false-positive at ~6s on 1080p).
+    private let throughputSkipStartupSeconds = 8.0
+    /// Wall-clock of the first completed pair (arms the startup skip).
+    private var firstPairCompletedAt: UInt64 = 0
+    /// Wall-clock timestamps of recently completed pair iterations.
+    private var pairCompletionTimes: [UInt64] = []
+    /// Consecutive weak windows observed (reset when a good window is seen).
+    private var weakThroughputWindows = 0
+    /// Last evaluation wall-clock (uptimeNanoseconds).
+    private var lastThroughputEval: UInt64 = 0
+    /// Mode the user requested before a fallback disabled interpolation;
+    /// non-nil only while fallbackDisabled is true. Used for re-attempt
+    /// after seek/load (reintento automático).
+    private var fallbackFailedMode: InterpolationMode?
+
     /// Paridad del par actual para el patrón 3:2 de 60fps (pares → 1 interp,
     /// impares → 2 interps). Se resetea en seek/load para empezar el patrón limpio.
     private var interpPairIndex = 0
@@ -145,6 +174,103 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpPairIndex = 0
         interpSinglePairCount = 0
         interpDoublePairCount = 0
+        // Throughput gate: clean slate for the new evaluation window.
+        pairCompletionTimes = []
+        weakThroughputWindows = 0
+        lastThroughputEval = 0
+        firstPairCompletedAt = 0
+    }
+
+    // MARK: - Fallback shared helpers
+
+    /// Desactiva la interpolación por una razón dada (coste o throughput),
+    /// guardando el modo solicitado para reintento tras seek/load.
+    private func disableInterpolation(reason: String) {
+        let was = interpolationMode
+        if was != .disabled { fallbackFailedMode = was }
+        interpolationMode = .disabled
+        scheduler?.setMode(.native24)
+        isArtificialInterpolationActive = false
+        fallbackDisabled = true
+        os_log("Interpolation fallback: %{public}@", log: benchLog, type: .default, reason)
+    }
+
+    /// Tras un fallback, si el usuario vuelve a dar seek o cambia de archivo
+    /// se reintenta automáticamente el modo que estaba activo antes del fallback.
+    private func rearmFallbackInterpolation() {
+        guard fallbackDisabled, let m = fallbackFailedMode, m != .disabled else { return }
+        os_log("Reintento Frame+ tras degradación: modo %{public}@", log: benchLog, type: .default, m.rawValue)
+        setInterpolationMode(m)
+    }
+
+    // MARK: - Throughput measurement (pairs/s)
+
+    private func resetThroughputWindow() {
+        pairCompletionTimes = []
+        weakThroughputWindows = 0
+        lastThroughputEval = 0
+        firstPairCompletedAt = 0
+    }
+
+    /// Llamar tras consumir (interpolar+encolar) un par con éxito.
+    /// Mide pares/s sostenidos; si cae por debajo del umbral durante
+    /// `throughputRequiredWeakWindows` evaluaciones consecutivas, desactiva
+    /// la interpolación para evitar drift A/V acumulativo.
+    private func notePairCompleted() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        if firstPairCompletedAt == 0 { firstPairCompletedAt = now }
+        pairCompletionTimes.append(now)
+        let cutoff = now - UInt64(throughputWindowSeconds * 1e9)
+        pairCompletionTimes.removeAll { $0 < cutoff }
+
+        // Evaluar solo después del warm-up, de los pares de arranque y de que la
+        // ventana tenga datos.
+        guard interpolationPairCount > interpolationWarmupPairs,
+              now - lastThroughputEval >= UInt64(throughputWindowSeconds * 1e9) else { return }
+        lastThroughputEval = now
+
+        let windowStart = pairCompletionTimes.first ?? now
+        let span = Double(now - windowStart) / 1e9
+        guard span >= 1.0 else { return }
+        let pps = Double(pairCompletionTimes.count) / span
+        let realtimeRate = sourceFrameRate ?? 24.0
+        let minPPS = realtimeRate * throughputMinRatio
+
+        // No armar el gate durante la rampa de arranque del pipeline (decoder/
+        // shaders/fill): medir ahí pares/s bajos es ruido, no un déficit real.
+        let elapsedSinceFirst = Double(now - firstPairCompletedAt) / 1e9
+        guard elapsedSinceFirst >= throughputSkipStartupSeconds else { return }
+
+        os_log("Throughput: %.1f pares/s (mín %.1f, ventana %.1fs, weak %d/%d)",
+               log: benchLog, type: .info, pps, minPPS, span,
+               weakThroughputWindows, throughputRequiredWeakWindows)
+
+        if pps < minPPS {
+            weakThroughputWindows += 1
+        } else {
+            weakThroughputWindows = 0
+        }
+        if weakThroughputWindows >= throughputRequiredWeakWindows {
+            weakThroughputWindows = 0
+            disableInterpolation(reason: String(format: "throughput sostenido %.1f pares/s < %.1f (realtime)",
+                                               pps, minPPS))
+        }
+    }
+
+    // MARK: - Test harness (headless GUI-channel validation)
+    // RIFT_AUTO_OPEN=<file> opens a video at launch; RIFT_AUTO_MODE=<mode>
+    // force-activates an interpolation mode. Inert without the env vars.
+    // Permite verificar el pipeline de reproducción/interpolación sin interacción
+    // GUI (NSOpenPanel no funciona en corridas headless — ver AGENTS.md).
+    init() {
+        guard let path = ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard let self else { return }
+            print("RIFT_AUTO_OPEN → loadVideo \(url.lastPathComponent)")
+            self.loadVideo(url)
+        }
     }
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
@@ -236,6 +362,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         lastShownFrames.removeAll()
         isArtificialInterpolationActive = false
         isFramePlusPreparing = false
+        // Reintento: si Frame+ había caído por fallback y el usuario hace seek,
+        // volver a armarlo (el seek libera el pipeline; si sigue lento, caerá de nuevo).
+        rearmFallbackInterpolation()
         resetInterpolationCounters()
         if let url = sourceURL, let aTrack = audioTrack {
             startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
@@ -284,6 +413,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         lastShownFrames.removeAll()
         isArtificialInterpolationActive = false
         isFramePlusPreparing = false
+        fallbackFailedMode = nil          // fresh user choice clears any pending re-arm
         resetInterpolationCounters()
         syncSchedulerMode()
     }
@@ -336,6 +466,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
+        rearmFallbackInterpolation()
         resetInterpolationCounters()
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
@@ -824,12 +955,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                    recentPairTimings.count, interpolationTimingWindow, avg, tValues.count,
                    measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
             if avg > budgetThreshold {
-                os_log("interpolatePair: moving avg %.1fms/frame exceeds %.1fms budget; falling back to native playback",
-                       log: benchLog, type: .default, avg, budgetThreshold)
-                interpolationMode = .disabled
-                scheduler?.setMode(.native24)
-                isArtificialInterpolationActive = false
-                fallbackDisabled = true
+                disableInterpolation(reason: String(format: "coste medio %.1fms/frame > presupuesto %.1fms", avg, budgetThreshold))
                 return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
             }
         }
@@ -846,6 +972,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func startDisplayLoop() {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
+        // Test harness: arrancar con un modo de interpolación forzado (inert sin env var).
+        if let raw = ProcessInfo.processInfo.environment["RIFT_AUTO_MODE"],
+           let m = InterpolationMode(rawValue: raw), m != .disabled, interpolationMode == .disabled {
+            os_log("RIFT_AUTO_MODE=%{public}@ → activando interpolación", log: benchLog, type: .info, raw)
+            self.setInterpolationMode(m)
+        }
         if let sched = scheduler, sched.synchronizer.rate == 0 {
             sched.synchronizer.setRate(1.0, time: CMTime(seconds: currentTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
@@ -862,6 +994,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 // Si está pausado, no consumir el pool ni encolar nada —
                 // el synchronizer detiene la presentación con rate=0.
                 if sched.synchronizer.rate == 0 {
+                    self.resetThroughputWindow()
                     try? await Task.sleep(nanoseconds: 50_000_000)
                     continue
                 }
@@ -943,6 +1076,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         interpDoublePairCount += 1
                     }
                     pool.consumePair()
+                    // Déficit de throughput sostenido (pares/s < realtime) → fallback.
+                    self.notePairCompleted()
                     await self.coordinator.signal()
                 }
                 let workEnd = DispatchTime.now().uptimeNanoseconds
