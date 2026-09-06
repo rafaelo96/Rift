@@ -85,7 +85,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     // MARK: - Interpolation benchmark (baseline del display loop)
     private var benchSamples: [Double] = []
+    private var meSamples: [Double] = []
+    private var warpSamples: [Double] = []
     private let benchLog = OSLog(subsystem: "com.rift.player", category: "InterpolationBench")
+
+    /// Avg/p99 de una ventana de muestras. Helper compartido entre los dos modos.
+    private nonisolated static func summary(samples: [Double]) -> (avg: Double, p99: Double) {
+        guard !samples.isEmpty else { return (0, 0) }
+        let avg = samples.reduce(0, +) / Double(samples.count)
+        let sorted = samples.sorted()
+        let p99 = sorted[Int(Double(sorted.count - 1) * 0.99)]
+        return (avg, p99)
+    }
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
     // frecuentes; si no está, se usa streamTitle o índice como fallback.
@@ -729,7 +740,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
                     // Frame interpolado a t=0.5. Si falla (contenido problemático),
                     // seguimos mostrando solo I0/I1 sin interp — no rompemos reproducción.
-                    if let interpPB = comp.interpolate(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5) {
+                    // Usamos interpolateWithTimings para loguear el costo real del ME
+                    // y del warp por separado (necesario para diagnosticar si cabe en
+                    // presupuesto en el chip del usuario; AGENTS.md: no generalizar).
+                    let interpResult = comp.interpolateWithTimings(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
+                    meSamples.append(interpResult.meMS)
+                    warpSamples.append(interpResult.warpMS)
+                    if let interpPB = interpResult.pixelBuffer {
                         self.enqueueForDisplay(rend: rend, pixelBuffer: interpPB,
                                                pts: CMTime(seconds: midPts, preferredTimescale: timescale),
                                                duration: CMTime(seconds: halfDur, preferredTimescale: timescale))
@@ -747,11 +764,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let frameTimeMs = Double(workEnd - workStart) / 1_000_000
                     benchSamples.append(frameTimeMs)
                     if benchSamples.count >= 60 {
-                        let avg = benchSamples.reduce(0, +) / Double(benchSamples.count)
-                        let sorted = benchSamples.sorted()
-                        let p99 = sorted[Int(Double(sorted.count - 1) * 0.99)]
-                        os_log("DisplayLoop motion2x: avg=%.2fms p99=%.2fms samples=%d", log: benchLog, type: .info, avg, p99, benchSamples.count)
+                        let pair = Self.summary(samples: benchSamples)
+                        let me = Self.summary(samples: meSamples)
+                        let warp = Self.summary(samples: warpSamples)
+                        // pair cubre TODO el trabajo por par (pacer + enqueue x3 +
+                        // ME + warp); ME y warp reportados por separado. El caller
+                        // puede comparar contra el presupuesto del par siguiente
+                        // (~pairDur/2 a 24fps ≈ 20.8ms).
+                        os_log("DisplayLoop motion2x: pair avg=%.2fms p99=%.2fms  ME avg=%.2fms p99=%.2fms  warp avg=%.2fms p99=%.2fms  samples=%d",
+                               log: benchLog, type: .info,
+                               pair.avg, pair.p99, me.avg, me.p99, warp.avg, warp.p99, benchSamples.count)
                         benchSamples.removeAll()
+                        meSamples.removeAll()
+                        warpSamples.removeAll()
                     }
                     // 3 frames encolados por par (I0 + interp + I1) → 3 signals al
                     // coordinator para mantener el ritmo del decode loop.

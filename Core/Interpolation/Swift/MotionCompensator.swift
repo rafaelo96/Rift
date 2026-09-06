@@ -2,6 +2,22 @@ import Foundation
 import Metal
 import CoreVideo
 
+/// Resultado de una llamada a `interpolateWithTimings`: el buffer interpolado
+/// (preservando attachments HDR del I0) más los tiempos medidos en GPU del ME
+/// y del warp. Los tiempos son wall-clock del proceso Swift (cubren host +
+/// comando Metal + GPU), no son GPU-pure.
+public struct InterpolationResult {
+    public let pixelBuffer: CVPixelBuffer?
+    public let meMS: Double
+    public let warpMS: Double
+
+    public init(pixelBuffer: CVPixelBuffer?, meMS: Double, warpMS: Double) {
+        self.pixelBuffer = pixelBuffer
+        self.meMS = meMS
+        self.warpMS = warpMS
+    }
+}
+
 // MARK: - MotionCompensator
 //
 // Punto de entrada público del módulo Interpolation. Envuelve MotionSearchEngine
@@ -95,16 +111,34 @@ public final class MotionCompensator {
     /// `WarpEngine.interpolatePixelBuffer`. Retorna nil si el par es inválido o
     /// si ocurre un fallo en el pipeline.
     public func interpolate(I0: CVPixelBuffer, I1: CVPixelBuffer, t: Float) -> CVPixelBuffer? {
+        interpolateWithTimings(I0: I0, I1: I1, t: t).pixelBuffer
+    }
+
+    /// Variante de `interpolate` que además reporta los tiempos medidos en GPU
+    /// del ME (motion estimation, jerarquía piramidal completa) y del warp
+    /// (backward-warp + occlusion blend + re-ensamblado del CVPixelBuffer con
+    /// attachments HDR). Útil para instrumentación en producción — el caller
+    /// puede loguear avg/p99 y verificar que cabe en el presupuesto de tiempo
+    /// real del frame siguiente sin generalizar entre chips.
+    public func interpolateWithTimings(I0: CVPixelBuffer, I1: CVPixelBuffer, t: Float) -> InterpolationResult {
         guard let luma0 = scaledLuma(I0),
-              let luma1 = scaledLuma(I1) else { return nil }
+              let luma1 = scaledLuma(I1) else {
+            return InterpolationResult(pixelBuffer: nil, meMS: 0, warpMS: 0)
+        }
 
         // ME: pyramidal block matching, half-pel MVs al nivel L0.
-        let _ = me.runPair(cur: luma0, ref: luma1)
+        let meStart = DispatchTime.now().uptimeNanoseconds
+        let pairTimes = me.runPair(cur: luma0, ref: luma1)
+        let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
+
         let mvField = me.downloadMV(level: 0, smoothed: true)
-        guard !mvField.isEmpty else { return nil }
+        guard !mvField.isEmpty else {
+            return InterpolationResult(pixelBuffer: nil, meMS: meMS, warpMS: 0)
+        }
 
         let g = me.grids[0]
-        return warp.interpolatePixelBuffer(
+        let warpStart = DispatchTime.now().uptimeNanoseconds
+        let pb = warp.interpolatePixelBuffer(
             I0: I0, I1: I1,
             mv: mvField,
             gridW: g.w, gridH: g.h,
@@ -112,6 +146,9 @@ public final class MotionCompensator {
             t: t,
             occThresh: 1.0
         )
+        let warpMS = Double(DispatchTime.now().uptimeNanoseconds - warpStart) / 1_000_000.0
+        _ = pairTimes // reservado para diagnóstico futuro (stages por nivel)
+        return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: warpMS)
     }
 
     // MARK: - Luma extraction + downscale (host)
