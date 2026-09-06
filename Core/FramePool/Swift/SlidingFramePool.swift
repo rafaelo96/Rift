@@ -73,6 +73,25 @@ public final class SlidingFramePool {
         return result
     }
 
+    /// Reserva los dos frames más antiguos SIN removerlos del pool (el pool NO
+    /// usa lock; se asume acceso serializado como el resto de las operaciones).
+    /// El llamador debe invocar `consumePair()` solo DESPUÉS de haber encolado
+    /// todos los frames derivados del par (originales + interpolados).
+    /// - Returns: (I0, I1) si hay al menos 2 frames, nil en caso contrario.
+    public func reservePair() -> (Frame, Frame)? {
+        guard storage.count >= 2 else { return nil }
+        return (storage[0], storage[1])
+    }
+
+    /// Consume el frame más antiguo del pool, liberando su slot. Debe llamarse
+    /// DESPUÉS de que todos los frames derivados del par (originales +
+    /// interpolados) hayan sido encolados en el display layer. No hace nada si
+    /// el pool está vacío.
+    public func consumePair() {
+        guard !storage.isEmpty else { return }
+        storage.removeFirst()
+    }
+
     /// Removes the oldest frame from the window and returns it.
     /// Use after `oldest()` to consume the frame and allow the next
     /// `oldest()` call to return the following frame.
