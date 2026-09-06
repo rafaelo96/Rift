@@ -71,6 +71,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Bloqueo para asegurar que solo haya 1 frame interpolándose a la vez.
     /// Evita saturar la GPU y sobreescribir los recursos Metal del compensator.
     private var isInterpolating = false
+    /// Pairs interpolated since the last mode change / seek. Budget check is
+    /// skipped during the first `interpolationWarmupPairs` to let Metal JIT
+    /// and first-time buffer allocations settle.
+    private var interpolationPairCount = 0
+    /// Wall-clock ms of each post-warmup pair (capped window of last 10).
+    /// Fallback triggers only when the *moving average* exceeds budget,
+    /// preventing a single outlier (GC, thermal blip) from killing Frame+.
+    private var recentPairTimings: [Double] = []
+    /// If Frame+ was disabled by sustained fallback, allow re-attempt
+    /// after a user-initiated seek or mode change.
+    private var fallbackDisabled = false
+    /// Number of interpolated pairs to skip before the budget gate activates.
+    private let interpolationWarmupPairs = 5
+    /// Moving-average window for the budget gate (post-warmup).
+    private let interpolationTimingWindow = 10
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
@@ -103,6 +118,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let sorted = samples.sorted()
         let p99 = sorted[Int(Double(sorted.count - 1) * 0.99)]
         return (avg, p99)
+    }
+
+    /// Reset warm-up counter + timing window. Called on mode change, seek, or
+    /// file open — gives Frame+ a fresh chance to measure sustained cost.
+    private func resetInterpolationCounters() {
+        interpolationPairCount = 0
+        recentPairTimings = []
+        fallbackDisabled = false
     }
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
@@ -191,6 +214,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let sched = scheduler {
             sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: CMTime(seconds: time, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
+        lastShownFrames.removeAll()
+        isArtificialInterpolationActive = false
+        isFramePlusPreparing = false
+        resetInterpolationCounters()
         if let url = sourceURL, let aTrack = audioTrack {
             startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
         }
@@ -219,7 +246,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         demuxer?.close(); decoder?.close()
         demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
         compensator = nil
+        lastShownFrames.removeAll()
         isInterpolating = false
+        isFramePlusPreparing = false
+        isArtificialInterpolationActive = false
         audioDecoder = nil; audioRenderer = nil; audioTrack = nil
         audioTrackInfos = [:]
         sourceURL = nil
@@ -231,9 +261,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) {
         interpolationMode = m
-        // Forzar re-inicialización lazy del motor en el próximo par — evita que
-        // un cambio de modo en vivo use un compensator con configuración vieja.
+        scheduler?.setMode(m == .disabled ? .native24 : .interpolated48)
         compensator = nil
+        lastShownFrames.removeAll()
+        isArtificialInterpolationActive = false
+        isFramePlusPreparing = false
+        resetInterpolationCounters()
     }
     func selectAudioTrack(_ streamIndex: Int) {
         guard streamIndex != selectedAudioTrackIndex else { return }
@@ -270,6 +303,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
+        resetInterpolationCounters()
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -694,57 +728,67 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Spawn de un interpolador en background para el par (I0, I1). El resultado se encola
     /// solo si sigue siendo válido (pts aún no pasado por el synchronizer).
     /// Sin tocar el display loop ni el pool — el loop nativo mantiene su ciclo.
-    private func spawnInterpolatedPair(i0: Frame, i1: Frame) {
-        guard interpolationMode != .disabled else { return }
-        guard !isInterpolating else { return }
+    private func interpolatePair(i0: Frame, i1: Frame) async -> CVPixelBuffer? {
+        guard interpolationMode != .disabled, !isInterpolating else { return nil }
         if compensator == nil {
             do {
-                let created = try MotionCompensator(config: .default)
-                compensator = created
+                compensator = try MotionCompensator(config: .default)
             } catch {
-                return
+                os_log("interpolatePair: failed to init MotionCompensator: %{public}@",
+                       log: benchLog, type: .error, String(describing: error))
+                return nil
             }
         }
-        guard let comp = compensator else { return }
+        guard let comp = compensator else { return nil }
 
         isInterpolating = true
-        Task.detached { @Sendable [benchLog] in
-            let t0 = DispatchTime.now().uptimeNanoseconds
-            let interp = comp.interpolate(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
-            let interpMs = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000.0
+        isFramePlusPreparing = true
+        let measured = await Task.detached { @Sendable in
+            let started = DispatchTime.now().uptimeNanoseconds
+            let result = comp.interpolateWithTimings(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
+            let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000.0
+            return (result, elapsed)
+        }.value
+        isInterpolating = false
+        isFramePlusPreparing = false
+        interpolationPairCount += 1
 
-            // Calcula el pts del frame interpolado (entre I0 e I1)
-            let midPTS = i0.pts + (i1.pts - i0.pts) * 0.5
-            let dur = (i1.pts - i0.pts) * 0.5
+        let frameBudgetMS = 1_000.0 / max(sourceFrameRate ?? 24.0, 24.0)
+        let budgetThreshold = frameBudgetMS * 0.90
 
-            guard let pb = interp else {
-                os_log("spawnInterp: interpolate returned nil after %.1fms (i0=%.3f i1=%.3f)",
-                       log: benchLog, type: .error, interpMs, i0.pts, i1.pts)
-                await MainActor.run { [weak self] in self?.isInterpolating = false }
-                return
+        if interpolationPairCount <= interpolationWarmupPairs {
+            os_log("interpolatePair [warm-up %d/%d]: %.1fms (ME: %.1f Warp: %.1f)",
+                   log: benchLog, type: .info,
+                   interpolationPairCount, interpolationWarmupPairs,
+                   measured.1, measured.0.meMS, measured.0.warpMS)
+        } else {
+            recentPairTimings.append(measured.1)
+            if recentPairTimings.count > interpolationTimingWindow {
+                recentPairTimings.removeFirst()
             }
-
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.isInterpolating = false
-                
-                guard let sbuf = self.renderer?.sampleBuffer(from: pb, pts: CMTime(seconds: midPTS, preferredTimescale: 600), duration: CMTime(seconds: dur, preferredTimescale: 600)) else { return }
-
-                let clockNow = self.scheduler?.synchronizer.currentTime().seconds ?? midPTS
-                let late = midPTS < clockNow
-                os_log("spawnInterp: %.1fms  midPTS=%.3f  clock=%.3f  %{public}@",
-                       log: benchLog, type: .info, interpMs, midPTS, clockNow,
-                       late ? "LATE→discard" : "OK→enqueue")
-
-                guard !late else { return }
-
-                self.markDisplayImmediately(sbuf)
-                self.renderer?.displayLayer.enqueue(sbuf)
-                if !self.isArtificialInterpolationActive {
-                    self.isArtificialInterpolationActive = true
-                }
+            let avg = recentPairTimings.reduce(0, +) / Double(recentPairTimings.count)
+            os_log("interpolatePair [%d/%d avg %.1fms]: %.1fms (ME: %.1f Warp: %.1f)",
+                   log: benchLog, type: .info,
+                   recentPairTimings.count, interpolationTimingWindow, avg,
+                   measured.1, measured.0.meMS, measured.0.warpMS)
+            if avg > budgetThreshold {
+                os_log("interpolatePair: moving avg %.1fms exceeds %.1fms budget; falling back to native playback",
+                       log: benchLog, type: .default, avg, budgetThreshold)
+                interpolationMode = .disabled
+                scheduler?.setMode(.native24)
+                isArtificialInterpolationActive = false
+                fallbackDisabled = true
+                return nil
             }
         }
+
+        if measured.0.pixelBuffer != nil {
+            isArtificialInterpolationActive = true
+        } else {
+            os_log("interpolatePair: no output buffer; Frame+ remains waiting",
+                   log: benchLog, type: .error)
+        }
+        return measured.0.pixelBuffer
     }
 
     private func startDisplayLoop() {
@@ -756,6 +800,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            var hasPresentedInterpolatedStart = false
             while true {
                 if Task.isCancelled { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
@@ -768,23 +813,54 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try? await Task.sleep(nanoseconds: 50_000_000)
                     continue
                 }
-                // Consumir el frame más viejo de la ventana deslizante.
-                let f = pool.oldest() ?? {
-                    return Optional<Frame>.none
-                }()
-                guard let f else {
-                    try? await Task.sleep(nanoseconds: 10_000_000)
-                    continue
-                }
-                await self.waitUntilDisplayClock(atLeast: f.pts)
-                if Task.isCancelled { break }
                 let workStart = DispatchTime.now().uptimeNanoseconds
-                let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
-                let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
-                if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
-                    self.markDisplayImmediately(sbuf)
-                    rend.displayLayer.enqueue(sbuf)
-                    pool.removeFirst()
+                if self.interpolationMode == .disabled {
+                    guard let f = pool.oldest() else {
+                        try? await Task.sleep(nanoseconds: 10_000_000)
+                        continue
+                    }
+                    await self.waitUntilDisplayClock(atLeast: f.pts)
+                    if Task.isCancelled { break }
+                    let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
+                    let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
+                    if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                        self.markDisplayImmediately(sbuf)
+                        rend.displayLayer.enqueue(sbuf)
+                        pool.removeFirst()
+                    }
+                    await self.coordinator.signal()
+                } else {
+                    guard let pair = pool.reservePair() else {
+                        try? await Task.sleep(nanoseconds: 10_000_000)
+                        continue
+                    }
+                    let first = pair.0
+                    let second = pair.1
+                    let delta = max(second.pts - first.pts, 1.0 / 24.0)
+
+                    let interpolated = await self.interpolatePair(i0: first, i1: second)
+                    let halfDuration = CMTime(seconds: delta * 0.5, preferredTimescale: 600)
+                    if !hasPresentedInterpolatedStart {
+                        if let sbuf = rend.sampleBuffer(from: first.pixelBuffer,
+                                                        pts: CMTime(seconds: first.pts, preferredTimescale: 600),
+                                                        duration: halfDuration) {
+                            rend.displayLayer.enqueue(sbuf)
+                            hasPresentedInterpolatedStart = true
+                        }
+                    }
+                    if let interpolated,
+                       let sbuf = rend.sampleBuffer(from: interpolated,
+                                                    pts: CMTime(seconds: first.pts + delta * 0.5, preferredTimescale: 600),
+                                                    duration: halfDuration) {
+                        rend.displayLayer.enqueue(sbuf)
+                    }
+                    if let sbuf = rend.sampleBuffer(from: second.pixelBuffer,
+                                                    pts: CMTime(seconds: second.pts, preferredTimescale: 600),
+                                                    duration: halfDuration) {
+                        rend.displayLayer.enqueue(sbuf)
+                    }
+                    pool.consumePair()
+                    await self.coordinator.signal()
                 }
                 let workEnd = DispatchTime.now().uptimeNanoseconds
                 let frameTimeMs = Double(workEnd - workStart) / 1_000_000
@@ -796,24 +872,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     os_log("DisplayLoop baseline: avg=%.2fms p99=%.2fms samples=%d", log: benchLog, type: .info, avg, p99, benchSamples.count)
                     benchSamples.removeAll()
                 }
-                await self.coordinator.signal()
                 if Task.isCancelled { break }
-
-                // --- Interpolation helper (background, non-blocking) ---
-                // Sólo si la interpolación está activada y la lógica está legal.
-                // No remueves del pool — el pool sigue fluyendo a su ritmo nativo.
-                if self.interpolationMode != .disabled {
-                    // Mantén los últimos 2 frames mostrados (sin tocar el pool).
-                    var frames = self.lastShownFrames
-                    frames.append(f)  // f es no-optional, siempre existe aquí
-                    if frames.count > 2 { frames.removeFirst() }
-                    self.lastShownFrames = frames
-
-                    // Si tenemos al menos 2 pares, compute el frame interpolado.
-                    if frames.count == 2, let i0 = frames.first, let i1 = frames.last {
-                        await self.spawnInterpolatedPair(i0: i0, i1: i1)
-                    }
-                }
 
             }
         }

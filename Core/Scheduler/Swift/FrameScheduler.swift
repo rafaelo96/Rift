@@ -22,6 +22,10 @@ public final class FrameScheduler {
         self.timescale = timescale
     }
 
+    public func setMode(_ mode: SchedulerFPSMode) {
+        self.mode = mode
+    }
+
     // MARK: - Schedule generation (pure, testable)
 
     public func schedule(frames: [(pts: Double, duration: Double)]) -> [ScheduledFrame] {
