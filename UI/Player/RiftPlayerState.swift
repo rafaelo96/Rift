@@ -702,21 +702,31 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         guard let comp = compensator else { return }
 
-        Task.detached { @Sendable in
+        Task.detached { @Sendable [benchLog] in
+            let t0 = DispatchTime.now().uptimeNanoseconds
             let interp = comp.interpolate(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
-            guard let pb = interp else { return }
+            let interpMs = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000.0
 
             // Calcula el pts del frame interpolado (entre I0 e I1)
             let midPTS = i0.pts + (i1.pts - i0.pts) * 0.5
             let dur = (i1.pts - i0.pts) * 0.5
 
+            guard let pb = interp else {
+                os_log("spawnInterp: interpolate returned nil after %.1fms (i0=%.3f i1=%.3f)",
+                       log: benchLog, type: .error, interpMs, i0.pts, i1.pts)
+                return
+            }
+
             await MainActor.run { [weak self] in
                 guard let self, let sbuf = self.renderer?.sampleBuffer(from: pb, pts: CMTime(seconds: midPTS, preferredTimescale: 600), duration: CMTime(seconds: dur, preferredTimescale: 600)) else { return }
 
-                // Guarda: verifica si el clock aún está atrás del pts para no dejar
-                // frames "muertos" acumulándose (stale check mínima).
                 let clockNow = self.scheduler?.synchronizer.currentTime().seconds ?? midPTS
-                guard midPTS >= clockNow else { return }
+                let late = midPTS < clockNow
+                os_log("spawnInterp: %.1fms  midPTS=%.3f  clock=%.3f  %{public}@",
+                       log: benchLog, type: .info, interpMs, midPTS, clockNow,
+                       late ? "LATE→discard" : "OK→enqueue")
+
+                guard !late else { return }
 
                 self.markDisplayImmediately(sbuf)
                 self.renderer?.displayLayer.enqueue(sbuf)
