@@ -159,6 +159,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var audioTask: Task<Void, Never>?
     private var consumerTimer: Timer?
     private var currentTimeTimer: Timer?
+    private var fpsTimer: Timer?
+    private var enqueuedFramesInWindow: Int = 0
+    private var fpsWindowStart: DispatchTime = .now()
     private var sourceURL: URL?
     private var subtitleTrack: TrackInfo?
     private var subtitleCues: [SubtitleCue] = []
@@ -193,6 +196,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         weakThroughputWindows = 0
         lastThroughputEval = 0
         firstPairCompletedAt = 0
+        // Estados de UI: transición real (seek/load/modo) → fuera de "60fps ready"
+        // y de artificial activo; volvemos a "Preparing HQ" si hay modo activo, y
+        // el warm-up pasará a "60fps ready" al completarse el 6º par.
+        isFramePlusPreRendered = false
+        isArtificialInterpolationActive = false
+        isFramePlusPreparing = interpolationMode != .disabled
+
     }
 
     // MARK: - Fallback shared helpers
@@ -203,7 +213,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let was = interpolationMode
         interpolationMode = .disabled
         scheduler?.setMode(.native24)
+        // Al degradar a nativo hay que salir de "60fps ready": framePlusStateTitle
+        // evalúa isFramePlusPreRendered ANTES que interpolationMode == .disabled,
+        // así que sin esta limpieza el texto quedaría pegado pese a estar desactivado.
         isArtificialInterpolationActive = false
+        isFramePlusPreRendered = false
+        isFramePlusPreparing = false
         fallbackDisabled = true
         if was != .disabled {
             fallbackFailedMode = was
@@ -371,10 +386,46 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.updateActiveSubtitle(at: self.currentTime)
                 }
             }
+            fpsTimer?.invalidate()
+            fpsTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                Task { @MainActor [weak self] in
+                    self?.updateRenderingFPS()
+                }
+            }
         } else {
-            currentTimeTimer?.invalidate()
-            currentTimeTimer = nil
+            currentTimeTimer?.invalidate(); currentTimeTimer = nil
+            fpsTimer?.invalidate(); fpsTimer = nil
+            enqueuedFramesInWindow = 0
+            fpsWindowStart = .now()
         }
+    }
+
+    /// Contador de FPS de presentación (readout estable).
+    /// Antes displayRenderingFPS era una constante fija en 24 que jamás reflejaba
+    /// el modo real. Ahora el valor nominal depende del modo del scheduler
+    /// (24 nativo / 48 / 60 interpolado) y solo se reemplaza por el throughput
+    /// medido si la ventana de 1s no sostiene al menos la mitad del nominal
+    /// (pipeline trabado/degradado): así el readout es estable mientras reproduce
+    /// normal y revela el fallo si ya no alcanza. Con rate==0 (pausa) no se
+    /// computa ni se pisa el valor mostrado.
+    private func updateRenderingFPS() {
+        guard scheduler?.synchronizer.rate != 0 else { return }
+        let nominal: Double
+        switch scheduler?.mode {
+        case .interpolated48: nominal = 48.0
+        case .interpolated60: nominal = 60.0
+        default: nominal = sourceFrameRate ?? 24.0
+        }
+        let elapsed = DispatchTime.now().uptimeNanoseconds - fpsWindowStart.uptimeNanoseconds
+        guard elapsed >= UInt64(1.0 * 1e9) else { return }
+        let measured = Double(enqueuedFramesInWindow) / 1.0
+        let shown = measured >= nominal * 0.5 ? nominal : measured
+        if abs(shown - displayRenderingFPS) >= 0.5 || shown == 0 {
+            displayRenderingFPS = shown
+        }
+        enqueuedFramesInWindow = 0
+        fpsWindowStart = .now()
     }
     private func updateActiveSubtitle(at time: Double) {
         let active = subtitleCues.first { cue in
@@ -426,6 +477,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         displayTask?.cancel(); displayTask = nil
         consumerTimer?.invalidate(); consumerTimer = nil
         currentTimeTimer?.invalidate(); currentTimeTimer = nil
+        fpsTimer?.invalidate(); fpsTimer = nil
         if let sched = scheduler {
             sched.synchronizer.setRate(0, time: .zero)
         }
@@ -451,8 +503,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpolationMode = m
         compensator = nil
         lastShownFrames.removeAll()
+        // Estados de UI por transiciones reales (no por-par): al activar un modo
+        // entramos en la fase de warm-up ("Preparing HQ"); al completarse el 6º
+        // par, interpolatePair pasa a isFramePlusPreRendered ("60fps ready").
         isArtificialInterpolationActive = false
-        isFramePlusPreparing = false
+        isFramePlusPreRendered = false
+        isFramePlusPreparing = m != .disabled
         fallbackFailedMode = nil          // fresh user choice clears any pending re-arm
         resetInterpolationCounters()
         syncSchedulerMode()
@@ -973,7 +1029,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         guard let comp = compensator else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
 
         isInterpolating = true
-        isFramePlusPreparing = true
         let measured = await Task.detached { @Sendable in
             let started = DispatchTime.now().uptimeNanoseconds
             var buffers: [CVPixelBuffer] = []
@@ -990,7 +1045,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             return (buffers: InterpolatedBuffersBox(buffers: buffers), totalMS: elapsed, meMS: meTotal, warpMS: warpTotal)
         }.value
         isInterpolating = false
-        isFramePlusPreparing = false
         interpolationPairCount += 1
 
         // Presupuesto por-frame interpolado, independiente del tipo de par.
@@ -1024,8 +1078,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             }
         }
 
+        // Estados de UI por transiciones reales (no por-par): al completar el
+        // warm-up (6º par, tras pasar el gate de presupuesto) pasamos de
+        // "Preparing HQ" a "60fps ready" una sola vez, y se mantiene hasta una
+        // transición real (seek/load/fallback lo limpian en
+        // resetInterpolationCounters/disableInterpolation). Sin writes por-par →
+        // sin @Published redundante (~24-60 invalidaciones/seg antes).
+        if interpolationPairCount == interpolationWarmupPairs + 1 {
+            isFramePlusPreparing = false
+            isFramePlusPreRendered = true
+        }
+
         if !measured.buffers.buffers.isEmpty {
-            isArtificialInterpolationActive = true
+            if !isArtificialInterpolationActive { isArtificialInterpolationActive = true }
         } else {
             os_log("interpolatePair: no output buffer; Frame+ remains waiting",
                    log: benchLog, type: .error)
@@ -1075,6 +1140,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
                         self.markDisplayImmediately(sbuf)
                         rend.displayLayer.enqueue(sbuf)
+                        self.enqueuedFramesInWindow += 1
                         pool.removeFirst()
                     }
                     await self.coordinator.signal()
@@ -1128,6 +1194,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 600)
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
                             rend.displayLayer.enqueue(sbuf)
+                            self.enqueuedFramesInWindow += 1
                         }
                     }
                     if hasPresentedInterpolatedStart == false, !outputs.isEmpty {
