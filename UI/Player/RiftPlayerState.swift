@@ -31,6 +31,15 @@ actor AsyncSemaphore {
 
 typealias DecodeCoordinator = AsyncSemaphore
 
+/// Wrapper Sendable-safe para los `CVPixelBuffer` generados por interpolación.
+/// CVPixelBuffer (Core Foundation, IOSurface-backed) es seguro de pasar entre
+/// hilos por diseño de VideoToolbox/CoreVideo, pero Swift no puede verificarlo
+/// estáticamente; `@unchecked Sendable` declara explícitamente esa seguridad
+/// cuando los buffers cruzan el límite del detatched task → MainActor.
+private struct InterpolatedBuffersBox: @unchecked Sendable {
+    let buffers: [CVPixelBuffer]
+}
+
 @MainActor
 final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var isPlaying = false
@@ -755,18 +764,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Devuelve los buffers generados + el coste total del par (ME+warp+upscale
     /// de todas las interpolaciones) para el gate de fallback por par.
     private func interpolatePair(i0: Frame, i1: Frame, tValues: [Float])
-        async -> (buffers: [CVPixelBuffer], totalMS: Double, meMS: Double, warpMS: Double) {
-        guard interpolationMode != .disabled, !isInterpolating else { return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0) }
+        async -> (buffers: InterpolatedBuffersBox, totalMS: Double, meMS: Double, warpMS: Double) {
+        guard interpolationMode != .disabled, !isInterpolating else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
         if compensator == nil {
             do {
                 compensator = try MotionCompensator(config: .default)
             } catch {
                 os_log("interpolatePair: failed to init MotionCompensator: %{public}@",
                        log: benchLog, type: .error, String(describing: error))
-                return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0)
+                return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
             }
         }
-        guard let comp = compensator else { return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0) }
+        guard let comp = compensator else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
 
         isInterpolating = true
         isFramePlusPreparing = true
@@ -783,7 +792,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             }
             // El tiempo del par = coste real transcurrido de todas las interps del par.
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000.0
-            return (buffers: buffers, totalMS: elapsed, meMS: meTotal, warpMS: warpTotal)
+            return (buffers: InterpolatedBuffersBox(buffers: buffers), totalMS: elapsed, meMS: meTotal, warpMS: warpTotal)
         }.value
         isInterpolating = false
         isFramePlusPreparing = false
@@ -821,11 +830,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 scheduler?.setMode(.native24)
                 isArtificialInterpolationActive = false
                 fallbackDisabled = true
-                return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0)
+                return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
             }
         }
 
-        if !measured.buffers.isEmpty {
+        if !measured.buffers.buffers.isEmpty {
             isArtificialInterpolationActive = true
         } else {
             os_log("interpolatePair: no output buffer; Frame+ remains waiting",
@@ -895,7 +904,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     interpPairIndex += 1
 
                     let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues)
-                    let interpBuffers = result.buffers
+                    let interpBuffers = result.buffers.buffers
 
                     // Construir la secuencia ordenada de salida del par.
                     var outputs: [(pts: Double, isInterp: Bool, pb: CVPixelBuffer)] = []
