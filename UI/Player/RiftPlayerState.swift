@@ -64,6 +64,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// `interpolationMode != .disabled`) y se libera en closeVideo(). Es stateful
     /// solo en buffers Metal internos; cada `interpolate()` es autocontenida.
     private var compensator: MotionCompensator?
+    /// Almacena los últimos 2 frames mostrados (SIN remover del pool).
+    /// Usado por el interpolador en background para evitar dependencia
+    /// directa con reservePair/consumePair.
+    private var lastShownFrames: [Frame] = []
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
@@ -683,6 +687,43 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
+    /// Spawn de un interpolador en background para el par (I0, I1). El resultado se encola
+    /// solo si sigue siendo válido (pts aún no pasado por el synchronizer).
+    /// Sin tocar el display loop ni el pool — el loop nativo mantiene su ciclo.
+    private func spawnInterpolatedPair(i0: Frame, i1: Frame) {
+        guard interpolationMode != .disabled else { return }
+        if compensator == nil {
+            do {
+                let created = try MotionCompensator(config: .default)
+                compensator = created
+            } catch {
+                return
+            }
+        }
+        guard let comp = compensator else { return }
+
+        Task.detached { @Sendable in
+            let interp = comp.interpolate(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
+            guard let pb = interp else { return }
+
+            // Calcula el pts del frame interpolado (entre I0 e I1)
+            let midPTS = i0.pts + (i1.pts - i0.pts) * 0.5
+            let dur = (i1.pts - i0.pts) * 0.5
+
+            await MainActor.run { [weak self] in
+                guard let self, let sbuf = self.renderer?.sampleBuffer(from: pb, pts: CMTime(seconds: midPTS, preferredTimescale: 600), duration: CMTime(seconds: dur, preferredTimescale: 600)) else { return }
+
+                // Guarda: verifica si el clock aún está atrás del pts para no dejar
+                // frames "muertos" acumulándose (stale check mínima).
+                let clockNow = self.scheduler?.synchronizer.currentTime().seconds ?? midPTS
+                guard midPTS >= clockNow else { return }
+
+                self.markDisplayImmediately(sbuf)
+                self.renderer?.displayLayer.enqueue(sbuf)
+            }
+        }
+    }
+
     private func startDisplayLoop() {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
@@ -835,6 +876,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 await self.coordinator.signal()
                 if Task.isCancelled { break }
+
+                // --- Interpolation helper (background, non-blocking) ---
+                // Sólo si la interpolación está activada y la lógica está legal.
+                // No remueves del pool — el pool sigue fluyendo a su ritmo nativo.
+                if self.interpolationMode != .disabled {
+                    // Mantén los últimos 2 frames mostrados (sin tocar el pool).
+                    var frames = self.lastShownFrames
+                    frames.append(f)  // f es no-optional, siempre existe aquí
+                    if frames.count > 2 { frames.removeFirst() }
+                    self.lastShownFrames = frames
+
+                    // Si tenemos al menos 2 pares, compute el frame interpolado.
+                    if frames.count == 2, let i0 = frames.first, let i1 = frames.last {
+                        await self.spawnInterpolatedPair(i0: i0, i1: i1)
+                    }
+                }
+
             }
         }
     }
