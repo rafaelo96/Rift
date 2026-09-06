@@ -86,6 +86,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private let interpolationWarmupPairs = 5
     /// Moving-average window for the budget gate (post-warmup).
     private let interpolationTimingWindow = 10
+    /// Paridad del par actual para el patrón 3:2 de 60fps (pares → 1 interp,
+    /// impares → 2 interps). Se resetea en seek/load para empezar el patrón limpio.
+    private var interpPairIndex = 0
+    /// Conteo diagnóstico: pares con 1 frame interpolado (patrón 3:2/48fps).
+    private var interpSinglePairCount = 0
+    /// Conteo diagnóstico: pares con 2 frames interpolados (patrón 3:2, 60fps).
+    private var interpDoublePairCount = 0
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
@@ -126,6 +133,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpolationPairCount = 0
         recentPairTimings = []
         fallbackDisabled = false
+        interpPairIndex = 0
+        interpSinglePairCount = 0
+        interpDoublePairCount = 0
     }
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
@@ -261,12 +271,26 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) {
         interpolationMode = m
-        scheduler?.setMode(m == .disabled ? .native24 : .interpolated48)
         compensator = nil
         lastShownFrames.removeAll()
         isArtificialInterpolationActive = false
         isFramePlusPreparing = false
         resetInterpolationCounters()
+        syncSchedulerMode()
+    }
+
+    /// Aplica el modo del scheduler según el `interpolationMode` actual. Se llama
+    /// desde `setInterpolationMode` y también cuando el scheduler se (re)crea en
+    /// `loadVideo`, para no perder el modo si se activa antes de que exista.
+    private func syncSchedulerMode() {
+        switch interpolationMode {
+        case .disabled:
+            scheduler?.setMode(.native24)
+        case .motion2x:
+            scheduler?.setMode(.interpolated48)
+        case .motion4x, .motionAdaptive, .motion2Intense:
+            scheduler?.setMode(.interpolated60)
+        }
     }
     func selectAudioTrack(_ streamIndex: Int) {
         guard streamIndex != selectedAudioTrackIndex else { return }
@@ -338,6 +362,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     self.sourceFrameRate = v.frameRate
                     self.framePool = SlidingFramePool(capacity: 4)
                     self.scheduler = FrameScheduler(mode: .native24)
+                    self.syncSchedulerMode()
                     self.timingLogStart = DispatchTime.now().uptimeNanoseconds
                     self.subtitleTrack = subTrack
                     self.subtitleCues = []
@@ -725,70 +750,88 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    /// Spawn de un interpolador en background para el par (I0, I1). El resultado se encola
-    /// solo si sigue siendo válido (pts aún no pasado por el synchronizer).
-    /// Sin tocar el display loop ni el pool — el loop nativo mantiene su ciclo.
-    private func interpolatePair(i0: Frame, i1: Frame) async -> CVPixelBuffer? {
-        guard interpolationMode != .disabled, !isInterpolating else { return nil }
+    /// Genera los frames interpolados del par (I0, I1) según los `tValues`
+    /// pedidos (1 para 48fps, [1/3,2/3] o [0.5] para el patrón 3:2 de 60fps).
+    /// Devuelve los buffers generados + el coste total del par (ME+warp+upscale
+    /// de todas las interpolaciones) para el gate de fallback por par.
+    private func interpolatePair(i0: Frame, i1: Frame, tValues: [Float])
+        async -> (buffers: [CVPixelBuffer], totalMS: Double, meMS: Double, warpMS: Double) {
+        guard interpolationMode != .disabled, !isInterpolating else { return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0) }
         if compensator == nil {
             do {
                 compensator = try MotionCompensator(config: .default)
             } catch {
                 os_log("interpolatePair: failed to init MotionCompensator: %{public}@",
                        log: benchLog, type: .error, String(describing: error))
-                return nil
+                return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0)
             }
         }
-        guard let comp = compensator else { return nil }
+        guard let comp = compensator else { return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0) }
 
         isInterpolating = true
         isFramePlusPreparing = true
         let measured = await Task.detached { @Sendable in
             let started = DispatchTime.now().uptimeNanoseconds
-            let result = comp.interpolateWithTimings(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: 0.5)
+            var buffers: [CVPixelBuffer] = []
+            var meTotal = 0.0
+            var warpTotal = 0.0
+            for t in tValues {
+                let r = comp.interpolateWithTimings(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: t)
+                if let pb = r.pixelBuffer { buffers.append(pb) }
+                meTotal += r.meMS
+                warpTotal += r.warpMS + r.upscaleMS
+            }
+            // El tiempo del par = coste real transcurrido de todas las interps del par.
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000.0
-            return (result, elapsed)
+            return (buffers: buffers, totalMS: elapsed, meMS: meTotal, warpMS: warpTotal)
         }.value
         isInterpolating = false
         isFramePlusPreparing = false
         interpolationPairCount += 1
 
+        // Presupuesto por-frame interpolado, independiente del tipo de par.
+        // Un par "doble" (2 interp) hace ~2× el trabajo de un par simple, así
+        // que normalizamos la muestra por nº de frames interpolados: esto le da
+        // a los pares dobles un presupuesto efectivo ~2× sin contaminar la media
+        // móvil (si mezcláramos costes totales de pares simples y dobles en la
+        // misma serie, la media falsearía el gate).
         let frameBudgetMS = 1_000.0 / max(sourceFrameRate ?? 24.0, 24.0)
         let budgetThreshold = frameBudgetMS * 0.90
+        let perFrameCost = measured.totalMS / Double(max(tValues.count, 1))
 
         if interpolationPairCount <= interpolationWarmupPairs {
-            os_log("interpolatePair [warm-up %d/%d]: %.1fms (ME: %.1f Warp: %.1f)",
+            os_log("interpolatePair [warm-up %d/%d, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
                    log: benchLog, type: .info,
-                   interpolationPairCount, interpolationWarmupPairs,
-                   measured.1, measured.0.meMS, measured.0.warpMS)
+                   interpolationPairCount, interpolationWarmupPairs, tValues.count,
+                   measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
         } else {
-            recentPairTimings.append(measured.1)
+            recentPairTimings.append(perFrameCost)
             if recentPairTimings.count > interpolationTimingWindow {
                 recentPairTimings.removeFirst()
             }
             let avg = recentPairTimings.reduce(0, +) / Double(recentPairTimings.count)
-            os_log("interpolatePair [%d/%d avg %.1fms]: %.1fms (ME: %.1f Warp: %.1f)",
+            os_log("interpolatePair [%d/%d avg %.1fms/frame, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
                    log: benchLog, type: .info,
-                   recentPairTimings.count, interpolationTimingWindow, avg,
-                   measured.1, measured.0.meMS, measured.0.warpMS)
+                   recentPairTimings.count, interpolationTimingWindow, avg, tValues.count,
+                   measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
             if avg > budgetThreshold {
-                os_log("interpolatePair: moving avg %.1fms exceeds %.1fms budget; falling back to native playback",
+                os_log("interpolatePair: moving avg %.1fms/frame exceeds %.1fms budget; falling back to native playback",
                        log: benchLog, type: .default, avg, budgetThreshold)
                 interpolationMode = .disabled
                 scheduler?.setMode(.native24)
                 isArtificialInterpolationActive = false
                 fallbackDisabled = true
-                return nil
+                return (buffers: [], totalMS: 0, meMS: 0, warpMS: 0)
             }
         }
 
-        if measured.0.pixelBuffer != nil {
+        if !measured.buffers.isEmpty {
             isArtificialInterpolationActive = true
         } else {
             os_log("interpolatePair: no output buffer; Frame+ remains waiting",
                    log: benchLog, type: .error)
         }
-        return measured.0.pixelBuffer
+        return measured
     }
 
     private func startDisplayLoop() {
@@ -838,26 +881,57 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let second = pair.1
                     let delta = max(second.pts - first.pts, 1.0 / 24.0)
 
-                    let interpolated = await self.interpolatePair(i0: first, i1: second)
-                    let halfDuration = CMTime(seconds: delta * 0.5, preferredTimescale: 600)
-                    if !hasPresentedInterpolatedStart {
-                        if let sbuf = rend.sampleBuffer(from: first.pixelBuffer,
-                                                        pts: CMTime(seconds: first.pts, preferredTimescale: 600),
-                                                        duration: halfDuration) {
+                    // Patrón de salida según el modo del scheduler:
+                    //   .interpolated48 → 1 interp/par (t=0.5)           → 24→48
+                    //   .interpolated60 → 3:2: [0.5] en pares pares,      → 24→60
+                    //                    [1/3,2/3] en pares impares
+                    let tValues: [Float]
+                    switch sched.mode {
+                    case .interpolated60:
+                        tValues = (interpPairIndex % 2 == 0) ? [0.5] : [1.0/3.0, 2.0/3.0]
+                    default: // .interpolated48
+                        tValues = [0.5]
+                    }
+                    interpPairIndex += 1
+
+                    let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues)
+                    let interpBuffers = result.buffers
+
+                    // Construir la secuencia ordenada de salida del par.
+                    var outputs: [(pts: Double, isInterp: Bool, pb: CVPixelBuffer)] = []
+                    if result.totalMS > 0 || !interpBuffers.isEmpty || hasPresentedInterpolatedStart {
+                        // Real I0 (solo si aún no se presentó el arranque interpolado)
+                        if !hasPresentedInterpolatedStart {
+                            outputs.append((first.pts, false, first.pixelBuffer))
+                        }
+                        // Interpolados en sus t correspondientes
+                        for (idx, interpBuf) in interpBuffers.enumerated() where idx < tValues.count {
+                            outputs.append((first.pts + delta * Double(tValues[idx]), true, interpBuf))
+                        }
+                        // Real I1
+                        outputs.append((second.pts, false, second.pixelBuffer))
+                    }
+
+                    // Encolar con duración = intervalo hasta el siguiente pts.
+                    for i in 0..<outputs.count {
+                        let o = outputs[i]
+                        let pts = CMTime(seconds: o.pts, preferredTimescale: 600)
+                        let endPTS = (i + 1 < outputs.count)
+                            ? outputs[i + 1].pts
+                            : o.pts + delta / Double(max(tValues.count + 1, 2))
+                        let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 600)
+                        if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
                             rend.displayLayer.enqueue(sbuf)
-                            hasPresentedInterpolatedStart = true
                         }
                     }
-                    if let interpolated,
-                       let sbuf = rend.sampleBuffer(from: interpolated,
-                                                    pts: CMTime(seconds: first.pts + delta * 0.5, preferredTimescale: 600),
-                                                    duration: halfDuration) {
-                        rend.displayLayer.enqueue(sbuf)
+                    if hasPresentedInterpolatedStart == false, !outputs.isEmpty {
+                        hasPresentedInterpolatedStart = true
                     }
-                    if let sbuf = rend.sampleBuffer(from: second.pixelBuffer,
-                                                    pts: CMTime(seconds: second.pts, preferredTimescale: 600),
-                                                    duration: halfDuration) {
-                        rend.displayLayer.enqueue(sbuf)
+                    // Conteo diagnóstico 1-vs-2 interps por par.
+                    if tValues.count == 1 {
+                        interpSinglePairCount += 1
+                    } else {
+                        interpDoublePairCount += 1
                     }
                     pool.consumePair()
                     await self.coordinator.signal()
@@ -871,6 +945,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let p99 = sorted[Int(Double(sorted.count - 1) * 0.99)]
                     os_log("DisplayLoop baseline: avg=%.2fms p99=%.2fms samples=%d", log: benchLog, type: .info, avg, p99, benchSamples.count)
                     benchSamples.removeAll()
+                    os_log("Interp3to2: pairsSingle=%d pairsDouble=%d (esperado ~1:1 en .interpolated60)", log: benchLog, type: .info, self.interpSinglePairCount, self.interpDoublePairCount)
                 }
                 if Task.isCancelled { break }
 
