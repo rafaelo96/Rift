@@ -149,9 +149,14 @@ public final class WarpEngine {
         let w = CVPixelBufferGetWidthOfPlane(pb, 0), h = CVPixelBufferGetHeightOfPlane(pb, 0)
         let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
         var out = [UInt16](repeating: 0, count: w*h)
-        for y in 0..<h {
-            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
-            for x in 0..<w { out[y*w + x] = row[x] }
+        out.withUnsafeMutableBufferPointer { outBuf in
+            guard let outPtr = outBuf.baseAddress else { return }
+            for y in 0..<h {
+                let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
+                let dstRow = outPtr.advanced(by: y * w)
+                // Usamos memcpy porque es una simple copia de bloque de memoria (UInt16 a UInt16)
+                memcpy(dstRow, row, w * MemoryLayout<UInt16>.stride)
+            }
         }
         return out
     }

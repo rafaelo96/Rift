@@ -177,30 +177,41 @@ public final class MotionCompensator {
         let fmt = CVPixelBufferGetPixelFormatType(buffer)
         let is10Bit = (fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange)
 
+        // 1. Extraer luma de forma veloz usando UnsafeMutablePointer para evitar bounds-checking en Debug
         var src = [UInt16](repeating: 0, count: sw * sh)
-        if is10Bit {
-            for y in 0..<sh {
-                let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
-                for x in 0..<sw { src[y * sw + x] = row[x] >> 6 }
-            }
-        } else {
-            for y in 0..<sh {
-                let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt8.self)
-                for x in 0..<sw { src[y * sw + x] = UInt16(row[x]) << 8 }
+        src.withUnsafeMutableBufferPointer { srcBuf in
+            guard let dstPtr = srcBuf.baseAddress else { return }
+            if is10Bit {
+                for y in 0..<sh {
+                    let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
+                    let dstRow = dstPtr.advanced(by: y * sw)
+                    for x in 0..<sw { dstRow[x] = row[x] >> 6 }
+                }
+            } else {
+                for y in 0..<sh {
+                    let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt8.self)
+                    let dstRow = dstPtr.advanced(by: y * sw)
+                    for x in 0..<sw { dstRow[x] = UInt16(row[x]) << 8 }
+                }
             }
         }
 
-        // Nearest-neighbor downscale a (workWidth, workHeight).
+        // 2. Downscale veloz
         let dw = config.workWidth
         let dh = config.workHeight
         var dst = Data(count: dw * dh * MemoryLayout<UInt16>.stride)
         dst.withUnsafeMutableBytes { dstRaw in
             let dst16 = dstRaw.bindMemory(to: UInt16.self).baseAddress!
-            for y in 0..<dh {
-                let sy = min(sh - 1, y * sh / dh)
-                for x in 0..<dw {
-                    let sx = min(sw - 1, x * sw / dw)
-                    dst16[y * dw + x] = src[sy * sw + sx]
+            src.withUnsafeBufferPointer { srcBuf in
+                let srcPtr = srcBuf.baseAddress!
+                for y in 0..<dh {
+                    let sy = min(sh - 1, y * sh / dh)
+                    let srcRow = srcPtr.advanced(by: sy * sw)
+                    let dstRow = dst16.advanced(by: y * dw)
+                    for x in 0..<dw {
+                        let sx = min(sw - 1, x * sw / dw)
+                        dstRow[x] = srcRow[sx]
+                    }
                 }
             }
         }
