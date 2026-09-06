@@ -137,6 +137,9 @@ kernel void upscaleLuma(
     uint outVal = uint(v + 0.5);
     if (u.fmt10) {
         outVal = outVal << 6; // work-plane value 0..1023 -> 10-bit in high bits
+    } else {
+        // 8-bit vive en el byte alto del r16Uint uniforme (value<<8): extraerlo.
+        outVal = outVal >> 8;
     }
     outTex.write(outVal, gid);
 }

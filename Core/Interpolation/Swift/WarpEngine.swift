@@ -133,9 +133,14 @@ public final class WarpEngine {
         guard st == kCVReturnSuccess, let out = outPB, let cache = textureCache else { return (nil, 0, 0) }
 
         // 1. Texturas de luma work-plane desde los Data ya escalados (inputs del warp).
-        guard let tex0w = makeWorkTexture(data: luma0, width: workWidth, height: workHeight, format: metalLumaFormat),
-              let tex1w = makeWorkTexture(data: luma1, width: workWidth, height: workHeight, format: metalLumaFormat),
-              let texOutW = device.makeTexture(descriptor: workTextureDescriptor(width: workWidth, height: workHeight, format: metalLumaFormat)) else {
+        // Work-plane SIEMPRE r16Uint, independiente del bit depth de origen:
+        // scaledLuma y el ME empaquetan luma como UInt16 (2 bytes/muestra) —
+        // en 8-bit el Data trae value<<8 y en 10-bit 0..1023. El layout del
+        // Data y su bytesPerRow (width*2) solo es consistente con r16Uint.
+        let workLumaFormat = MTLPixelFormat.r16Uint
+        guard let tex0w = makeWorkTexture(data: luma0, width: workWidth, height: workHeight, format: workLumaFormat),
+              let tex1w = makeWorkTexture(data: luma1, width: workWidth, height: workHeight, format: workLumaFormat),
+              let texOutW = device.makeTexture(descriptor: workTextureDescriptor(width: workWidth, height: workHeight, format: workLumaFormat)) else {
             return (nil, 0, 0)
         }
 
