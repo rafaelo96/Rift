@@ -163,16 +163,24 @@ let package = Package(
             dependencies: ["Demux", "Decode", "FramePool"],
             path: "Core/FramePool/Tools"
         ),
-        // Core/Interpolation — measurement prototype for classic MCFI motion
-        // estimation (hierarchical block matching in MSL compute shaders).
-        // Standalone: consumes Demux+Decode directly; no FramePool, no UI,
-        // no Contracts. Shader source is embedded and compiled at runtime so
-        // this probe needs no .metallib build plumbing.
+        // Core/Interpolation — Swift module: MCFI clásico (MotionSearchEngine +
+        // WarpEngine + shaders MSL). API pública única: MotionCompensator, que
+        // toma dos CVPixelBuffer y devuelve uno interpolado conservando
+        // attachments HDR del I0. Cero archivos derivados en disco: el flujo
+        // opera sobre los CVPixelBuffer IOSurface-backed del decoder.
+        .target(
+            name: "Interpolation",
+            path: "Core/Interpolation",
+            sources: ["Swift"]
+        ),
+        // Standalone measurement probe (MVProbe) — reutiliza los archivos del
+        // módulo Interpolation via include implícito del path Core/Interpolation
+        // (los shaders y engines viven ahora en Swift/). Necesita acceso al
+        // directorio Swift/ para compilar main.swift junto con los engines.
         .executableTarget(
             name: "MVProbe",
-            dependencies: ["Demux", "Decode"],
-            path: "Core/Interpolation/Tools",
-            exclude: [".gitkeep"]
+            dependencies: ["Demux", "Decode", "Interpolation"],
+            path: "Core/Interpolation/Tools"
         ),
         // Core/Scheduler — presentation timing for real + interpolated frames
         // (SDR only, no HDR yet). Consumes FramePool pts, Interpolation MVs.

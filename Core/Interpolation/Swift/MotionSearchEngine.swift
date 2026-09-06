@@ -16,15 +16,25 @@ import Metal
 // half-pel units and stay x2 per level).
 
 /// Pyramid geometry + search config for one level.
-struct LevelSpec {
-    let width: Int
-    let height: Int
-    let blockSize: Int
+public struct LevelSpec: Sendable {
+    public let width: Int
+    public let height: Int
+    public let blockSize: Int
     /// Search radius in half-pel units (even numbers = pixel-aligned candidates).
-    let searchHalfPel: Int32
-    let halfPelRefine: Bool
+    public let searchHalfPel: Int32
+    public let halfPelRefine: Bool
     /// per-axis grid-inherit factor from the coarser level (blockSizeRatio * 2).
-    let inheritFactor: Int
+    public let inheritFactor: Int
+
+    public init(width: Int, height: Int, blockSize: Int,
+                searchHalfPel: Int32, halfPelRefine: Bool, inheritFactor: Int) {
+        self.width = width
+        self.height = height
+        self.blockSize = blockSize
+        self.searchHalfPel = searchHalfPel
+        self.halfPelRefine = halfPelRefine
+        self.inheritFactor = inheritFactor
+    }
 }
 
 /// Mirror of the MSL MEUniforms layout (must stay field-for-field identical).
@@ -45,11 +55,11 @@ struct MEUniforms {
 }
 
 /// Measurement stages in report order.
-enum SEStage: Int, CaseIterable {
+public enum SEStage: Int, CaseIterable {
     case downL1, downL2, downL3
     case searchL3, searchL2, searchL1, searchL0
 
-    var label: String {
+    public var label: String {
         switch self {
         case .downL1: return "pyramid ⟶ L1 (576x240)"
         case .downL2: return "pyramid ⟶ L2 (288x120)"
@@ -63,18 +73,23 @@ enum SEStage: Int, CaseIterable {
 }
 
 /// Per-pair timing breakdown: GPU stage times (SEStage order) + host upload time.
-struct PairTimes {
-    let stages: [Double]
-    let uploadMS: Double
+public struct PairTimes {
+    public let stages: [Double]
+    public let uploadMS: Double
+
+    public init(stages: [Double], uploadMS: Double) {
+        self.stages = stages
+        self.uploadMS = uploadMS
+    }
 }
 
-final class MotionSearchEngine {
-    enum EngineError: Error, CustomStringConvertible {
+public final class MotionSearchEngine {
+    public enum EngineError: Error, CustomStringConvertible {
         case deviceUnavailable
         case libraryCompile(String)
         case pipeline(String)
 
-        var description: String {
+        public var description: String {
             switch self {
             case .deviceUnavailable: return "MVProbe: no Metal device"
             case .libraryCompile(let m): return "MVProbe: MSL compile failed — \(m)"
@@ -83,9 +98,9 @@ final class MotionSearchEngine {
         }
     }
 
-    let levels: Int
-    let spec: [LevelSpec]
-    let lambdaPx: UInt32
+    public let levels: Int
+    public let spec: [LevelSpec]
+    public let lambdaPx: UInt32
 
     private let device: MTLDevice
     private let queue: MTLCommandQueue
@@ -104,12 +119,12 @@ final class MotionSearchEngine {
     private let gateL0: Bool
 
     /// Block grid dims per level (flat block count = gridW * gridH).
-    var grids: [(w: Int, h: Int)] { spec.map { (($0.width + $0.blockSize - 1) / $0.blockSize,
-                                                 ($0.height + $0.blockSize - 1) / $0.blockSize) } }
+    public var grids: [(w: Int, h: Int)] { spec.map { (($0.width + $0.blockSize - 1) / $0.blockSize,
+                                                  ($0.height + $0.blockSize - 1) / $0.blockSize) } }
     /// Texture pixel dims per level.
-    var texSizes: [(w: Int, h: Int)] { spec.map { ($0.width, $0.height) } }
+    public var texSizes: [(w: Int, h: Int)] { spec.map { ($0.width, $0.height) } }
 
-    init(msl: String, spec: [LevelSpec], lambdaPx: UInt32, smoothL0: Bool, gateL0: Bool = true) throws {
+    public init(msl: String, spec: [LevelSpec], lambdaPx: UInt32, smoothL0: Bool, gateL0: Bool = true) throws {
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue() else {
             throw EngineError.deviceUnavailable
@@ -184,7 +199,7 @@ final class MotionSearchEngine {
 
     /// Uploads the two L0 luma frames and runs pyramid + search for one pair.
     /// Returns per-stage elapsed ms in SEStage order plus host upload time.
-    func runPair(cur: Data, ref: Data) -> PairTimes {
+    public func runPair(cur: Data, ref: Data) -> PairTimes {
         var times = [Double](repeating: 0, count: SEStage.allCases.count)
         var uploadMS = 0.0
 
@@ -236,7 +251,7 @@ final class MotionSearchEngine {
 
     /// Downloads the MV field of a level as (dx, dy) half-pel vectors (level 0
     /// returns the smoothed field when the median pass is active).
-    func downloadMV(level: Int, smoothed: Bool = true) -> [SIMD2<Int32>] {
+    public func downloadMV(level: Int, smoothed: Bool = true) -> [SIMD2<Int32>] {
         let buf = (level == 0 && smoothed && mvBufferSmoothed != nil) ? mvBufferSmoothed : mvBuffer[level]
         guard let buf else { return [] }
         let count = grids[level].w * grids[level].h
@@ -245,7 +260,7 @@ final class MotionSearchEngine {
     }
 
     /// Reads a pyramid level's pixels back to the host (debug / validation).
-    func readLevel(_ level: Int) -> [UInt16] {
+    public func readLevel(_ level: Int) -> [UInt16] {
         guard let tex = curTex[level] else { return [] }
         let count = tex.width * tex.height
         var out = [UInt16](repeating: 0, count: count)

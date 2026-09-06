@@ -15,7 +15,7 @@ import Foundation
 // scaling x2 per level (one coarse pixel = two fine pixels); the per-axis
 // inherit factor from a coarse grid to a fine grid is blockSizeRatio * 2.
 
-let motionShadersMSL = """
+public let motionShadersMSL = """
 #include <metal_stdlib>
 using namespace metal;
 

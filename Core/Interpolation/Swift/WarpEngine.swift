@@ -2,15 +2,15 @@ import Foundation
 import Metal
 import CoreVideo
 
-final class WarpEngine {
-    let device: MTLDevice
+public final class WarpEngine {
+    public let device: MTLDevice
     let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
     private var outTex: MTLTexture?
     private var width = 0
     private var height = 0
 
-    init(device: MTLDevice) throws {
+    public init(device: MTLDevice) throws {
         self.device = device
         guard let q = device.makeCommandQueue() else { throw NSError(domain: "WarpEngine", code: 1) }
         self.queue = q
@@ -67,7 +67,7 @@ final class WarpEngine {
         return (out, ms)
     }
 
-    func readTexture(_ tex: MTLTexture) -> [UInt16] {
+    public func readTexture(_ tex: MTLTexture) -> [UInt16] {
         let w = tex.width, h = tex.height
         var out = [UInt16](repeating: 0, count: w*h)
         out.withUnsafeMutableBytes { raw in
@@ -77,7 +77,7 @@ final class WarpEngine {
     }
 
     // Convenience for prototype: I0/I1 as host planes, mv as [SIMD2<Int32>] half-pel
-    func interpolate(I0: [UInt16], I1: [UInt16], mv: [SIMD2<Int32>], width: Int, height: Int, gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float = 1.0) -> ([UInt16], Double) {
+    public func interpolate(I0: [UInt16], I1: [UInt16], mv: [SIMD2<Int32>], width: Int, height: Int, gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float = 1.0) -> ([UInt16], Double) {
         let tex0 = makeTexture(from: I0, width: width, height: height)
         let tex1 = makeTexture(from: I1, width: width, height: height)
         let mvBuf = device.makeBuffer(bytes: mv, length: mv.count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)!
@@ -87,7 +87,7 @@ final class WarpEngine {
 
     // HDR: CVPixelBuffer path — propaga attachments BT.2020/PQ del original al interpolado
     // Fix puntual: sin esto el buffer interpolado nacía sin color attachments y se veía SDR aplastado
-    func interpolatePixelBuffer(I0: CVPixelBuffer, I1: CVPixelBuffer, mv: [SIMD2<Int32>], gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float = 1.0) -> CVPixelBuffer? {
+    public func interpolatePixelBuffer(I0: CVPixelBuffer, I1: CVPixelBuffer, mv: [SIMD2<Int32>], gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float = 1.0) -> CVPixelBuffer? {
         let w = CVPixelBufferGetWidth(I0), h = CVPixelBufferGetHeight(I0)
         // Luma plane warp reuse existing MTL path (prototype: solo luma, para HDR real se warp-ean ambos planos Y+CbCr)
         // Extrae luma como [UInt16] para reutilizar el kernel actual; luego re-ensambla en CVPixelBuffer

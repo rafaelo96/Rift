@@ -1,6 +1,6 @@
 import Foundation
 
-let warpShadersMSL = """
+public let warpShadersMSL = """
 #include <metal_stdlib>
 using namespace metal;
 

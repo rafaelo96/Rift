@@ -23,6 +23,7 @@ import CoreMedia
 import VideoToolbox
 import Demux
 import Decode
+import Interpolation
 import Accelerate
 import CoreGraphics
 import ImageIO
