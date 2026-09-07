@@ -110,13 +110,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Moving-average window for the budget gate (post-warmup).
     private let interpolationTimingWindow = 10
 
-    // MARK: - Throughput deficit gate (pairs/s measurement)
-    /// Seconds of pair-completion timestamps kept for the sliding window.
+    // MARK: - Throughput deficit gate (latencia bajo pacing)
+    /// Seconds between consecutive gate evaluations.
     private let throughputWindowSeconds = 3.0
-    /// Minimum pairs/s to consider the pipeline keeping up with realtime.
-    /// Expressed as fraction of source framerate: 0.95× ≈ 22.8 pairs/s for 24fps.
-    /// Triggers only after `throughputRequiredWeakWindows` consecutive evaluations.
-    private let throughputMinRatio = 0.95
     /// Number of consecutive weak evaluations (each spanning `throughputWindowSeconds`)
     /// before the gate fires (avoids reacting to a single isolated burst).
     private let throughputRequiredWeakWindows = 2
@@ -127,7 +123,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private let throughputSkipStartupSeconds = 8.0
     /// Wall-clock of the first completed pair (arms the startup skip).
     private var firstPairCompletedAt: UInt64 = 0
-    /// Wall-clock timestamps of recently completed pair iterations.
+    /// Wall-clock timestamps of recently completed pair iterations (legacy
+    /// bookkeeping; el gate actual usa latencia, no pares/s).
     private var pairCompletionTimes: [UInt64] = []
     /// Consecutive weak windows observed (reset when a good window is seen).
     private var weakThroughputWindows = 0
@@ -145,6 +142,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var interpSinglePairCount = 0
     /// Conteo diagnóstico: pares con 2 frames interpolados (patrón 3:2, 60fps).
     private var interpDoublePairCount = 0
+    /// Conteo acumulado de pares descartados como stale en la rama interpolada
+    /// (equivalente de Fijación C). Alimenta el gate de latencia de
+    /// `notePairCompleted` (bajo pacing, es el canario de que el pipeline no
+    /// mantiene tiempo real).
+    private var interpolationStaleDrops = 0
+    private var lastStaleDropSnapshot = 0
     var displayLayer: AVSampleBufferDisplayLayer? { renderer?.displayLayer }
     var player: AVPlayer? { nil }
     private var videoTrack: TrackInfo?
@@ -153,13 +156,27 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var audioDecoder: AudioDecoder?
     private var audioRenderer: AVSampleBufferAudioRenderer?
     private var sourceFrameRate: Double?
+    /// Periodo del vídeo fuente en segundos (1/fps), usado para detectar pares
+    /// con hueco (decode rezagado ≥2 frames) en la rama interpolada.
+    private var sourcePeriod: Double { 1.0 / max(sourceFrameRate ?? 24.0, 24.0) }
     private let coordinator = DecodeCoordinator(value: 4)
     /// Fijación B: presupuesto de decode por delante del reloj de presentación
     /// (segundos). El decode no produce frames cuyo pts supere `reloj + budget`;
     /// sin esto el pool (ventana de 4 frames con eviction) corre por delante de la
     /// presentación sin límite y los toggles de modo provocan ráfagas/saltos.
-    /// Tunable vía RIFT_DECODE_AHEAD_BUDGET para validación en distintos chips.
+    /// El default es ~0.25s (unos pocos frames): lead suficiente para no
+    /// starvation del pool pero sin saturar la cola del AVSampleBufferDisplayLayer
+    /// (un lead de 1s acumulaba ~50 frames futuros → la capa descartaba frames
+    /// interpolados en silencio → tirones). Tunable vía RIFT_DECODE_AHEAD_BUDGET.
     private let decodeAheadBudget: Double
+    /// Pacing de la rama interpolada: no interpolar/encolar un par cuyo
+    /// `first.pts` esté a más de `interpLeadMargin` (pocos frames) del reloj de
+    /// presentación. Equivale al waitUntilDisplayClock de la rama nativa.
+    /// Tunable vía RIFT_INTERP_LEAD.
+    private let interpLeadMargin: Double
+    /// Margen "stale" de la rama interpolada (equivalente de Fijación C): un par
+    /// con `first.pts + margen < reloj` se descarta en vez de interpolarlo tarde.
+    private let interpBehindMargin = 0.020
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
     private var audioTask: Task<Void, Never>?
@@ -202,6 +219,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         weakThroughputWindows = 0
         lastThroughputEval = 0
         firstPairCompletedAt = 0
+        interpolationStaleDrops = 0
+        lastStaleDropSnapshot = 0
         // Estados de UI: transición real (seek/load/modo) → fuera de "60fps ready"
         // y de artificial activo; volvemos a "Preparing HQ" si hay modo activo, y
         // el warm-up pasará a "60fps ready" al completarse el 6º par.
@@ -253,47 +272,47 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     /// Llamar tras consumir (interpolar+encolar) un par con éxito.
-    /// Mide pares/s sostenidos; si cae por debajo del umbral durante
-    /// `throughputRequiredWeakWindows` evaluaciones consecutivas, desactiva
-    /// la interpolación para evitar drift A/V acumulativo.
+    /// Gate de latencia bajo pacing de reloj: si la rama interpolada NO puede
+    /// mantener tiempo real (decode o ME no siguen la cadencia fuente), el pool
+    /// queda por detrás del reloj y se manifiesta en dos señales sostenidas —
+    /// pares descartados como stale (equivalente de Fijación C) y lead del pool
+    /// negativo. Antes medíamos pares/s por wall-clock; bajo pacing eso ya no
+    /// discrimina (la producción queda literalmente anclada a la cadencia
+    /// fuente ≈ 24/s, con cero holgura: cualquier bache de decode hunde la
+    /// ventana y el gate disparaba fallbacks espurios).
     private func notePairCompleted() {
         let now = DispatchTime.now().uptimeNanoseconds
         if firstPairCompletedAt == 0 { firstPairCompletedAt = now }
-        pairCompletionTimes.append(now)
-        let cutoff = now - UInt64(throughputWindowSeconds * 1e9)
-        pairCompletionTimes.removeAll { $0 < cutoff }
 
-        // Evaluar solo después del warm-up, de los pares de arranque y de que la
-        // ventana tenga datos.
+        // Evaluar solo después del warm-up, con cadencia de ventana.
         guard interpolationPairCount > interpolationWarmupPairs,
               now - lastThroughputEval >= UInt64(throughputWindowSeconds * 1e9) else { return }
         lastThroughputEval = now
 
-        let windowStart = pairCompletionTimes.first ?? now
-        let span = Double(now - windowStart) / 1e9
-        guard span >= 1.0 else { return }
-        let pps = Double(pairCompletionTimes.count) / span
-        let realtimeRate = sourceFrameRate ?? 24.0
-        let minPPS = realtimeRate * throughputMinRatio
-
         // No armar el gate durante la rampa de arranque del pipeline (decoder/
-        // shaders/fill): medir ahí pares/s bajos es ruido, no un déficit real.
+        // shaders/fill): ahí la latencia inicial es ruido, no un déficit real.
         let elapsedSinceFirst = Double(now - firstPairCompletedAt) / 1e9
         guard elapsedSinceFirst >= throughputSkipStartupSeconds else { return }
 
-        os_log("Throughput: %.1f pares/s (mín %.1f, ventana %.1fs, weak %d/%d)",
-               log: benchLog, type: .info, pps, minPPS, span,
-               weakThroughputWindows, throughputRequiredWeakWindows)
+        let clk = scheduler?.synchronizer.currentTime().seconds ?? 0
+        let lead = (framePool?.oldest().map { $0.pts - clk }) ?? 0
+        let staleDelta = interpolationStaleDrops - lastStaleDropSnapshot
+        lastStaleDropSnapshot = interpolationStaleDrops
+        let minLead = -1.5 * sourcePeriod
+        let weak = (staleDelta >= 6) || (lead < minLead)
 
-        if pps < minPPS {
+        os_log("Throughput(latencia): staleΔ=%d lead=%.3fs (mín %.3f) → %@",
+               log: benchLog, type: .info, staleDelta, lead, minLead, weak ? "weak" : "ok")
+
+        if weak {
             weakThroughputWindows += 1
         } else {
             weakThroughputWindows = 0
         }
         if weakThroughputWindows >= throughputRequiredWeakWindows {
             weakThroughputWindows = 0
-            disableInterpolation(reason: String(format: "throughput sostenido %.1f pares/s < %.1f (realtime)",
-                                               pps, minPPS))
+            disableInterpolation(reason: String(format: "bajo pacing: %d pares stale / lead %.3fs (estancado)",
+                                               staleDelta, lead))
         }
     }
 
@@ -307,7 +326,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // Permite verificar el pipeline de reproducción/interpolación sin interacción
     // GUI (NSOpenPanel no funciona en corridas headless — ver AGENTS.md).
     init() {
-        decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 1.0
+        decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 0.25
+        interpLeadMargin = ProcessInfo.processInfo.environment["RIFT_INTERP_LEAD"].flatMap(Double.init) ?? 0.12
         let env = ProcessInfo.processInfo.environment
         guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
@@ -1021,6 +1041,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
+    /// Pacing de la rama interpolada (equivalente al waitUntilDisplayClock de la
+    /// nativa): no interpolar/encolar un par cuyo `first.pts` esté a más de `lead`
+    /// segundos del reloj de presentación. Solo se invoca con rate>0 (el loop ya
+    /// hace `continue` si el reloj está en pausa), así que el reloj siempre avanza
+    /// y no hay deadlock. Sin esto la rama interp consumía pares tan rápido como
+    /// podía, acumulaba ~1s de frames futuros en la cola del AVSampleBufferDisplayLayer
+    /// (descartaba interpolados en silencio: isReady==false, tirones) y generaba
+    /// huecos en el pool (PTS no-monótono hacia atrás → brincos).
+    private func paceInterpPair(firstPTS: Double, lead: Double) async {
+        guard let sched = self.scheduler else { return }
+        while !Task.isCancelled {
+            let clk = sched.synchronizer.currentTime().seconds
+            if clk >= firstPTS - lead { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     /// Encola un frame en el displayLayer con DisplayImmediately=true (pacer
     /// contra el reloj ya se hizo antes). Helper compartido entre el modo nativo
     /// y el modo interpolado para evitar duplicar el patrón.
@@ -1185,8 +1222,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let behindMargin = 0.020
                     let aheadMargin = 0.050
                     if f.pts + behindMargin >= clkN {
-                        let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
-                        let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
+                        let pts = CMTime(seconds: f.pts, preferredTimescale: 1200)
+                        let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 1200)
                         if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
                             if f.pts - clkN <= aheadMargin {
                                 self.markDisplayImmediately(sbuf)
@@ -1203,6 +1240,45 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let first = pair.0
                     let second = pair.1
                     let delta = max(second.pts - first.pts, 1.0 / 24.0)
+
+                    // Pacing de la rama interpolada: interpolar/encolar el par solo
+                    // cuando su first.pts se aproxime al reloj (lead = pocos frames).
+                    // Pre-fix la rama interp corría por delante del clock (consumía
+                    // pares lo más rápido posible), producía ~1s de backlog en la
+                    // cola de la capa (drops silenciosos: isReady==false) y huecos de
+                    // pool (PTS hacia atrás). 
+                    await self.paceInterpPair(firstPTS: first.pts, lead: self.interpLeadMargin)
+                    if Task.isCancelled { break }
+                    // Equivalente de Fijación C en la rama interpolada: si el par
+                    // quedó obsoleto (first.pts + margen < reloj) descartarlo en vez
+                    // de interpolar y presentarlo tarde.
+                    let clkPace = sched.synchronizer.currentTime().seconds
+                    if first.pts + self.interpBehindMargin < clkPace {
+                        self.interpolationStaleDrops += 1
+                        pool.consumePair()
+                        await self.coordinator.signal()
+                        continue
+                    }
+
+                    // Par con hueco (decode rezagado ≥2 frames de origen): NO
+                    // interpolar a través del hueco. El mid fabricado a mitad del
+                    // gap no corresponde a ningún instante real, y si el frame
+                    // perdido llega después se interpola TAMBIÉN el par contiguo
+                    // (duplica el mismo pts real y encola un mid en PTS menor que
+                    // el second anterior → grilla no-monótona, brincos). En su
+                    // lugar se presenta `first` nativo y se avanza; el siguiente
+                    // par contiguo retoma la interpolación sin duplicar contenido.
+                    if second.pts - first.pts > 1.5 * sourcePeriod {
+                        let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
+                        let dur = CMTime(seconds: second.pts - first.pts, preferredTimescale: 1200)
+                        if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
+                            rend.displayLayer.enqueue(sbuf)
+                            self.enqueuedFramesInWindow += 1
+                        }
+                        pool.consumePair()
+                        await self.coordinator.signal()
+                        continue
+                    }
 
                     // Patrón de salida según el modo del scheduler:
                     //   .interpolated48 → 1 interp/par (t=0.5)           → 24→48
@@ -1238,11 +1314,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // Encolar con duración = intervalo hasta el siguiente pts.
                     for i in 0..<outputs.count {
                         let o = outputs[i]
-                        let pts = CMTime(seconds: o.pts, preferredTimescale: 600)
+                        let pts = CMTime(seconds: o.pts, preferredTimescale: 1200)
                         let endPTS = (i + 1 < outputs.count)
                             ? outputs[i + 1].pts
                             : o.pts + delta / Double(max(tValues.count + 1, 2))
-                        let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 600)
+                        let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 1200)
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
                             rend.displayLayer.enqueue(sbuf)
                             self.enqueuedFramesInWindow += 1
