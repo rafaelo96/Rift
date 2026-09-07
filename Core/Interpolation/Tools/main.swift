@@ -923,8 +923,14 @@ var madMax = 0.0
 // el warp t=0.5 es "genuino" si SAD(interp,I0) < SAD(I0,I1) Y SAD(interp,I1) <
 // SAD(I0,I1) — un frame intermedio real queda estrictamente entre sus inputs,
 // mientras que una copia no puede mejorar respecto a ambos a la vez.
+// NOTA: con static-copy en el warp, los bloques copiados fallan el criterio
+// estricto por construccion (SAD(interp,I1)==SAD(I0,I1)); por eso tambien se
+// mide "no-peor" sobre TODOS los bloques: SAD(interp,I0)+SAD(interp,I1) <=
+// SAD(I0,I1) — el interpolado no introduce mas error que repetir un input.
 var wcMoving = 0
 var wcGenuine = 0
+var wcAll = 0
+var wcNoWorse = 0
 let wcOn = envInt("MV_WARPCOPY", 1) == 1
 // Temporal-jitter collection: smoothed L0 field of every pair, kept in memory
 // and (optionally) dumped as CSVs so the same 8640 blocks can be compared
@@ -1021,6 +1027,34 @@ for i in 0..<pairCount {
                 }
                 wcMoving += 1
                 if sI0 < s01 && sI1 < s01 { wcGenuine += 1 }
+            }
+        }
+        // Bypass-aware: sobre TODOS los bloques (incluye |MV|<=0.5px y copias),
+        // el interpolado "no empeora" si su error total a ambos inputs no supera
+        // el de repetir un frame (SAD(I0,I1)).
+        if wcOn {
+            let g0 = measureGW
+            for by in 0..<measureGH {
+                for bx in 0..<g0 {
+                    var sI0: UInt64 = 0
+                    var sI1: UInt64 = 0
+                    var s01: UInt64 = 0
+                    for y in 0..<measureBS {
+                        for x in 0..<measureBS {
+                            let iy = by * measureBS + y
+                            let ix = bx * measureBS + x
+                            let vI = UInt64(interpPlane[iy * workWidth + ix])
+                            let v0 = UInt64(cur[iy * workWidth + ix])
+                            let v1 = UInt64(ref[iy * workWidth + ix])
+                            func absd(_ a: UInt64, _ b: UInt64) -> UInt64 { a >= b ? a - b : b - a }
+                            sI0 += absd(vI, v0)
+                            sI1 += absd(vI, v1)
+                            s01 += absd(v0, v1)
+                        }
+                    }
+                    wcAll += 1
+                    if sI0 + sI1 <= s01 { wcNoWorse += 1 }
+                }
             }
         }
     }
@@ -1330,6 +1364,10 @@ if wcOn {
                  + "(SAD(interp,I0)<SAD(I0,I1) y SAD(interp,I1)<SAD(I0,I1)) = %.1f%%",
                  wcGenuine, wcMoving, pairCount,
                  wcMoving > 0 ? 100.0 * Double(wcGenuine) / Double(wcMoving) : 0.0))
+    print(String(format: "warp-no-peor (bypass-aware, TODOS los bloques): %d de %d (%d pares) con "
+                 + "SAD(interp,I0)+SAD(interp,I1)<=SAD(I0,I1) = %.1f%%",
+                 wcNoWorse, wcAll, pairCount,
+                 wcAll > 0 ? 100.0 * Double(wcNoWorse) / Double(wcAll) : 0.0))
 }
 
 if envInt("MV_BRUTE", 0) == 1 {
