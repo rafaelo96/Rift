@@ -264,36 +264,41 @@ public final class MotionCompensator {
             }
         }
 
-        // 2. Downscale veloz.
-        // Convención de fase consistente con `upscaleLuma` (kernel MSL): mapeo de
-        // centros de píxel out → in, `p = (o + 0.5) * src/dst - 0.5`, en lugar del
-        // top-left `o * src/dst`. Antes, un valor en y desencajaba con el mismo
-        // valor re-ensamblado en y', porque la coordenada de origen del contenido
-        // en el work-plane quedaba corrida ~+0.5*(src/dst)≈+1.6 y el downscale de
-        // regreso a full-res la desplazaba un ~~1.16 px (rendondeo). Ese offset
-        // de fase constante hacía "bailar" TODO el frame interpolado (era el único
-        // movimiento visible en logos estáticos), aunque no introdujera escala.
-        // También consistente con las anclas del warp (`p0 = p ± 0.5*MV`) y con
-        // el ME: alinear la fase antes y después del warp hace el round-trip
-        // full-res (downscale → warp → upscale) una traslación identidad.
+        // 2. Downscale bilinear con fase centrada, consistente con `upscaleLuma`
+        // (kernel MSL): `p = (o + 0.5) * src/dst - 0.5`. El nearest anterior, aun
+        // centrado, dejaba un sesgo sistematico de ~0.65px en el round-trip porque
+        // cuantizaba cada texel del work-plane al entero mas cercano y el upscale
+        // bilinear ya no podia reconstruir la fase continua. Con bilinear en ambos
+        // lados, el round-trip full-res (downscale → warp quieto → upscale) es la
+        // identidad en coordenadas continuas: el contenido estatico deja de
+        // "bailar". Costo: ~4 lecturas + interpolacion por pixel de destino.
         let dw = config.workWidth
         let dh = config.workHeight
-        let xs = sh > 1 ? Float(sh - 1) / Float(dh - 1) : 1.0
-        let xsc = sw > 1 ? Float(sw - 1) / Float(dw - 1) : 1.0
+        let xScale = Float(sw) / Float(dw)
+        let yScale = Float(sh) / Float(dh)
         var dst = Data(count: dw * dh * MemoryLayout<UInt16>.stride)
         dst.withUnsafeMutableBytes { dstRaw in
             let dst16 = dstRaw.bindMemory(to: UInt16.self).baseAddress!
             src.withUnsafeBufferPointer { srcBuf in
                 let srcPtr = srcBuf.baseAddress!
                 for y in 0..<dh {
-                    let fy = min(Float(y) + 0.5, Float(dh)) * xs - 0.5
-                    let sy = Int(min(max(fy, 0), Float(sh - 1)).rounded(.down))
-                    let srcRow = srcPtr.advanced(by: sy * sw)
+                    let fyc = min(max((Float(y) + 0.5) * yScale - 0.5, 0), Float(sh - 1))
+                    let y0 = min(Int(fyc), sh - 2)
+                    let wy = fyc - Float(y0)
+                    let row0 = srcPtr.advanced(by: y0 * sw)
+                    let row1 = srcPtr.advanced(by: (y0 + 1) * sw)
                     let dstRow = dst16.advanced(by: y * dw)
                     for x in 0..<dw {
-                        let fx = min(Float(x) + 0.5, Float(dw)) * xsc - 0.5
-                        let sx = Int(min(max(fx, 0), Float(sw - 1)).rounded(.down))
-                        dstRow[x] = srcRow[sx]
+                        let fxc = min(max((Float(x) + 0.5) * xScale - 0.5, 0), Float(sw - 1))
+                        let x0 = min(Int(fxc), sw - 2)
+                        let wx = fxc - Float(x0)
+                        let s00 = Float(row0[x0])
+                        let s10 = Float(row0[x0 + 1])
+                        let s01 = Float(row1[x0])
+                        let s11 = Float(row1[x0 + 1])
+                        let top = s00 + (s10 - s00) * wx
+                        let bot = s01 + (s11 - s01) * wx
+                        dstRow[x] = UInt16(top + (bot - top) * wy + 0.5)
                     }
                 }
             }
