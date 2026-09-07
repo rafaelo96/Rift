@@ -110,6 +110,9 @@ public final class MotionSearchEngine {
     private let searchPSO: MTLComputePipelineState
     private let medianPSO: MTLComputePipelineState?
     private let temporalPSO: MTLComputePipelineState?
+    /// Dead-zone snap on the post-median L0 field (|MV| <= 0.5px → 0).
+    /// See MSL `mvDeadZone`.
+    private let deadZonePSO: MTLComputePipelineState?
 
     private var curTex: [MTLTexture?] = []
     private var refTex: [MTLTexture?] = []
@@ -185,6 +188,13 @@ public final class MotionSearchEngine {
             temporalPSO = try? device.makeComputePipelineState(function: tFn)
         } else {
             temporalPSO = nil
+        }
+        // Dead-zone snap runs on the post-median L0 field (or on raw L0 when
+        // the median pass is off), always in-place, before the temporal EMA.
+        if let dzFn = library.makeFunction(name: "mvDeadZone") {
+            deadZonePSO = try? device.makeComputePipelineState(function: dzFn)
+        } else {
+            deadZonePSO = nil
         }
 
         for (i, s) in spec.enumerated() {
@@ -267,6 +277,36 @@ public final class MotionSearchEngine {
                 temporalGatePx: 0, hasTemporalPrev: 0
             )
             enc.setBytes(&uni, length: MemoryLayout<MEUniforms>.stride, index: 2)
+            enc.dispatchThreadgroups(
+                MTLSize(width: g0.w, height: g0.h, depth: 1),
+                threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
+            )
+            enc.endEncoding()
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            times[SEStage.searchL0.rawValue] += elapsedMS(from: start)
+        }
+        // L0 dead-zone snap (when available): |MV| <= 0.5px → 0, in-place on
+        // the post-median field (raw L0 when the median pass is off), before
+        // the temporal EMA. Kills sub-pel matcher dither on static content so
+        // static edges and thin text stop vibrating; EMA state stays at zero.
+        if let deadZonePSO = deadZonePSO,
+           let target = mvBufferSmoothed ?? mvBuffer[0] {
+            let start = DispatchTime.now().uptimeNanoseconds
+            guard let cmd = queue.makeCommandBuffer(),
+                  let enc = cmd.makeComputeCommandEncoder() else { return PairTimes(stages: times, uploadMS: uploadMS) }
+            enc.setComputePipelineState(deadZonePSO)
+            enc.setBuffer(target, offset: 0, index: 0)
+            var g0 = grids[0]
+            var uni = MEUniforms(
+                level: 0, width: 0, height: 0, blockSize: 0,
+                gridW: UInt32(g0.w), gridH: UInt32(g0.h),
+                searchHalfPel: 0, lambdaPx: 0, halfPelRefine: 0,
+                clearWinGate: 0,
+                hasInherited: 0, inheritedGrid: SIMD2<UInt32>(0, 0), inheritFactor: 0,
+                temporalGatePx: 0, hasTemporalPrev: 0
+            )
+            enc.setBytes(&uni, length: MemoryLayout<MEUniforms>.stride, index: 1)
             enc.dispatchThreadgroups(
                 MTLSize(width: g0.w, height: g0.h, depth: 1),
                 threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)

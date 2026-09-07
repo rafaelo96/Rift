@@ -70,6 +70,24 @@ kernel void warpBlend(
 {
     if (gid.x >= u.width || gid.y >= u.height) return;
     const uint bs = u.blockSize;
+
+    // Static bypass (symmetric, format-agnostic): when the two inputs agree at
+    // the SAME pixel, there is no motion to compensate — copy I0 exactly
+    // instead of warping. This nails static content (logos, thin text) even
+    // when the ME field carries spurious vectors there (self-similar strokes,
+    // sub-pel dither), which previously twisted thin glyphs. The relative
+    // threshold (~6% of local level, no absolute floor) auto-scales to any bit
+    // depth and covers edge compression noise; fades and real motion exceed it,
+    // so blending proceeds untouched. Dark levels fall back to the warp (safe:
+    // no visible edges there anyway).
+    const float aS = float(tex0.read(gid).x);
+    const float bS = float(tex1.read(gid).x);
+    const float adS = fabs(aS - bS);
+    if (adS * 16.0 <= (aS + bS)) {
+        outTex.write(uint(aS + 0.5), gid);
+        return;
+    }
+
     float2 flow = sampleMVBilinear(mv, float2(float(gid.x), float(gid.y)), u.gridW, u.gridH, bs);
 
     // backward warp positions
@@ -95,6 +113,14 @@ kernel void warpBlend(
         out = 0.5 * (v0 + v1);
     } else {
         out = (wF * v0 + wB * v1) / sum;
+    }
+    // Incoherent-flow zones whose inputs still agree are spurious twists, not
+    // occlusions (self-similar strokes / dither on static content): snap to I0.
+    // Real occlusions disagree in the inputs, so they keep the blended result.
+    // The loose bound (~12% of local level) is safe here because occ already
+    // gates it — well-matched motion never reaches this branch with occ == 1.
+    if (occ > 0.5 && adS * 8.0 <= (aS + bS)) {
+        out = aS;
     }
     // also handle single-side occlusion more explicitly: if err large, prefer the sample with smaller err direction?
     // v1 approx is sufficient for v1 prototype; OBMC omitted.

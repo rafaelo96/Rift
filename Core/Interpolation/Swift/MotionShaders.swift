@@ -375,4 +375,21 @@ kernel void mvTemporalEMA(
     if (distPx > u.temporalGatePx) { outMV[idx] = c; return; }
     outMV[idx] = int2((c.x + p.x) >> 1, (c.y + p.y) >> 1);
 }
+
+// Dead-zone snap on the post-median L0 field (in-place): vectors with
+// |MV| <= 0.5px (squared half-pel magnitude <= 1) are sub-pel matcher dither
+// on static content, not motion. Snapping them to zero stops static edges
+// (logos, thin text like MOVIES) from vibrating and keeps the temporal EMA
+// state clean on static scenes. Runs after the median pass, before the
+// temporal EMA. Genuine slow motion above 0.5px/frame passes through.
+kernel void mvDeadZone(
+    device int2 *ioMV        [[buffer(0)]],
+    constant MEUniforms &u   [[buffer(1)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= u.gridW || gid.y >= u.gridH) return;
+    const uint idx = gid.y * u.gridW + gid.x;
+    const int2 v = ioMV[idx];
+    if (v.x * v.x + v.y * v.y <= 1) { ioMV[idx] = int2(0, 0); }
+}
 """
