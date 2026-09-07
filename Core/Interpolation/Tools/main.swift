@@ -47,11 +47,17 @@ private func envInt(_ key: String, _ fallback: Int) -> Int {
     return v
 }
 
+private func envDouble(_ key: String) -> Double? {
+    guard let raw = ProcessInfo.processInfo.environment[key], let v = Double(raw) else { return nil }
+    return v
+}
+
 let pairCount = envInt("MV_PAIRS", 120)
 let lambdaPx = envInt("MV_LAMBDA", 4)
 let subpelOn = envInt("MV_SUBPEL", 1) != 0
 let dumpArtifacts = envInt("MV_DUMP", 1) != 0
 let seekFraction = Double(envInt("MV_SEEK_PCT", 60)) / 100.0
+let seekSecondsOverride = envDouble("MV_SEEK_SEC")
 let dumpDir = "/tmp/rift_mvprobe"
 let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
@@ -744,7 +750,7 @@ do {
     exit(1)
 }
 
-let seekTime = info.duration * seekFraction
+let seekTime = seekSecondsOverride ?? info.duration * seekFraction
 do {
     try demuxer.seek(to: seekTime)
     decoder.flush()
@@ -752,7 +758,7 @@ do {
     print("WARNING: seek failed, decoding from start — \(error)")
 }
 print(String(format: "decoding from %.2f s (≈%.0f%%) until %d luma planes are ready…",
-             seekTime, seekFraction * 100.0, pairCount + 1))
+             seekTime, seekTime / max(info.duration, 1e-6) * 100.0, pairCount + 1))
 
 var frames: [Data] = []
 var frameBuffers: [CVPixelBuffer] = []
