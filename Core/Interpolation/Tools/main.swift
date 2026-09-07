@@ -84,6 +84,319 @@ func stats(_ xs: [Double]) -> (mean: Double, p50: Double, p95: Double) {
     return (mean, pct(0.5), pct(0.95))
 }
 
+// MARK: - Geometry / attachment parity diagnostic (MV_GEOM)
+//
+// Diagnóstico del "pulso" de tamaño entre frames nativos e interpolados:
+// compara dims, bytesPerRow y attachments (modos ShouldPropagate /
+// ShouldNotPropagate) de I0, I1 y el buffer interpolado, y construye el
+// CMVideoFormatDescription por el MISMO camino que HDRDisplayRenderer
+// (CMVideoFormatDescriptionCreateForImageBuffer) para comparar la geometría
+// que el AVSampleBufferDisplayLayer realmente usa para escalar cada frame.
+
+private func pixFmtName(_ f: OSType) -> String {
+    let c = f & 0xFFFFFFFF
+    let b0 = UInt8((c >> 24) & 0xFF)
+    let b1 = UInt8((c >> 16) & 0xFF)
+    let b2 = UInt8((c >> 8) & 0xFF)
+    let b3 = UInt8(c & 0xFF)
+    let s = String(bytes: [b0, b1, b2, b3], encoding: .ascii) ?? "?"
+    return s
+}
+
+private func pbInfo(_ pb: CVPixelBuffer) -> String {
+    var s = "\(CVPixelBufferGetWidth(pb))x\(CVPixelBufferGetHeight(pb)) fmt=\(pixFmtName(CVPixelBufferGetPixelFormatType(pb)))"
+    let planes = CVPixelBufferGetPlaneCount(pb)
+    s += " planes=\(planes)"
+    if planes == 0 {
+        s += " bpr=\(CVPixelBufferGetBytesPerRow(pb))"
+    } else {
+        for p in 0..<planes {
+            s += " p\(p)=\(CVPixelBufferGetWidthOfPlane(pb, p))x\(CVPixelBufferGetHeightOfPlane(pb, p)) bpr=\(CVPixelBufferGetBytesPerRowOfPlane(pb, p))"
+        }
+    }
+    return s
+}
+
+private func attachmentDict(_ pb: CVPixelBuffer, _ mode: CVAttachmentMode) -> [String: Any] {
+    guard let d = CVBufferCopyAttachments(pb, mode) as NSDictionary? else { return [:] }
+    var out: [String: Any] = [:]
+    for (k, v) in d {
+        if let key = k as? String { out[key] = v }
+    }
+    return out
+}
+
+private func fmtGeom(_ pb: CVPixelBuffer) -> (dims: String, exts: [String], clean: NSDictionary?, par: NSDictionary?) {
+    var fmt: CMFormatDescription?
+    guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
+                                                       imageBuffer: pb,
+                                                       formatDescriptionOut: &fmt) == noErr, let fmt else {
+        return ("ERR", [], nil, nil)
+    }
+    let d = CMVideoFormatDescriptionGetDimensions(fmt)
+    var extKeys: [String] = []
+    if let exts = CMFormatDescriptionGetExtensions(fmt) as NSDictionary? {
+        extKeys = exts.allKeys.compactMap { $0 as? String }.sorted()
+    }
+    let clean = CMFormatDescriptionGetExtension(fmt, extensionKey: kCMFormatDescriptionExtension_CleanAperture) as? NSDictionary
+    let par = CMFormatDescriptionGetExtension(fmt, extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio) as? NSDictionary
+    return ("\(d.width)x\(d.height)", extKeys, clean, par)
+}
+
+private func fullResLuma(_ pb: CVPixelBuffer) -> [UInt16]? {
+    guard CVPixelBufferIsPlanar(pb), CVPixelBufferGetPlaneCount(pb) >= 1 else { return nil }
+    CVPixelBufferLockBaseAddress(pb, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+    let w = CVPixelBufferGetWidthOfPlane(pb, 0)
+    let h = CVPixelBufferGetHeightOfPlane(pb, 0)
+    let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
+    guard let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) else { return nil }
+    var out = [UInt16](repeating: 0, count: w * h)
+    out.withUnsafeMutableBufferPointer { buf in
+        guard let dst = buf.baseAddress else { return }
+        for y in 0..<h {
+            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
+            for x in 0..<w { dst[y * w + x] = row[x] }
+        }
+    }
+    return out
+}
+
+/// Registra la escala de `img` para que coincida con `ref` (mismo grid). Devuelve
+/// el factor s que minimiza SAD(s) y el valor SAD en s=1.0 (relativo al de 1.0).
+/// Sin movimiento (par estatico) el argmin es la escala real de `img` vs `ref`.
+/// Muestreo bilinear + umbral de textura: solo contribuyen pixels con gradiente
+/// local alto, asi el ajuste lo conducen bordes reales y no zonas planas.
+/// Muestra el detalle de la curva SAD (fino 0.0001) y la escala exacta argmin
+/// por interpolacion quadratica de los 3 vecinos. `img` se asume estatico vs `ref`.
+private func scaleSADFine(_ ref: [UInt16], _ img: [UInt16], w: Int, h: Int, label: String) -> (best: Double, valleyRatio: Double) {
+    let margin = max(2, min(w, h) / 50)
+    var tex = [Bool](repeating: false, count: w * h)
+    for y in 1..<(h - 1) {
+        for x in 1..<(w - 1) {
+            let i = y * w + x
+            let gx = abs(Int(ref[i - 1]) - Int(ref[i + 1]))
+            let gy = abs(Int(ref[i - w]) - Int(ref[i + w]))
+            tex[i] = (gx + gy) > 48
+        }
+    }
+    func sampleScaled(_ s: Double, _ x: Int, _ y: Int) -> Double {
+        let dx = Double(x) / s
+        let dy = Double(y) / s
+        guard dx >= 0 && dx <= Double(w - 1), dy >= 0 && dy <= Double(h - 1) else { return -1 }
+        let x0 = min(w - 2, max(0, Int(dx)))
+        let y0 = min(h - 2, max(0, Int(dy)))
+        let fx = dx - Double(x0)
+        let fy = dy - Double(y0)
+        let v00 = Double(img[y0 * w + x0])
+        let v10 = Double(img[y0 * w + (x0 + 1)])
+        let v01 = Double(img[(y0 + 1) * w + x0])
+        let v11 = Double(img[(y0 + 1) * w + (x0 + 1)])
+        return (v00 * (1 - fx) + v10 * fx) * (1 - fy) + (v01 * (1 - fx) + v11 * fx) * fy
+    }
+    let lo = 0.9975, hi = 1.0025, step = 0.0001
+    var samples: [(s: Double, sad: Double)] = []
+    for s in stride(from: lo, through: hi, by: step) {
+        var acc: Double = 0
+        var n = 0
+        for y in margin..<(h - margin) {
+            for x in margin..<(w - margin) {
+                guard tex[y * w + x] else { continue }
+                let tv = sampleScaled(s, x, y)
+                if tv < 0 { continue }
+                acc += abs(Double(ref[y * w + x]) - tv)
+                n += 1
+            }
+        }
+        if n > 0 { samples.append((s, acc / Double(n))) }
+    }
+    let minIdx = samples.enumerated().min { $0.element.sad < $1.element.sad }!.offset
+    var best = samples[minIdx].s
+    if minIdx >= 1 && minIdx < samples.count - 1 {
+        let (s0, y0v) = (samples[minIdx - 1].s, samples[minIdx - 1].sad)
+        let (s1, y1v) = (samples[minIdx].s, samples[minIdx].sad)
+        let (s2, y2v) = (samples[minIdx + 1].s, samples[minIdx + 1].sad)
+        let denom = y0v - 2 * y1v + y2v
+        if abs(denom) > 1e-12 {
+            best = s1 + 0.5 * step * (y0v - y2v) / denom
+        }
+    }
+    let sadAt1 = samples.first(where: { abs($0.s - 1.0) < step * 0.6 })?.sad ?? samples[minIdx].sad
+    print(String(format: "    %@: argmin=%.5f (quad)  SAD@argmin=%.2f  SAD@1.0=%.2f  ratio=%.4f",
+                 label, best, samples[minIdx].sad, sadAt1, samples[minIdx].sad / max(sadAt1, 1e-9)))
+    return (best, samples[minIdx].sad / max(sadAt1, 1e-9))
+}
+
+/// Registracion por bloques entera: campo de desplazamiento ref-vs-img por SAD.
+/// Si el campo es constante (sin gradiente espacial) y x-var/y-var≈0, la fase del
+/// round-trip es una traslacion pura y NO hay cambio de escala.
+private func blockShiftField(_ ref: [UInt16], _ img: [UInt16], w: Int, h: Int, bs: Int = 48) -> (meanX: Double, meanY: Double, xSpread: Double, ySpread: Double, slopeX: Double, slopeY: Double, blocks: Int, textured: Int) {
+    var ptsX: [(x: Double, dx: Double)] = []
+    var ptsY: [(y: Double, dy: Double)] = []
+    var blocks = 0
+    for by in stride(from: 0, to: h - bs, by: bs) {
+        for bx in stride(from: 0, to: w - bs, by: bs) {
+            blocks += 1
+            var tex = false
+            var bestDx = 0, bestDy = 0, bestSad = Int.max
+            for dy in -4...4 {
+                for dx in -4...4 {
+                    var acc: UInt64 = 0
+                    for yy in 0..<bs {
+                        let ry = by + yy, sy = by + yy + dy
+                        if sy < 0 || sy >= h { acc = UInt64.max; break }
+                        for xx in 0..<bs {
+                            let rx = bx + xx, sx = bx + xx + dx
+                            if sx < 0 || sx >= w { acc = UInt64.max; break }
+                            let a = Int(ref[ry * w + rx])
+                            let b = Int(img[sy * w + sx])
+                            acc += UInt64(abs(a - b))
+                            if ((xx + yy) % 31) == 0 { tex = tex || abs(a - b) >= 24 }
+                        }
+                    }
+                    if !tex { tex = acc < UInt64(bs * bs * 48) }
+                    if acc < UInt64(bestSad) { bestSad = Int(acc); bestDx = dx; bestDy = dy }
+                }
+            }
+            if tex {
+                ptsX.append((Double(bx + bs / 2), Double(bestDx)))
+                ptsY.append((Double(by + bs / 2), Double(bestDy)))
+            }
+        }
+    }
+    guard !ptsX.isEmpty else { return (0, 0, 0, 0, 0, 0, blocks, 0) }
+    func regress(_ pts: [(x: Double, v: Double)]) -> (mean: Double, spread: Double, slope: Double) {
+        let n = Double(pts.count)
+        var sx = 0.0, sv = 0.0, sxx = 0.0, sxv = 0.0
+        for p in pts { sx += p.x; sv += p.v; sxx += p.x * p.x; sxv += p.x * p.v }
+        let mean = sv / n
+        let denom = sxx - sx * sx / n
+        let slope = abs(denom) < 1e-9 ? 0.0 : (sxv - sx * sv / n) / denom
+        let varv = pts.reduce(0.0) { $0 + pow($1.v - mean, 2) } / n
+        return (mean, varv.squareRoot(), slope)
+    }
+    let rx = regress(ptsX.map { ($0.x, $0.dx) })
+    let ry = regress(ptsY.map { ($0.y, $0.dy) })
+    return (rx.mean, ry.mean, rx.spread, ry.spread, rx.slope, ry.slope, blocks, ptsX.count)
+}
+
+private func scaleSAD(_ ref: [UInt16], _ img: [UInt16], w: Int, h: Int) -> (best: Double, atOne: Double, sadAt1: Double) {
+    let margin = max(2, min(w, h) / 50)
+    // Mascara de textura: gradiente local (promedio |dX|+|dY| de 3 vecinos).
+    var tex = [Bool](repeating: false, count: w * h)
+    for y in 1..<(h - 1) {
+        for x in 1..<(w - 1) {
+            let i = y * w + x
+            let gx = abs(Int(ref[i - 1]) - Int(ref[i + 1]))
+            let gy = abs(Int(ref[i - w]) - Int(ref[i + w]))
+            tex[i] = (gx + gy) > 48 // 10-bit luma (~0.2 del rango 0..1023)
+        }
+    }
+    func sampleScaled(_ s: Double, _ x: Int, _ y: Int) -> Double {
+        let dx = Double(x) / s
+        let dy = Double(y) / s
+        guard dx >= 0 && dx <= Double(w - 1), dy >= 0 && dy <= Double(h - 1) else { return -1 }
+        let x0 = min(w - 2, max(0, Int(dx)))
+        let y0 = min(h - 2, max(0, Int(dy)))
+        let fx = dx - Double(x0)
+        let fy = dy - Double(y0)
+        let v00 = Double(img[y0 * w + x0])
+        let v10 = Double(img[y0 * w + (x0 + 1)])
+        let v01 = Double(img[(y0 + 1) * w + x0])
+        let v11 = Double(img[(y0 + 1) * w + (x0 + 1)])
+        return (v00 * (1 - fx) + v10 * fx) * (1 - fy) + (v01 * (1 - fx) + v11 * fx) * fy
+    }
+    var best = 1.0
+    var bestSad = Double.infinity
+    var sadBase = Double.infinity
+    let count = Double(w * h)
+    for s in stride(from: 0.996, through: 1.004, by: 0.001) {
+        var acc: Double = 0
+        var n = 0
+        for y in margin..<(h - margin) {
+            for x in margin..<(w - margin) {
+                guard tex[y * w + x] else { continue }
+                let tv = sampleScaled(s, x, y)
+                if tv < 0 { continue }
+                acc += abs(Double(ref[y * w + x]) - tv)
+                n += 1
+            }
+        }
+        let mean = n > 0 ? acc / Double(n) : Double.infinity
+        if s == 1.0 { sadBase = mean }
+        if mean < bestSad { bestSad = mean; best = s }
+    }
+    _ = count
+    return (best, bestSad / max(sadBase, 1e-9), sadBase)
+}
+
+private func dumpGeomDiagnostic(I0: CVPixelBuffer, I1: CVPixelBuffer, interp: CVPixelBuffer) {
+    print("\n=== MV_GEOM: geometry parity native vs interpolated (pair 0) ===")
+    print("I0      : \(pbInfo(I0))")
+    print("I1      : \(pbInfo(I1))")
+    print("interp  : \(pbInfo(interp))")
+
+    let propOf = attachmentDict(I0, CVAttachmentMode.shouldPropagate)
+    let nonPropNative = attachmentDict(I0, CVAttachmentMode.shouldNotPropagate)
+    let propInterp = attachmentDict(interp, CVAttachmentMode.shouldPropagate)
+    let nonPropInterp = attachmentDict(interp, CVAttachmentMode.shouldNotPropagate)
+    let propI1 = attachmentDict(I1, CVAttachmentMode.shouldPropagate)
+    let nonPropI1 = attachmentDict(I1, CVAttachmentMode.shouldNotPropagate)
+
+    func listKeys(_ label: String, _ d: [String: Any]) {
+        let keys = d.keys.sorted()
+        print("  \(label): \(keys.isEmpty ? "(none)" : keys.joined(separator: ", "))")
+    }
+    print("-- attachments --")
+    listKeys("I0   prop", propOf)
+    listKeys("I0   nonP", nonPropNative)
+    listKeys("I1   prop", propI1)
+    listKeys("I1   nonP", nonPropI1)
+    listKeys("inter prop", propInterp)
+    listKeys("inter nonP", nonPropInterp)
+
+    var allNative: [String: Any] = propOf
+    for (k, v) in nonPropNative where allNative[k] == nil { allNative[k] = v }
+    var allInterp: [String: Any] = propInterp
+    for (k, v) in nonPropInterp where allInterp[k] == nil { allInterp[k] = v }
+
+    var missingInInterp: [String] = []
+    var modeMismatch: [String] = []
+    for (k, nativeVal) in allNative {
+        if let interpVal = allInterp[k] {
+            let nativeProp = propOf[k] != nil
+            let interpProp = propInterp[k] != nil
+            if nativeProp != interpProp { modeMismatch.append("\(k) (nativo:\(nativeProp ? "prop" : "nonP") vs interp:\(interpProp ? "prop" : "nonP"))") }
+            let nv = String(describing: nativeVal)
+            let iv = String(describing: interpVal)
+            if nv != iv { print("  DIFF value \(k): nativo=\(nv) interp=\(iv)") }
+        } else {
+            missingInInterp.append(k)
+        }
+    }
+    var extraInInterp: [String] = []
+    for k in allInterp.keys where allNative[k] == nil { extraInInterp.append(k) }
+    if !missingInInterp.isEmpty { print("  FALTAN en interp (presentes en I0): \(missingInInterp.sorted().joined(separator: ", "))") }
+    if !extraInInterp.isEmpty { print("  EXTRA en interp (ausentes en I0): \(extraInInterp.sorted().joined(separator: ", "))") }
+    if !modeMismatch.isEmpty { print("  MODO distinto: \(modeMismatch.joined(separator: "; "))") }
+    if missingInInterp.isEmpty && extraInInterp.isEmpty && modeMismatch.isEmpty {
+        print("  attachments: conjuntos de claves identicos entre I0 e interp")
+    }
+
+    print("-- format description (via renderer path: CMVideoFormatDescriptionCreateForImageBuffer) --")
+    for (label, pb) in [("I0", I0), ("I1", I1), ("interp", interp)] {
+        let g = fmtGeom(pb)
+        let cleanStr = g.clean?.description ?? "-"
+        let parStr = g.par?.description ?? "-"
+        print("  \(label): dims=\(g.dims)")
+        print("    cleanAperture = \(cleanStr)")
+        print("    pixelAspectRatio = \(parStr)")
+        let geomKeys = g.exts.filter { $0.contains("Aperture") || $0.contains("Aspect") || $0.contains("Display") || $0.contains("Field") }
+        if geomKeys.isEmpty { print("    extensiones de geometria: (ninguna)") }
+        else { print("    extensiones de geometria: \(geomKeys.joined(separator: ", "))") }
+    }
+}
+
 // MARK: - Luma extraction (plane0 of 420YpCbCr10BiPlanar, 10 bit in high bits
 // of each 16-bit word) scaled to the 480p work plane with vImage. Linear
 // resampling is SAD-safe: both frames go through the exact same transform.
@@ -600,6 +913,13 @@ let measureGH = workHeight / measureBS
 let measurePlaneCount = workWidth * workHeight
 var madSum = 0.0
 var madMax = 0.0
+// Warp-vs-copy discriminator (MV_WARPCOPY=1): sobre bloques con |MV|>0.5px,
+// el warp t=0.5 es "genuino" si SAD(interp,I0) < SAD(I0,I1) Y SAD(interp,I1) <
+// SAD(I0,I1) — un frame intermedio real queda estrictamente entre sus inputs,
+// mientras que una copia no puede mejorar respecto a ambos a la vez.
+var wcMoving = 0
+var wcGenuine = 0
+let wcOn = envInt("MV_WARPCOPY", 1) == 1
 // Temporal-jitter collection: smoothed L0 field of every pair, kept in memory
 // and (optionally) dumped as CSVs so the same 8640 blocks can be compared
 // across consecutive pairs (MV_TJITTER=1).
@@ -669,6 +989,35 @@ for i in 0..<pairCount {
     let mvForWarp = engine.downloadMV(level: 0)
     let (interpPlane, warpMS) = warpEngine.interpolate(I0: cur, I1: ref, mv: mvForWarp, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5)
     warpTotal.append(warpMS)
+
+    if wcOn {
+        let g0 = measureGW
+        for by in 0..<measureGH {
+            for bx in 0..<g0 {
+                let m = mvForWarp[by * g0 + bx]
+                let magPx = (Double(m.x) * Double(m.x) + Double(m.y) * Double(m.y)).squareRoot() / 2.0
+                if magPx <= 0.5 { continue }
+                var sI0: UInt64 = 0
+                var sI1: UInt64 = 0
+                var s01: UInt64 = 0
+                for y in 0..<measureBS {
+                    for x in 0..<measureBS {
+                        let iy = by * measureBS + y
+                        let ix = bx * measureBS + x
+                        let vI = UInt64(interpPlane[iy * workWidth + ix])
+                        let v0 = UInt64(cur[iy * workWidth + ix])
+                        let v1 = UInt64(ref[iy * workWidth + ix])
+                        func absd(_ a: UInt64, _ b: UInt64) -> UInt64 { a >= b ? a - b : b - a }
+                        sI0 += absd(vI, v0)
+                        sI1 += absd(vI, v1)
+                        s01 += absd(v0, v1)
+                    }
+                }
+                wcMoving += 1
+                if sI0 < s01 && sI1 < s01 { wcGenuine += 1 }
+            }
+        }
+    }
 
     print(String(format: "  pair %4d: ME %.3f ms + warp %.3f ms", i + 1, elapsedMilliseconds(from: pairStart) - warpMS, warpMS))
 
@@ -865,6 +1214,83 @@ if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
         print(String(format: "  pipeline %4d: ME %.3f + Warp %.3f + Upscale %.3f = %.3f ms (pb %@)",
                      i + 1, r.meMS, r.warpMS, r.upscaleMS, tot,
                      r.pixelBuffer != nil ? "ok" : "NIL"))
+        // MV_GEOM: diagnostico de geometria/attachments en el par 0 con el mismo
+        // fast-path que usa la UI (interpolatePair tValues=[0.5]).
+        if envInt("MV_GEOM", 0) == 1 && i == 0, let rpb = r.pixelBuffer {
+            var gpb: CVPixelBuffer?
+            let gp = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: [0.5])
+            if let first = gp.pixelBuffers.first { gpb = first }
+            dumpGeomDiagnostic(I0: frameBuffers[i], I1: frameBuffers[i + 1], interp: gpb ?? rpb)
+
+            // Escala de CONTENIDO del camino pipeline completo, libre de movimiento:
+            // par estatico sintetico (I0→I0) → el round-trip debe reproducir I0 a
+            // escala exacta. Cualquier desvio = zoom introducido por el pipeline.
+            if let staticPB = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i], tValues: [0.5]).pixelBuffers.first,
+               let ref = fullResLuma(frameBuffers[i]),
+               let staticL = fullResLuma(staticPB),
+               let interpL = fullResLuma(gpb ?? rpb) {
+                let w = CVPixelBufferGetWidth(frameBuffers[i])
+                let h = CVPixelBufferGetHeight(frameBuffers[i])
+                let sSelf = scaleSAD(ref, staticL, w: w, h: h)
+                let sInterp = scaleSAD(ref, interpL, w: w, h: h)
+                let sIdent = scaleSAD(ref, ref, w: w, h: h)
+                print(String(format: "MV_GEOM content-scale (full-res luma, bilinear, texture-gated, SAD argmin 0.996..1.004):"))
+                print(String(format: "  CALIBRACION identidad ref-vs-ref (esperado 1.000): best=%.4f ratioSAD=%.4f",
+                             sIdent.best, sIdent.atOne))
+                print(String(format: "  static self-pair I0->I0: bestScale=%.4f  SAD@best/SAD@1=%.4f  SAD@1=%.1f  \(abs(sSelf.best - 1.0) < 0.001 ? "→ escala 1.000 (sin zoom del pipeline)" : "→ ¡DESVIO!")",
+                             sSelf.best, sSelf.atOne, sSelf.sadAt1))
+                print(String(format: "  real pair I0->I1 @0.5    : bestScale=%.4f  SAD@best/SAD@1=%.4f  (contiene movimiento real, no es escala pura)",
+                             sInterp.best, sInterp.atOne))
+                // Curva fina + calibracion sintetica: si la curva fina del self-pair
+                // marca un valle real fuera de 1.000, cuantificarlo con precision.
+                _ = scaleSADFine(ref, ref, w: w, h: h, label: "IDENTIDAD")
+                let fineSelf = scaleSADFine(ref, staticL, w: w, h: h, label: "SELF-PAIR")
+                // Validar el estimador: escalar ref sinteticamente a 0.9990 y ver si
+                // escalaSAD lo recupera (debe dar ≈0.999).
+                if fineSelf.best < 0.9995 || fineSelf.best > 1.0005 {
+                    var synth = [UInt16](repeating: 0, count: w * h)
+                    for y in 0..<h {
+                        let sy = min(h - 1, Int(Double(y) / 0.9990))
+                        for x in 0..<w {
+                            let sx = min(w - 1, Int(Double(x) / 0.9990))
+                            synth[y * w + x] = staticL[sy * w + sx]
+                        }
+                    }
+                    let sSynth = scaleSAD(ref, synth, w: w, h: h)
+                    print(String(format: "  VALIDACION estimador: ref sintetizado a 0.9990 → estimado=%.4f (debe ≈0.999)", sSynth.best))
+                }
+                // Campo de desplazamiento self-pair: si es constante → traslacion pura
+                // (escala 1.0). Si tiene gradiente (spread alto / tendencia bx→dx),
+                // habria zoom real.
+                let sf = blockShiftField(ref, staticL, w: w, h: h)
+                print(String(format: "  BLOQUES self-pair: mean(dx,dy)=(%.2f, %.2f)  spread=(%.2f, %.2f)  slope(dx/bx, dy/by)=(%.5f, %.5f)  %d/%d texturizados",
+                             sf.meanX, sf.meanY, sf.xSpread, sf.ySpread, sf.slopeX, sf.slopeY, sf.textured, sf.blocks))
+                if abs(sf.slopeX) < 0.002 && abs(sf.slopeY) < 0.002 {
+                    print(String(format: "  → campo de desplazamiento constante (spread ~±%.1fpx), NO hay gradiente → traslacion sub-pixel, escala = 1.000", max(sf.xSpread, sf.ySpread)))
+                } else {
+                    print("  → ¡pendiente no nula! zoom real posible")
+                }
+                // Dump visual (MV_DUMP=1): ref, roundtrip estatico y diff escalada.
+                // Antes del fix de fase el diff muestra halos ~1.7px en bordes
+                // (la traslacion del contenido); despues debe quedar ~negro.
+                if envInt("MV_DUMP", 1) == 1 {
+                    try? FileManager.default.createDirectory(atPath: dumpDir, withIntermediateDirectories: true)
+                    let grayRef = ref.map { UInt8(min(255, Int($0 >> 2))) }
+                    let grayStatic = staticL.map { UInt8(min(255, Int($0 >> 2))) }
+                    _ = writeGrayPNG(grayRef, width: w, height: h, to: "\(dumpDir)/geom_static_ref.png")
+                    _ = writeGrayPNG(grayStatic, width: w, height: h, to: "\(dumpDir)/geom_static_roundtrip.png")
+                    var diff = [UInt8](repeating: 0, count: w * h)
+                    for i in 0..<(w * h) {
+                        let a = Int(ref[i])
+                        let b = Int(staticL[i])
+                        let d = a >= b ? a - b : b - a
+                        diff[i] = UInt8(min(255, (d >> 2) * 4))
+                    }
+                    _ = writeGrayPNG(diff, width: w, height: h, to: "\(dumpDir)/geom_static_diff.png")
+                    print("  dumps: \(dumpDir)/geom_static_{ref,roundtrip,diff}.png")
+                }
+            }
+        }
     }
     let pME = stats(pipelineME)
     let pWarp = stats(pipelineWarp)
@@ -893,6 +1319,12 @@ print(String(format: "MV magnitude histogram (px): ≤0.5=%.1f%% ≤1=%.1f%% ≤
              h[0] * 100, h[1] * 100, h[2] * 100, h[3] * 100, h[4] * 100, h[5] * 100))
 print(String(format: "frame deltas avg %.1f / max %.1f (10-bit luma units; ~0 → static frames, large → real content change)",
              madSum / Double(pairCount), madMax))
+if wcOn {
+    print(String(format: "\nwarp-vs-copy (MV_WARPCOPY): %d de %d bloques en movimiento (%d pares) con warp genuino "
+                 + "(SAD(interp,I0)<SAD(I0,I1) y SAD(interp,I1)<SAD(I0,I1)) = %.1f%%",
+                 wcGenuine, wcMoving, pairCount,
+                 wcMoving > 0 ? 100.0 * Double(wcGenuine) / Double(wcMoving) : 0.0))
+}
 
 if envInt("MV_BRUTE", 0) == 1 {
     var pair0Samples: [(bx: Int, by: Int, dx: Int, dy: Int)] = []
