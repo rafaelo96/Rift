@@ -6,9 +6,17 @@
 //
 // Env (optional):
 //   MV_PAIRS   pairs to process  (default 120 ⇒ decodes 121 frames)
-//   MV_LAMBDA  linear true-motion penalty per px (default 4)
-//   MV_SUBPEL  0 disables half-pel refinement at L0 (default 1)
-//   MV_DUMP    0 disables PNG/CSV export of pair 0 (default 1)
+//    MV_LAMBDA  linear true-motion penalty per px (default 4)
+//    MV_SUBPEL  0 disables half-pel refinement at L0 (default 1)
+//    MV_DUMP    0 disables PNG/CSV export of pair 0 (default 1)
+//    MV_TJITTER 1 dumps the smoothed L0 MV field for EVERY pair and prints
+//               temporal-variance stats (same spatial block across consecutive
+//               pairs) plus an EMA offline-smoothing simulation (default 0)
+//    MV_TEMA    temporal EMA gate in px applied in-engine on the post-median L0
+//               field (0 = off; 2 → gate 2px, the production default). When on,
+//               the TJITTER report shows the gated-EMA field, not the raw one.
+//    MV_TEMARESET_AT  pair index at which to call resetTemporalState() mid-run
+//               to simulate a seek discontinuity with EMA active (-1 = never)
 //
 // Success criterion: real measured time per stage on ≥100 real pairs from an
 // MKV, reported as mean/p50/p95 on the M4, and a visually verifiable MV field.
@@ -45,6 +53,10 @@ let subpelOn = envInt("MV_SUBPEL", 1) != 0
 let dumpArtifacts = envInt("MV_DUMP", 1) != 0
 let seekFraction = Double(envInt("MV_SEEK_PCT", 60)) / 100.0
 let dumpDir = "/tmp/rift_mvprobe"
+let tjitOn = envInt("MV_TJITTER", 0) != 0
+let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
+let temporalGatePx = envInt("MV_TEMA", 0)
+let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
 
 // MARK: - Helpers
 
@@ -472,7 +484,8 @@ do {
         spec: pyramidSpec,
         lambdaPx: UInt32(lambdaPx),
         smoothL0: envInt("MV_MEDIAN", 1) == 1,
-        gateL0: envInt("MV_GATE", 1) == 1
+        gateL0: envInt("MV_GATE", 1) == 1,
+        temporalGatePx: UInt32(temporalGatePx)
     )
 } catch {
     print("ENGINE INIT FAILED: \(error)")
@@ -587,9 +600,26 @@ let measureGH = workHeight / measureBS
 let measurePlaneCount = workWidth * workHeight
 var madSum = 0.0
 var madMax = 0.0
+// Temporal-jitter collection: smoothed L0 field of every pair, kept in memory
+// and (optionally) dumped as CSVs so the same 8640 blocks can be compared
+// across consecutive pairs (MV_TJITTER=1).
+var tjFields: [[SIMD2<Int32>]] = []
+var tjW = 0
+var tjH = 0
+if tjitOn {
+    try? FileManager.default.createDirectory(atPath: tjitDir, withIntermediateDirectories: true)
+}
 
 print("\n--- measuring \(pairCount) pairs @ \(workWidth)x\(workHeight) ---")
+if temporalGatePx > 0 {
+    print(String(format: "temporal EMA gating ON (gate %d px on post-median L0; reset at pair %d)",
+                 temporalGatePx, tmaResetAt))
+}
 for i in 0..<pairCount {
+    if i == tmaResetAt {
+        engine.resetTemporalState()
+        print("MV_TEMARESET_AT: temporal state reset before pair \(i + 1) (EMA starts clean)")
+    }
     let pairStart = DispatchTime.now().uptimeNanoseconds
     let t = engine.runPair(cur: frames[i], ref: frames[i + 1])
     for s in SEStage.allCases {
@@ -616,6 +646,14 @@ for i in 0..<pairCount {
     cum.blocksImprove += m.blocksImprove
     for b in 0..<cum.hist.count { cum.hist[b] += m.hist[b] }
     totalBlocks += measureGW * measureGH
+
+    if tjitOn {
+        let sm = engine.downloadMV(level: 0)
+        if tjW == 0 { tjW = engine.grids[0].w; tjH = engine.grids[0].h }
+        tjFields.append(sm)
+        let tm = Int(Date().timeIntervalSince1970 * 1000) % 1000000
+        writeMVCSV(sm, gridW: tjW, gridH: tjH, path: "\(tjitDir)/mv_pair\(i)_t\(tm).csv")
+    }
 
     var diff: UInt64 = 0
     for k in 0..<measurePlaneCount {
@@ -656,6 +694,104 @@ for i in 0..<pairCount {
         let interpGray = interpPlane.map { UInt8(min(255, Int($0 >> 2))) }
         _ = writeGrayPNG(interpGray, width: workWidth, height: workHeight, to: "\(dumpDir)/interp_t05_pair0.png")
         print("artifacts: \(dumpDir)/{mv_l0_pair0.png, cur_l0_pair0_gray.png, nxt_l0_pair0_gray.png, mv_l0_pair0.csv, interp_t05_pair0.png}")
+    }
+}
+
+if tjitOn && tjFields.count >= 2 {
+    print("\n--- temporal jitter: smoothed L0 MV across \(tjFields.count) consecutive pairs ---")
+    func seriesStats(_ series: [SIMD2<Int32>], skipFirst: Int) -> (sig: Double, tstd: Double) {
+        let xs = series.dropFirst(skipFirst).map { Double($0.x) / 2.0 }
+        let ys = series.dropFirst(skipFirst).map { Double($0.y) / 2.0 }
+        let mx = xs.reduce(0, +) / Double(xs.count)
+        let my = ys.reduce(0, +) / Double(ys.count)
+        var vx = 0.0, vy = 0.0, mag = 0.0
+        for k in 0..<xs.count {
+            vx += (xs[k] - mx) * (xs[k] - mx)
+            vy += (ys[k] - my) * (ys[k] - my)
+            mag += (xs[k] * xs[k] + ys[k] * ys[k]).squareRoot()
+        }
+        return ((mag / Double(xs.count)), (vx + vy).squareRoot() / Double(xs.count))
+    }
+    let g = tjFields[0].count
+    var moving = 0
+    var staticB = 0
+    var rawTstd: [Double] = []
+    var rawTstd2: [Double] = []
+    var emaTstd: [Double] = []
+    var emaTstd25: [Double] = []
+    var emaTstd50: [Double] = []
+    var consecDelta: [Double] = []
+    var consecDeltaMax: [Double] = []
+    var flicker = 0
+    var flickerTot = 0
+    var emaA: [Double] = []
+    for bx in 0..<g {
+        let series = tjFields.map { $0[bx] }
+        let raw = seriesStats(series, skipFirst: 0)
+        let rawSteady = seriesStats(series, skipFirst: 1)
+        if raw.sig >= 3.0 { moving += 1 } else if raw.sig < 1.0 { staticB += 1 }
+        if raw.sig >= 3.0 {
+            rawTstd.append(raw.tstd)
+            rawTstd2.append(rawSteady.tstd)
+            var deltas: [Double] = []
+            for i in 1..<series.count {
+                let d = (Double(series[i].x - series[i - 1].x) * Double(series[i].x - series[i - 1].x)
+                    + Double(series[i].y - series[i - 1].y) * Double(series[i].y - series[i - 1].y)).squareRoot() / 2.0
+                deltas.append(d)
+                if raw.sig >= 3.0 { consecDelta.append(d) }
+            }
+            consecDeltaMax.append(deltas.max() ?? 0)
+            var on = 0
+            for v in series where (Double(v.x) * Double(v.x) + Double(v.y) * Double(v.y)).squareRoot() / 2.0 >= 2.0 { on += 1 }
+            if Double(on) < Double(series.count) * 0.75 { flicker += 1 }
+            flickerTot += 1
+        }
+        for alpha in [0.5, 0.75, 0.9] where temporalGatePx == 0 {
+            var emaX = 0.0, emaY = 0.0
+            var stored: [SIMD2<Int32>] = []
+            for v in series {
+                let px = Double(v.x) / 2.0
+                let py = Double(v.y) / 2.0
+                if stored.isEmpty { emaX = px; emaY = py } else { emaX = alpha * px + (1 - alpha) * emaX; emaY = alpha * py + (1 - alpha) * emaY }
+                stored.append(SIMD2<Int32>(Int32(emaX * 2), Int32(emaY * 2)))
+            }
+            let ema = seriesStats(stored, skipFirst: 1)
+            if alpha == 0.5 { emaTstd.append(ema.tstd) }
+            if alpha == 0.75 { emaTstd25.append(ema.tstd) }
+            if alpha == 0.9 { emaTstd50.append(ema.tstd) }
+        }
+        _ = rawSteady
+    }
+    func pct(_ a: [Double], _ q: Double) -> Double {
+        guard !a.isEmpty else { return 0 }
+        let s = a.sorted()
+        return s[min(max(Int((Double(s.count - 1)) * q), 0), s.count - 1)]
+    }
+    func overFrac(_ a: [Double], _ th: Double) -> Double {
+        guard !a.isEmpty else { return 0 }
+        return 100.0 * Double(a.filter { $0 > th }.count) / Double(a.count)
+    }
+    print("  blocks: moving(|MV|≥3px)=\(moving) near-static(<1px)=\(staticB) of \(g)")
+    let fieldLabel = temporalGatePx > 0 ? "EMA(gate \(temporalGatePx)px) field" : "RAW"
+    if !rawTstd.isEmpty {
+        print(String(format: "  %@ temporal std (px), on moving blocks: p50=%.2f p90=%.2f p99=%.2f | >1px=%.1f%% >2px=%.1f%% >4px=%.1f%%",
+                     fieldLabel as NSString,
+                     pct(rawTstd, 0.5), pct(rawTstd, 0.9), pct(rawTstd, 0.99),
+                     overFrac(rawTstd, 1), overFrac(rawTstd, 2), overFrac(rawTstd, 4)))
+        print(String(format: "  %@ steady-state std (pairs 1..N-1), moving: p50=%.2f p90=%.2f | >2px=%.1f%%",
+                     fieldLabel as NSString,
+                     pct(rawTstd2, 0.5), pct(rawTstd2, 0.9), overFrac(rawTstd2, 2)))
+        print(String(format: "  consecutive-pair |dMV| (px), moving blocks: mean=%.2f p90=%.2f | per-block max: p90=%.2f",
+                     (consecDelta.reduce(0, +) / Double(max(consecDelta.count, 1))),
+                     pct(consecDelta, 0.9), pct(consecDeltaMax, 0.9)))
+        print(String(format: "  flicker (has real MV but <75%% of pairs with |MV|≥2px): %d/%d (%.1f%%)",
+                     flicker, flickerTot, 100.0 * Double(flicker) / Double(max(flickerTot, 1))))
+        if temporalGatePx == 0 {
+            print(String(format: "  EMA sim steady approx (offline, α=0.50/0.75/0.90), std on moving: p50=%.2f/%.2f/%.2f >2px=%.1f%%/%.1f%%/%.1f%%",
+                         pct(emaTstd, 0.5), pct(emaTstd25, 0.5), pct(emaTstd50, 0.5),
+                         overFrac(emaTstd, 2), overFrac(emaTstd25, 2), overFrac(emaTstd50, 2)))
+        }
+        _ = emaA
     }
 }
 
