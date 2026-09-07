@@ -165,13 +165,13 @@ public final class MotionCompensator {
         // correcto ES el input — devolver I0 directo evita el blur del
         // round-trip a work-plane (los interpolados salían más suaves que los
         // nativos y el logo "se veía distinto" / pulsaba a 24Hz). Pixel-perfect,
-        // costo ~0.3ms (un MAD en host) y se ahorra el ME+warp del par.
-        // Umbral 8.0 en unidades 10-bit del work-plane: piso de ruido medido
-        // 4.2 (logo estático 32s); escena con movimiento más lento 13.6 avg.
-        // Un falso positivo solo repite I0 en contenido casi-estático (invisible);
-        // un falso negativo es el camino normal (status quo). El estado EMA no
-        // necesita reset: contenido estático lo mantiene en cero de todos modos.
-        if workMAD(luma0, luma1) < 8.0 {
+        // costo ~1ms (MAD + textura en host) y se ahorra el ME+warp del par.
+        // Ver isStaticPair: gate conservador de dos señales (el MAD global solo
+        // comía movimiento tenue). Un falso positivo solo repite I0 en
+        // contenido casi-estático (invisible); un falso negativo es el camino
+        // normal (status quo). El estado EMA no necesita reset: contenido
+        // estático lo mantiene en cero de todos modos.
+        if isStaticPair(luma0, luma1) {
             return InterpolationPairResult(pixelBuffers: tValues.map { _ in I0 },
                                            meMS: 0, warpMS: 0, upscaleMS: 0)
         }
@@ -209,7 +209,7 @@ public final class MotionCompensator {
         }
 
         // Fast-path estático (ver interpolatePair): par sin cambio → I0 directo.
-        if workMAD(luma0, luma1) < 8.0 {
+        if isStaticPair(luma0, luma1) {
             return InterpolationResult(pixelBuffer: I0, meMS: 0, warpMS: 0, upscaleMS: 0)
         }
 
@@ -256,6 +256,39 @@ public final class MotionCompensator {
             }
         }
         return Double(acc) / Double(n)
+    }
+
+    // Fracción de píxeles con textura (gradiente local en cruz > `threshold`,
+    // unidades del work-plane) en el interior del frame. Si el layout no cuadra
+    // devuelve 1.0 para NO skipear (dirección segura).
+    private func texturedFraction(_ a: Data, width: Int, height: Int, threshold: Int) -> Double {
+        guard a.count == width * height * 2 else { return 1.0 }
+        var n = 0
+        var total = 0
+        a.withUnsafeBytes { raw in
+            let p = raw.bindMemory(to: UInt16.self).baseAddress!
+            for y in 1..<(height - 1) {
+                for x in 1..<(width - 1) {
+                    let c = Int(p[y * width + x])
+                    let gx = abs(c - Int(p[y * width + (x - 1)])) + abs(Int(p[y * width + (x + 1)]) - c)
+                    let gy = abs(c - Int(p[(y - 1) * width + x])) + abs(Int(p[(y + 1) * width + x]) - c)
+                    total += 1
+                    if gx + gy > threshold { n += 1 }
+                }
+            }
+        }
+        return total > 0 ? Double(n) / Double(total) : 1.0
+    }
+
+    // Gate del fast-path estático (conservador, dos señales): el MAD global
+    // solo come movimiento tenue/oscuro con desplazamiento real (medido:
+    // escenas 30%/80% con 21-42% de bloques en movimiento daban MAD 5-6).
+    // Se exige ADEMÁS fracción con textura < 6% (grad>24): el logo estático
+    // da 3.3%; las escenas con movimiento medido dan 9-20%. Un falso positivo
+    // es imposible en el movimiento medido; un falso negativo es status quo.
+    private func isStaticPair(_ luma0: Data, _ luma1: Data) -> Bool {
+        guard workMAD(luma0, luma1) < 6.0 else { return false }
+        return texturedFraction(luma0, width: config.workWidth, height: config.workHeight, threshold: 24) < 0.06
     }
 
     // MARK: - Luma extraction + downscale (host)

@@ -997,6 +997,33 @@ for i in 0..<pairCount {
     madSum += mad
     if mad > madMax { madMax = mad }
 
+    // Textured-MAD calibration (MV_TEXMAD=1, pair 0): mean |I0-I1| over pixels
+    // whose local gradient in I0 exceeds a threshold (10-bit work-plane units),
+    // at several thresholds + textured fractions. Calibrates a texture-gated
+    // static-skip gate (global MAD misfires on dark/low-contrast motion).
+    if envInt("MV_TEXMAD", 0) == 1 && i == 0 {
+        for thr in [12, 24, 48] {
+            var acc: UInt64 = 0
+            var n = 0
+            for y in 1..<(workHeight - 1) {
+                for x in 1..<(workWidth - 1) {
+                    let c = Int(cur[y * workWidth + x])
+                    let gx = abs(c - Int(cur[y * workWidth + (x - 1)])) + abs(Int(cur[y * workWidth + (x + 1)]) - c)
+                    let gy = abs(c - Int(cur[(y - 1) * workWidth + x])) + abs(Int(cur[(y + 1) * workWidth + x]) - c)
+                    if gx + gy > thr {
+                        let a = Int(cur[y * workWidth + x])
+                        let b = Int(ref[y * workWidth + x])
+                        acc += UInt64(a >= b ? a - b : b - a)
+                        n += 1
+                    }
+                }
+            }
+            print(String(format: "  TEXMAD thr>%d: textured=%.2f%% meanDiff=%.2f", thr,
+                         100.0 * Double(n) / Double(measurePlaneCount),
+                         n > 0 ? Double(acc) / Double(n) : 0.0))
+        }
+    }
+
     // Warp/blend at t=0.5 (OBMC omitted v1 — known limitation, see header)
     let mvForWarp = engine.downloadMV(level: 0)
     let (interpPlane, warpMS) = warpEngine.interpolate(I0: cur, I1: ref, mv: mvForWarp, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5)
