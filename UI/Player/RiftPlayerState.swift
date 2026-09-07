@@ -154,6 +154,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var audioRenderer: AVSampleBufferAudioRenderer?
     private var sourceFrameRate: Double?
     private let coordinator = DecodeCoordinator(value: 4)
+    /// Fijación B: presupuesto de decode por delante del reloj de presentación
+    /// (segundos). El decode no produce frames cuyo pts supere `reloj + budget`;
+    /// sin esto el pool (ventana de 4 frames con eviction) corre por delante de la
+    /// presentación sin límite y los toggles de modo provocan ráfagas/saltos.
+    /// Tunable vía RIFT_DECODE_AHEAD_BUDGET para validación en distintos chips.
+    private let decodeAheadBudget: Double
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
     private var audioTask: Task<Void, Never>?
@@ -301,6 +307,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // Permite verificar el pipeline de reproducción/interpolación sin interacción
     // GUI (NSOpenPanel no funciona en corridas headless — ver AGENTS.md).
     init() {
+        decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 1.0
         let env = ProcessInfo.processInfo.environment
         guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
@@ -718,6 +725,30 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     await self.coordinator.signal()
                     continue
                 }
+                // Fijación B: gate de decode por presupuesto TEMPORAL (no por
+                // conteo de frames). No decodificar paquetes cuyo pts supere el
+                // reloj de presentación en más de `decodeAheadBudget` segundos —
+                // así el pool nunca corre por delante del clock sin límite. Solo
+                // se aplica cuando el reloj ya avanza (rate>0) y el pool tiene
+                // insumos (pool.count >= 2): evita deadlock en pre-roll (primeros
+                // frames) y nunca bloquea al pipeline que va al límite (si el
+                // decode es lento, pts < clk+budget y no hay espera → sin
+                // starvation nueva para ME/interpolación).
+                if decodeAheadBudget > 0 {
+                    let sched = await self.scheduler
+                    let rate = sched?.synchronizer.rate ?? 0
+                    if rate > 0 && pool.count >= 2 {
+                        while !Task.isCancelled {
+                            let clk = sched?.synchronizer.currentTime().seconds ?? 0
+                            if pkt.pts - clk <= decodeAheadBudget { break }
+                            try? await Task.sleep(nanoseconds: 50_000_000)
+                        }
+                        if Task.isCancelled {
+                            await self.coordinator.signal()
+                            break
+                        }
+                    }
+                }
                 guard let pb = try? dec.decodeFrame(pkt) else {
                     await self.coordinator.signal()
                     continue
@@ -1018,8 +1049,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         async -> (buffers: InterpolatedBuffersBox, totalMS: Double, meMS: Double, warpMS: Double) {
         guard interpolationMode != .disabled, !isInterpolating else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
         if compensator == nil {
+            // Bonus: construir los pipelines Metal en background. El init de
+            // MotionCompensator compila el shader fuente / crea PSOs (cientos de
+            // ms); hacerlo aquí (MainActor) congelaba la UI y alimentaba la brecha
+            // decode↔clock en los toggles de modo. al await, el MainActor queda
+            // libre durante la construcción.
             do {
-                compensator = try MotionCompensator(config: .default)
+                compensator = try await Task.detached(priority: .userInitiated) {
+                    try MotionCompensator(config: .default)
+                }.value
             } catch {
                 os_log("interpolatePair: failed to init MotionCompensator: %{public}@",
                        log: benchLog, type: .error, String(describing: error))
@@ -1131,15 +1169,32 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     await self.waitUntilDisplayClock(atLeast: f.pts)
                     if Task.isCancelled { break }
-                    let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
-                    let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
-                    if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
-                        self.markDisplayImmediately(sbuf)
-                        rend.displayLayer.enqueue(sbuf)
-                        self.enqueuedFramesInWindow += 1
-                        pool.removeFirst()
-                    }
+                    let clkN = sched.synchronizer.currentTime().seconds
+                    // Consumir el frame del pool y devolver el permit pase lo que
+                    // pase (presentado o descartado) para no frenar la cadena.
+                    pool.removeFirst()
                     await self.coordinator.signal()
+                    // Fijación C — red de seguridad en la rama nativa:
+                    //   • Frame atrasado (pts + margen < reloj): DESCARTAR en vez
+                    //     de presentarlo en ráfaga con DisplayImmediately (causaba
+                    //     el fast-forward tras un toggle).
+                    //   • Frames con pts por delante del reloj: NO marcar
+                    //     DisplayImmediately (el layer los retiene hasta que el
+                    //     synchronizer alcance su pts → pacing correcto, sin salto).
+                    //   • Solo los frames genuinamente a tiempo se presentan ya.
+                    let behindMargin = 0.020
+                    let aheadMargin = 0.050
+                    if f.pts + behindMargin >= clkN {
+                        let pts = CMTime(seconds: f.pts, preferredTimescale: 600)
+                        let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 600)
+                        if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                            if f.pts - clkN <= aheadMargin {
+                                self.markDisplayImmediately(sbuf)
+                            }
+                            rend.displayLayer.enqueue(sbuf)
+                            self.enqueuedFramesInWindow += 1
+                        }
+                    }
                 } else {
                     guard let pair = pool.reservePair() else {
                         try? await Task.sleep(nanoseconds: 10_000_000)

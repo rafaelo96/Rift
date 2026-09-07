@@ -129,6 +129,7 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
 - **Barra/seek ±10s** no se ha confirmado que funcione con el seek actual (solo se probó click directo en la barra). Debe probarse tras este commit.
 - **NSOpenPanel (`Cmd+O` / "Open Video...")** funciona en sesión de usuario pero NO en corridas no GUI (headless CI o CLI sin WindowServer) — limit conocido, by design.
 - **Pantalla negra+pantalla solo en una ventana pequeña** fue resuelto con `HDRDisplayView`+`NSViewRepresentable`; no reducir el area del displayLayer.
+- **Parpadeo sutil en texto/superficies planas con interpolación activa**: ruido residual de vectores de movimiento del MCFI clásico, ya mitigado por mediana 3×3 + gates (`smoothL0`/`gateL0`/`clearWinGate`, `mvMedian3` en MotionShaders.swift). Diagnosticado (determinismo byte-idéntico descarta regresión de Fase B). Es un trade-off inherente aceptado (ver §3); NO "arreglarlo" por otra vía sin propuesta nueva.
 
 ## Rango de hardware soportado
 
