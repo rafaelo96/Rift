@@ -52,6 +52,8 @@ struct MEUniforms {
     var hasInherited: UInt32
     var inheritedGrid: SIMD2<UInt32>
     var inheritFactor: UInt32
+    var temporalGatePx: UInt32
+    var hasTemporalPrev: UInt32
 }
 
 /// Measurement stages in report order.
@@ -107,6 +109,7 @@ public final class MotionSearchEngine {
     private let pyramidPSO: MTLComputePipelineState
     private let searchPSO: MTLComputePipelineState
     private let medianPSO: MTLComputePipelineState?
+    private let temporalPSO: MTLComputePipelineState?
 
     private var curTex: [MTLTexture?] = []
     private var refTex: [MTLTexture?] = []
@@ -117,6 +120,14 @@ public final class MotionSearchEngine {
     /// Clear-win gate: L0 keeps an MV only if it beats zero displacement by a
     /// real margin (kills smooth-region noise). Default true.
     private let gateL0: Bool
+    /// Temporal EMA gate: max accepted per-block |MV change| in px between
+    /// consecutive pairs to blend toward the previous pair's value (0 = off).
+    /// See MSL `mvTemporalEMA`. Requires smoothL0 (operates on the median output).
+    public let temporalGatePx: UInt32
+    /// State for the temporal pass: previous pair's post-EMA field + output buffer.
+    private var mvBufferTemporalOut: MTLBuffer?
+    private var mvBufferTemporalPrev: MTLBuffer?
+    private var hasTemporalPrev = false
 
     /// Block grid dims per level (flat block count = gridW * gridH).
     public var grids: [(w: Int, h: Int)] { spec.map { (($0.width + $0.blockSize - 1) / $0.blockSize,
@@ -124,7 +135,7 @@ public final class MotionSearchEngine {
     /// Texture pixel dims per level.
     public var texSizes: [(w: Int, h: Int)] { spec.map { ($0.width, $0.height) } }
 
-    public init(msl: String, spec: [LevelSpec], lambdaPx: UInt32, smoothL0: Bool, gateL0: Bool = true) throws {
+    public init(msl: String, spec: [LevelSpec], lambdaPx: UInt32, smoothL0: Bool, gateL0: Bool = true, temporalGatePx: UInt32 = 0) throws {
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue() else {
             throw EngineError.deviceUnavailable
@@ -134,6 +145,7 @@ public final class MotionSearchEngine {
         self.spec = spec
         self.lambdaPx = lambdaPx
         self.gateL0 = gateL0
+        self.temporalGatePx = temporalGatePx
         self.levels = spec.count
 
         // Guard against a reference window exceeding the dynamic-threadgroup
@@ -167,6 +179,13 @@ public final class MotionSearchEngine {
         } else {
             medianPSO = nil
         }
+        // Temporal EMA gating operates on the median-smoothed L0 field, so it
+        // only makes sense when the median pass is active.
+        if smoothL0 && temporalGatePx > 0, let tFn = library.makeFunction(name: "mvTemporalEMA") {
+            temporalPSO = try? device.makeComputePipelineState(function: tFn)
+        } else {
+            temporalPSO = nil
+        }
 
         for (i, s) in spec.enumerated() {
             let desc = MTLTextureDescriptor.texture2DDescriptor(
@@ -194,6 +213,16 @@ public final class MotionSearchEngine {
                 options: .storageModeShared
             ) else { throw EngineError.pipeline("L0 median buffer allocation failed") }
             mvBufferSmoothed = buf
+        }
+        if temporalPSO != nil {
+            let g = grids[0]
+            let len = g.w * g.h * MemoryLayout<SIMD2<Int32>>.stride
+            guard let tOut = device.makeBuffer(length: len, options: .storageModeShared),
+                  let tPrev = device.makeBuffer(length: len, options: .storageModeShared) else {
+                throw EngineError.pipeline("L0 temporal buffer allocation failed")
+            }
+            mvBufferTemporalOut = tOut
+            mvBufferTemporalPrev = tPrev
         }
     }
 
@@ -234,7 +263,8 @@ public final class MotionSearchEngine {
                 gridW: UInt32(g0.w), gridH: UInt32(g0.h),
                 searchHalfPel: 0, lambdaPx: 0, halfPelRefine: 0,
                 clearWinGate: 0,
-                hasInherited: 0, inheritedGrid: SIMD2<UInt32>(0, 0), inheritFactor: 0
+                hasInherited: 0, inheritedGrid: SIMD2<UInt32>(0, 0), inheritFactor: 0,
+                temporalGatePx: 0, hasTemporalPrev: 0
             )
             enc.setBytes(&uni, length: MemoryLayout<MEUniforms>.stride, index: 2)
             enc.dispatchThreadgroups(
@@ -246,17 +276,73 @@ public final class MotionSearchEngine {
             cmd.waitUntilCompleted()
             times[SEStage.searchL0.rawValue] += elapsedMS(from: start)
         }
+        // L0 temporal EMA gating (when enabled): blends each block toward the
+        // previous pair's MV only when the change fits in temporalGatePx. Runs
+        // on the median output; the result is what `downloadMV(smoothed:true)`
+        // returns (and what the warp consumes in production).
+        if let temporalPSO = temporalPSO,
+           let tOut = mvBufferTemporalOut, let tPrev = mvBufferTemporalPrev,
+           let smoothedBuf = mvBufferSmoothed {
+            let start = DispatchTime.now().uptimeNanoseconds
+            guard let cmd = queue.makeCommandBuffer(),
+                  let enc = cmd.makeComputeCommandEncoder() else { return PairTimes(stages: times, uploadMS: uploadMS) }
+            enc.setComputePipelineState(temporalPSO)
+            enc.setBuffer(smoothedBuf, offset: 0, index: 0)
+            enc.setBuffer(tPrev, offset: 0, index: 1)
+            enc.setBuffer(tOut, offset: 0, index: 2)
+            var g0 = grids[0]
+            var uni = MEUniforms(
+                level: 0, width: 0, height: 0, blockSize: 0,
+                gridW: UInt32(g0.w), gridH: UInt32(g0.h),
+                searchHalfPel: 0, lambdaPx: 0, halfPelRefine: 0,
+                clearWinGate: 0,
+                hasInherited: 0, inheritedGrid: SIMD2<UInt32>(0, 0), inheritFactor: 0,
+                temporalGatePx: temporalGatePx,
+                hasTemporalPrev: hasTemporalPrev ? 1 : 0
+            )
+            enc.setBytes(&uni, length: MemoryLayout<MEUniforms>.stride, index: 3)
+            enc.dispatchThreadgroups(
+                MTLSize(width: g0.w, height: g0.h, depth: 1),
+                threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
+            )
+            enc.endEncoding()
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            // Host-side state roll: this pair's output becomes next pair's `prev`.
+            // 8640 × 8B = ~69KB memcpy (~µs) — kept on host to avoid an extra GPU
+            // copy pass and to keep the state buffer layout trivially debuggable.
+            memcpy(tPrev.contents(), tOut.contents(),
+                   g0.w * g0.h * MemoryLayout<SIMD2<Int32>>.stride)
+            hasTemporalPrev = true
+            times[SEStage.searchL0.rawValue] += elapsedMS(from: start)
+        }
         return PairTimes(stages: times, uploadMS: uploadMS)
     }
 
     /// Downloads the MV field of a level as (dx, dy) half-pel vectors (level 0
-    /// returns the smoothed field when the median pass is active).
+    /// returns the smoothed field when the median pass is active; when temporal
+    /// gating is enabled it returns the temporal EMA output, i.e. exactly what
+    /// the warp consumes).
     public func downloadMV(level: Int, smoothed: Bool = true) -> [SIMD2<Int32>] {
-        let buf = (level == 0 && smoothed && mvBufferSmoothed != nil) ? mvBufferSmoothed : mvBuffer[level]
+        let buf: MTLBuffer?
+        if level == 0 && smoothed && mvBufferSmoothed != nil {
+            buf = (temporalPSO != nil && mvBufferTemporalOut != nil) ? mvBufferTemporalOut : mvBufferSmoothed
+        } else {
+            buf = mvBuffer[level]
+        }
         guard let buf else { return [] }
         let count = grids[level].w * grids[level].h
         let ptr = buf.contents().assumingMemoryBound(to: SIMD2<Int32>.self)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
+    }
+
+    /// Clears the temporal EMA state so the next pair is emitted without blending
+    /// (first-pair copy). Called on seek, pause→resume, flush and loadVideo to
+    /// avoid carrying jitter history across a time discontinuity or new content.
+    public func resetTemporalState() {
+        guard temporalPSO != nil, let tPrev = mvBufferTemporalPrev else { return }
+        memset(tPrev.contents(), 0, tPrev.length)
+        hasTemporalPrev = false
     }
 
     /// Reads a pyramid level's pixels back to the host (debug / validation).
@@ -338,7 +424,8 @@ public final class MotionSearchEngine {
                 inherits ? UInt32(grids[level + 1].w) : 1,
                 inherits ? UInt32(grids[level + 1].h) : 1
             ),
-            inheritFactor: UInt32(s.inheritFactor)
+            inheritFactor: UInt32(s.inheritFactor),
+            temporalGatePx: 0, hasTemporalPrev: 0
         )
         enc.setBytes(&uni, length: MemoryLayout<MEUniforms>.stride, index: 2)
         let winW = s.blockSize + 2 * Int(s.searchHalfPel >> 1)

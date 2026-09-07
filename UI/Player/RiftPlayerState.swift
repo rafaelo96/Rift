@@ -394,6 +394,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     func togglePlay() {
         isPlaying.toggle()
+        let wasPaused = !isPlaying
+        if wasPaused {
+            // Pausa: la próxima reanudación parte de un estado limpio — sin
+            // historia temporal de MVs del segmento anterior.
+            compensator?.resetTemporalState()
+        }
         if let sched = scheduler {
             let t = CMTime(seconds: currentTime, preferredTimescale: 600)
             sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: t)
@@ -480,6 +486,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         lastShownFrames.removeAll()
         isArtificialInterpolationActive = false
         isFramePlusPreparing = false
+        // EMA temporal: el seek crea una discontinuidad; el primer par tras el
+        // reset se emite sin blending (ver MotionCompensator.resetTemporalState).
+        compensator?.resetTemporalState()
         // Reintento: si Frame+ había caído por fallback y el usuario hace seek,
         // volver a armarlo (el seek libera el pipeline; si sigue lento, caerá de nuevo).
         rearmFallbackInterpolation()
@@ -591,6 +600,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         hasVideo = false
         rearmFallbackInterpolation()
         resetInterpolationCounters()
+        // EMA temporal: nuevo contenido → descartar la historia de vectores de
+        // la sesión anterior (el compensator sobrevive entre videos).
+        compensator?.resetTemporalState()
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
         Task.detached(priority: .userInitiated) { [weak self] in

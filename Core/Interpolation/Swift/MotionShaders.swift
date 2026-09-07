@@ -36,6 +36,8 @@ struct MEUniforms {
     uint  hasInherited;   // 1 → seed the search center from the coarser level MV buffer
     uint2 inheritedGrid;  // coarse level block grid dims
     uint  inheritFactor;  // per-axis factor from coarse grid to this grid
+    uint  temporalGatePx; // max |MV change| in px to apply temporal EMA (0 = no gating)
+    uint  hasTemporalPrev;// 1 → a previous-pair MV field exists (EMA state)
 };
 
 static inline int floorDiv2(int v) {
@@ -344,5 +346,33 @@ kernel void mvMedian3(
         cand[b + 1] = key;
     }
     outMV[gid.y * u.gridW + gid.x] = cand[n / 2];
+}
+
+// Temporal EMA gating on the post-median L0 field: blends each block's MV toward
+// the previous pair's value ONLY when the change is at or below temporalGatePx.
+// Larger changes (real motion onset / reversals / scene transitions) pass through
+// untouched. This removes the per-pair jitter of near-tie MV choices (the root
+// cause of the edge/detail vibration seen after lambda 4 → 1) while preserving
+// genuine large motion. Alpha is fixed at 0.5 (matches the offline gated-EMA
+// simulation used to pick the threshold). First pair after a reset (hasTemporalPrev
+// == 0) copies the field without blending — no stale state across seek/load.
+kernel void mvTemporalEMA(
+    device const int2 *smoothed [[buffer(0)]],
+    device const int2 *prev     [[buffer(1)]],
+    device int2 *outMV          [[buffer(2)]],
+    constant MEUniforms &u      [[buffer(3)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= u.gridW || gid.y >= u.gridH) return;
+    const uint idx = gid.y * u.gridW + gid.x;
+    const int2 c = smoothed[idx];
+    if (u.hasTemporalPrev == 0) { outMV[idx] = c; return; }
+    const int2 p = prev[idx];
+    const int2 d = c - p;
+    const int ax = d.x < 0 ? -d.x : d.x;
+    const int ay = d.y < 0 ? -d.y : d.y;
+    const uint distPx = uint(sqrt(float(ax * ax + ay * ay)) / 2.0f);
+    if (distPx > u.temporalGatePx) { outMV[idx] = c; return; }
+    outMV[idx] = int2((c.x + p.x) >> 1, (c.y + p.y) >> 1);
 }
 """

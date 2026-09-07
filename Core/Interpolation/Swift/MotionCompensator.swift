@@ -111,7 +111,8 @@ public final class MotionCompensator {
                 spec: spec,
                 lambdaPx: config.lambdaPx,
                 smoothL0: true,
-                gateL0: true
+                gateL0: true,
+                temporalGatePx: config.temporalGatePx
             )
         } catch {
             throw Error.engineInitFailed("\(error)")
@@ -122,6 +123,13 @@ public final class MotionCompensator {
         } catch {
             throw Error.warpInitFailed("\(error)")
         }
+    }
+
+    /// Limpia el estado temporal de la EMA de MVs (el par siguiente se emite sin
+    /// blending). Debe llamarse en seek, pause→resume, flush y loadVideo para no
+    /// arrastrar historia de jitter a través de una discontinuidad temporal.
+    public func resetTemporalState() {
+        me.resetTemporalState()
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).

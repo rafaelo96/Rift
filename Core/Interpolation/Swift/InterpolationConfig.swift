@@ -14,17 +14,24 @@ public struct InterpolationConfig: Sendable {
     public let blockSize: Int
     public let lambdaPx: UInt32
     public let subpel: Bool
+    /// Umbral de la EMA temporal gated (en px): por bloque, si el cambio de MV
+    /// entre pares consecutivos no supera este valor, se mezcla hacia el MV del
+    /// par anterior (α=0.5). Cambios mayores pasan sin tocar (movimiento real).
+    /// 0 desactiva el pase. Ver `mvTemporalEMA` y `MotionSearchEngine`.
+    public let temporalGatePx: UInt32
 
     public init(workWidth: Int = 1152,
                 workHeight: Int = 480,
                 blockSize: Int = 8,
                 lambdaPx: UInt32 = 1,
-                subpel: Bool = true) {
+                subpel: Bool = true,
+                temporalGatePx: UInt32 = 2) {
         self.workWidth = workWidth
         self.workHeight = workHeight
         self.blockSize = blockSize
         self.lambdaPx = lambdaPx
         self.subpel = subpel
+        self.temporalGatePx = temporalGatePx
     }
 
     public static let `default` = InterpolationConfig()
