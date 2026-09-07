@@ -20,6 +20,22 @@ public struct InterpolationResult {
     }
 }
 
+/// Resultado por-par de `interpolatePair`: un buffer interpolado por cada `t`
+/// pedido (en el mismo orden que `tValues`) + tiempos al nivel de par.
+public struct InterpolationPairResult {
+    public let pixelBuffers: [CVPixelBuffer]
+    public let meMS: Double
+    public let warpMS: Double
+    public let upscaleMS: Double
+
+    public init(pixelBuffers: [CVPixelBuffer], meMS: Double, warpMS: Double, upscaleMS: Double = 0) {
+        self.pixelBuffers = pixelBuffers
+        self.meMS = meMS
+        self.warpMS = warpMS
+        self.upscaleMS = upscaleMS
+    }
+}
+
 // MARK: - MotionCompensator
 //
 // Punto de entrada público del módulo Interpolation. Envuelve MotionSearchEngine
@@ -122,6 +138,47 @@ public final class MotionCompensator {
     /// attachments HDR). Útil para instrumentación en producción — el caller
     /// puede loguear avg/p99 y verificar que cabe en el presupuesto de tiempo
     /// real del frame siguiente sin generalizar entre chips.
+    /// Fast-path de interpolación por-par (Fase B): calcula scaledLuma(I0),
+    /// scaledLuma(I1) y el ME (runPair) UNA sola vez por par y genera un frame
+    /// interpolado por cada `t` en `tValues` reusando ese mismo resultado — solo
+    /// warp + upscale + CbCr + HDR se repiten por `t`. Para la cadencia 3:2 de
+    /// .interpolated60 (tValues=[1/3,2/3]) esto elimina el ME+luma duplicado del
+    /// camino viejo (llamaba interpolateWithTimings dos veces por par). Los
+    /// buffers de salida vienen del pool reusable de WarpEngine.
+    /// Devuelve buffers vacíos y MS 0 si el par es inválido.
+    public func interpolatePair(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float]) -> InterpolationPairResult {
+        guard !tValues.isEmpty else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
+
+        guard let luma0 = scaledLuma(I0), let luma1 = scaledLuma(I1) else {
+            return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0)
+        }
+
+        let meStart = DispatchTime.now().uptimeNanoseconds
+        let pairTimes = me.runPair(cur: luma0, ref: luma1)
+        let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
+
+        let mvField = me.downloadMV(level: 0, smoothed: true)
+        guard !mvField.isEmpty else {
+            return InterpolationPairResult(pixelBuffers: [], meMS: meMS, warpMS: 0)
+        }
+
+        let g = me.grids[0]
+        let (buffers, warpTotal, upscaleTotal) = warp.interpolatePixelBufferPair(
+            I0: I0, I1: I1,
+            luma0: luma0, luma1: luma1,
+            workWidth: config.workWidth, workHeight: config.workHeight,
+            mv: mvField,
+            gridW: g.w, gridH: g.h,
+            blockSize: config.blockSize,
+            tValues: tValues,
+            occThresh: 1.0
+        )
+        _ = pairTimes
+        return InterpolationPairResult(pixelBuffers: buffers, meMS: meMS, warpMS: warpTotal, upscaleMS: upscaleTotal)
+    }
+
+    /// Interpola un solo frame (camino clásico, una llamada por `t`). Se conserva
+    /// para compatibilidad/determinismo; el pipeline usa `interpolatePair`.
     public func interpolateWithTimings(I0: CVPixelBuffer, I1: CVPixelBuffer, t: Float) -> InterpolationResult {
         guard let luma0 = scaledLuma(I0),
               let luma1 = scaledLuma(I1) else {

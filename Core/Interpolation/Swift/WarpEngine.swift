@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import CoreVideo
+import IOSurface
 
 public final class WarpEngine {
     public enum Error: Swift.Error {
@@ -15,6 +16,17 @@ public final class WarpEngine {
     private let upscalePipeline: MTLComputePipelineState
     private var outTex: MTLTexture?
     private var textureCache: CVMetalTextureCache?
+
+    // Pool de buffers de salida (fast-path 4K/1080p): los CVPixelBuffer de salida
+    // se reusan entre frames en vez de crearse desde cero (CVPixelBufferCreate +
+    // registro IOSurface por par). El pool es el primitive thread-safe de CoreVideo;
+    // el overflow degrada a create aislado si el displayLayer aún retiene todos los
+    // buffers del pool. La cache de envoltorios CVMetalTexture por IOSurfaceID evita
+    // el CVMetalTextureCacheCreateTextureFromImage por frame (la IOSurface no cambia).
+    private var outPool: CVPixelBufferPool?
+    private var outPoolSize: (w: Int, h: Int, pixelFormat: OSType)?
+    private var pooledTex: [UInt32: (CVPixelBuffer, CVMetalTexture)] = [:]
+    private let outPoolCapacity: Int = 8
 
     public init(msl: String) throws {
         guard let device = MTLCreateSystemDefaultDevice(),
@@ -176,6 +188,191 @@ public final class WarpEngine {
 
         propagateHDR(from: I0, to: out)
         return (out, warpMS, upscaleMS)
+    }
+
+    /// Variante por-par de `interpolatePixelBuffer`: recibe el par de luma
+    /// work-plane ya escalado + el campo de MV (ME/luma corre UNA vez en el
+    /// caller) y genera un buffer interpolado por cada `t` en `tValues`.
+    /// Los recursos que solo dependen del par — texturas de luma del work-plane,
+    /// textura de salida del warp (reusada secuencialmente por t) y el MV buffer —
+    /// se crean una vez; por t se repite solo warp + upscale + copy CbCr + HDR.
+    ///
+    /// Fast-path 4K HDR (pooling): los buffers de salida provienen de un
+    /// CVPixelBufferPool reutilizable de 8 slots (en vez de CVPixelBufferCreate
+    /// + registro IOSurface por frame), y el envoltorio CVMetalTexture del luma
+    /// de salida se cachea por IOSurfaceID (el surface del pool no cambia → no
+    /// se re-registra por frame). El pool es el primitive thread-safe de
+    /// CoreVideo; overflow → degrada a create aislado si el displayLayer aún
+    /// retiene todos los slots.
+    func interpolatePixelBufferPair(
+        I0: CVPixelBuffer,
+        I1: CVPixelBuffer,
+        luma0: Data,
+        luma1: Data,
+        workWidth: Int,
+        workHeight: Int,
+        mv: [SIMD2<Int32>],
+        gridW: Int,
+        gridH: Int,
+        blockSize: Int,
+        tValues: [Float],
+        occThresh: Float = 1.0
+    ) -> (buffers: [CVPixelBuffer], warpMS: Double, upscaleMS: Double) {
+        guard !tValues.isEmpty else { return ([], 0, 0) }
+        let w = CVPixelBufferGetWidth(I0), h = CVPixelBufferGetHeight(I0)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(I0)
+        let metalLumaFormat: MTLPixelFormat
+        switch pixelFormat {
+        case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+            metalLumaFormat = .r16Uint
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+            metalLumaFormat = .r8Uint
+        default:
+            return ([], 0, 0)
+        }
+        let is10Bit = metalLumaFormat == .r16Uint
+        guard let cache = textureCache else { return ([], 0, 0) }
+
+        // Recursos por-par: texturas de luma del work-plane + textura de salida
+        // del warp (el warp escribe/lee secuencialmente por t).
+        let workLumaFormat = MTLPixelFormat.r16Uint
+        guard let tex0w = makeWorkTexture(data: luma0, width: workWidth, height: workHeight, format: workLumaFormat),
+              let tex1w = makeWorkTexture(data: luma1, width: workWidth, height: workHeight, format: workLumaFormat),
+              let texOutW = device.makeTexture(descriptor: workTextureDescriptor(width: workWidth, height: workHeight, format: workLumaFormat)) else {
+            return ([], 0, 0)
+        }
+
+        let mvBuf = device.makeBuffer(bytes: mv, length: mv.count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)!
+
+        ensureOutputPool(w: w, h: h, pixelFormat: pixelFormat)
+
+        var buffers: [CVPixelBuffer] = []
+        var warpTotal = 0.0
+        var upscaleTotal = 0.0
+        for t in tValues {
+            guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else { continue }
+
+            // Warp t → texOutW, luego upscale texOutW → luma full-res del out.
+            let wrapped = wrapOutputTexture(out, format: metalLumaFormat, w: w, h: h, cache: cache)
+            guard let texOut = wrapped.1 else { continue }
+            warpTotal += interpolate(tex0: tex0w, tex1: tex1w, mv: mvBuf,
+                                     gridW: UInt32(gridW), gridH: UInt32(gridH),
+                                     blockSize: UInt32(blockSize), t: t, occThresh: occThresh, outTex: texOutW)
+            upscaleTotal += upscale(from: texOutW, to: texOut,
+                                    srcW: UInt32(workWidth), srcH: UInt32(workHeight),
+                                    outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
+
+            copyCbCr(from: I0, to: out)
+            propagateHDR(from: I0, to: out)
+
+            buffers.append(out)
+        }
+
+        return (buffers, warpTotal, upscaleTotal)
+    }
+
+    /// Crea (si hace falta) el pool de buffers de salida con las dims/formato del
+    /// par actual. Si el video cambia de resolución/formato se recrea y se vacía
+    /// la cache de envoltorios (los wraps cacheados pinen sus buffers, así que el
+    /// pool no reutiliza un surface mientras haya un envoltorio referente a él).
+    private func ensureOutputPool(w: Int, h: Int, pixelFormat: OSType) {
+        if let cur = outPoolSize, cur.w == w, cur.h == h, cur.pixelFormat == pixelFormat, outPool != nil { return }
+        let attrs: [String: Any] = [
+            kCVPixelBufferWidthKey as String: w,
+            kCVPixelBufferHeightKey as String: h,
+            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+            kCVPixelBufferPoolMinimumBufferCountKey as String: outPoolCapacity,
+        ]
+        var pool: CVPixelBufferPool?
+        guard CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool) == kCVReturnSuccess,
+              let p = pool else { return }
+        outPool = p
+        outPoolSize = (w, h, pixelFormat)
+        pooledTex.removeAll()
+        // Pre-warm: los 8 buffers se crean y se devuelven al pool.
+        for _ in 0..<outPoolCapacity {
+            var pb: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, p, &pb)
+        }
+    }
+
+    /// Adquiere un buffer de salida del pool; si el pool está vacío (todos los
+    /// slots aún retenidos por el displayLayer) degrada a create aislado — nunca
+    /// bloquea ni devuelve datos de un par anterior.
+    private func acquireOutputBuffer(w: Int, h: Int, pixelFormat: OSType) -> CVPixelBuffer? {
+        if let pool = outPool {
+            var pb: CVPixelBuffer?
+            if CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let b = pb {
+                return b
+            }
+        }
+        var pb: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+            kCVPixelBufferWidthKey as String: w,
+            kCVPixelBufferHeightKey as String: h,
+            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, pixelFormat, attrs as CFDictionary, &pb) == kCVReturnSuccess else { return nil }
+        return pb
+    }
+
+    /// Devuelve la textura Metal del plano de luma del buffer de salida, cacheada
+    /// por IOSurfaceID. El wrap NO retiene el CVPixelBuffer (texture cache), así
+    /// que el valor del dict pinea el buffer fuerte para que el pool no pueda
+    /// reciclar/destruir la superficie bajo el envoltorio; solo al desalojar el
+    /// wrap se libera el buffer y el surface queda a disposición del pool.
+    private func wrapOutputTexture(_ pb: CVPixelBuffer, format: MTLPixelFormat, w: Int, h: Int, cache: CVMetalTextureCache) -> (CVMetalTexture?, MTLTexture?) {
+        if let surfaceUnmanaged = CVPixelBufferGetIOSurface(pb) {
+            let surface = surfaceUnmanaged.takeUnretainedValue()
+            let sid = IOSurfaceGetID(surface)
+            if let cached = pooledTex[sid], let tex = CVMetalTextureGetTexture(cached.1) {
+                return (cached.1, tex)
+            }
+            var wrapped: CVMetalTexture?
+            if CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
+               let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) {
+                if pooledTex.count >= outPoolCapacity * 2 {
+                    // Desaloja el envoltorio más antiguo (libera su buffer → el pool
+                    // vuelve a recuperar esa superficie, ya sin wraps pendientes).
+                    if let oldest = pooledTex.keys.first {
+                        pooledTex.removeValue(forKey: oldest)
+                    }
+                }
+                pooledTex[sid] = (pb, w2)
+                return (w2, tex)
+            }
+        }
+        // Sin IOSurface (overflow sin surface) → registrar el envoltorio sin cachear.
+        var wrapped: CVMetalTexture?
+        guard CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
+              let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) else { return (nil, nil) }
+        return (w2, tex)
+    }
+
+    /// Copia el plano CbCr de I0 → out (puede ser un buffer del pool con datos de
+    /// un frame anterior; se sobreescribe COMPLETO, no hay residuo posible).
+    private func copyCbCr(from src: CVPixelBuffer, to dst: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(dst, [])
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        if CVPixelBufferGetPlaneCount(dst) >= 2,
+           let dstCbCr = CVPixelBufferGetBaseAddressOfPlane(dst, 1),
+           let srcCbCr = CVPixelBufferGetBaseAddressOfPlane(src, 1) {
+            let cbcrH = CVPixelBufferGetHeightOfPlane(dst, 1)
+            let dstBPR = CVPixelBufferGetBytesPerRowOfPlane(dst, 1)
+            let srcBPR = CVPixelBufferGetBytesPerRowOfPlane(src, 1)
+            let copyW = min(dstBPR, srcBPR)
+            for y in 0..<cbcrH {
+                memcpy(dstCbCr.advanced(by: y * dstBPR),
+                       srcCbCr.advanced(by: y * srcBPR),
+                       copyW)
+            }
+        }
+        CVPixelBufferUnlockBaseAddress(src, .readOnly)
+        CVPixelBufferUnlockBaseAddress(dst, [])
     }
 
     private func workTextureDescriptor(width: Int, height: Int, format: MTLPixelFormat) -> MTLTextureDescriptor {

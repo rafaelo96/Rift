@@ -1031,18 +1031,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isInterpolating = true
         let measured = await Task.detached { @Sendable in
             let started = DispatchTime.now().uptimeNanoseconds
-            var buffers: [CVPixelBuffer] = []
-            var meTotal = 0.0
-            var warpTotal = 0.0
-            for t in tValues {
-                let r = comp.interpolateWithTimings(I0: i0.pixelBuffer, I1: i1.pixelBuffer, t: t)
-                if let pb = r.pixelBuffer { buffers.append(pb) }
-                meTotal += r.meMS
-                warpTotal += r.warpMS + r.upscaleMS
-            }
+            // Fase B fast-path: luma + ME se calculan UNA vez por par; el warp/
+            // upscale/cbcr/hdr se repite por cada t pedido (1 para 48fps, 2 para
+            // el patrón 3:2 de 60fps). Antes llamábamos interpolateWithTimings por
+            // cada t — re-ejecutando scaledLuma+ME en pares dobles (~52ms/pair 4K).
+            let r = comp.interpolatePair(I0: i0.pixelBuffer, I1: i1.pixelBuffer, tValues: tValues)
             // El tiempo del par = coste real transcurrido de todas las interps del par.
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000.0
-            return (buffers: InterpolatedBuffersBox(buffers: buffers), totalMS: elapsed, meMS: meTotal, warpMS: warpTotal)
+            return (buffers: InterpolatedBuffersBox(buffers: r.pixelBuffers), totalMS: elapsed, meMS: r.meMS, warpMS: r.warpMS + r.upscaleMS)
         }.value
         isInterpolating = false
         interpolationPairCount += 1
