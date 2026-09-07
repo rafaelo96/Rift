@@ -18,7 +18,7 @@ public struct InterpolationConfig: Sendable {
     public init(workWidth: Int = 1152,
                 workHeight: Int = 480,
                 blockSize: Int = 8,
-                lambdaPx: UInt32 = 4,
+                lambdaPx: UInt32 = 1,
                 subpel: Bool = true) {
         self.workWidth = workWidth
         self.workHeight = workHeight
