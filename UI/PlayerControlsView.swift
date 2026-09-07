@@ -210,7 +210,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     state.setInterpolationMode(.disabled)
                     return
                 }
-                state.setInterpolationMode(.motion2Intense)
+                state.setInterpolationMode(.motion2x)
             }
         } label: {
             glassPill(
@@ -412,7 +412,11 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var framePlusStateTitle: String {
         if state.isFramePlusPreparing { return NSLocalizedString("Preparing HQ", comment: "") }
-        if state.isFramePlusPreRendered { return NSLocalizedString("60fps ready", comment: "") }
+        if state.isFramePlusPreRendered {
+            return state.displayRenderingFPS >= 52
+                ? NSLocalizedString("60fps ready", comment: "")
+                : NSLocalizedString("48fps ready", comment: "")
+        }
         if state.interpolationMode == .disabled { return NSLocalizedString("Disabled", comment: "") }
         return state.isArtificialInterpolationActive ? NSLocalizedString("Interpolating", comment: "") : NSLocalizedString("Waiting", comment: "")
     }
