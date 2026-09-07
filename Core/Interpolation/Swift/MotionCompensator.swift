@@ -161,6 +161,21 @@ public final class MotionCompensator {
             return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0)
         }
 
+        // Fast-path estático: si el par no cambió (ruido), el frame intermedio
+        // correcto ES el input — devolver I0 directo evita el blur del
+        // round-trip a work-plane (los interpolados salían más suaves que los
+        // nativos y el logo "se veía distinto" / pulsaba a 24Hz). Pixel-perfect,
+        // costo ~0.3ms (un MAD en host) y se ahorra el ME+warp del par.
+        // Umbral 8.0 en unidades 10-bit del work-plane: piso de ruido medido
+        // 4.2 (logo estático 32s); escena con movimiento más lento 13.6 avg.
+        // Un falso positivo solo repite I0 en contenido casi-estático (invisible);
+        // un falso negativo es el camino normal (status quo). El estado EMA no
+        // necesita reset: contenido estático lo mantiene en cero de todos modos.
+        if workMAD(luma0, luma1) < 8.0 {
+            return InterpolationPairResult(pixelBuffers: tValues.map { _ in I0 },
+                                           meMS: 0, warpMS: 0, upscaleMS: 0)
+        }
+
         let meStart = DispatchTime.now().uptimeNanoseconds
         let pairTimes = me.runPair(cur: luma0, ref: luma1)
         let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
@@ -193,6 +208,11 @@ public final class MotionCompensator {
             return InterpolationResult(pixelBuffer: nil, meMS: 0, warpMS: 0)
         }
 
+        // Fast-path estático (ver interpolatePair): par sin cambio → I0 directo.
+        if workMAD(luma0, luma1) < 8.0 {
+            return InterpolationResult(pixelBuffer: I0, meMS: 0, warpMS: 0, upscaleMS: 0)
+        }
+
         // ME: pyramidal block matching, half-pel MVs al nivel L0.
         let meStart = DispatchTime.now().uptimeNanoseconds
         let pairTimes = me.runPair(cur: luma0, ref: luma1)
@@ -216,6 +236,26 @@ public final class MotionCompensator {
         )
         _ = pairTimes
         return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: gpuWarpMS, upscaleMS: upscaleMS)
+    }
+
+    // Diferencia media absoluta entre dos lumas de work-plane (Data de UInt16,
+    // mismo layout que produce scaledLuma). En unidades del work-plane (0..1023
+    // en 10-bit). Sub-ms para 1152×480. Usado por el fast-path estático.
+    private func workMAD(_ a: Data, _ b: Data) -> Double {
+        guard a.count == b.count, a.count % 2 == 0 else { return .infinity }
+        let n = a.count / 2
+        var acc: UInt64 = 0
+        a.withUnsafeBytes { ra in
+            b.withUnsafeBytes { rb in
+                let pa = ra.bindMemory(to: UInt16.self).baseAddress!
+                let pb = rb.bindMemory(to: UInt16.self).baseAddress!
+                for i in 0..<n {
+                    let x = pa[i], y = pb[i]
+                    acc += UInt64(x >= y ? x - y : y - x)
+                }
+            }
+        }
+        return Double(acc) / Double(n)
     }
 
     // MARK: - Luma extraction + downscale (host)
