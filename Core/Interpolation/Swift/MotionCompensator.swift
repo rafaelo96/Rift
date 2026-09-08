@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import Accelerate
 import CoreVideo
 
 /// Resultado de una llamada a `interpolateWithTimings`: el buffer interpolado
@@ -81,6 +82,15 @@ public final class MotionCompensator {
     private var texI0: MTLTexture?
     private var texI1: MTLTexture?
 
+    // Scratch reusable para las rutinas vDSP del gate estático (flotan una vez
+    // en init; el work-plane tiene tamaño fijo por config). Evita malloc/free
+    // por par en el camino caliente. Tamaño = workWidth*workHeight.
+    private var vdspA: [Float] = []
+    private var vdspB: [Float] = []
+    private var vdspC: [Float] = []
+    private var vdspU8: [UInt8] = []
+    private var vdspHist = [vImagePixelCount](repeating: 0, count: 256)
+
     public init(config: InterpolationConfig = .default) throws {
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue() else {
@@ -89,6 +99,11 @@ public final class MotionCompensator {
         self.device = device
         self.queue = queue
         self.config = config
+        let n = config.workWidth * config.workHeight
+        vdspA = [Float](repeating: 0, count: n)
+        vdspB = [Float](repeating: 0, count: n)
+        vdspC = [Float](repeating: 0, count: n)
+        vdspU8 = [UInt8](repeating: 0, count: n)
 
         // Piramide 3-niveles para ME (coarse-to-fine). Mismos params que MVProbe
         // (validado contra archivo de referencia): L0 full work plane, L1/L2/L3
@@ -240,44 +255,103 @@ public final class MotionCompensator {
 
     // Diferencia media absoluta entre dos lumas de work-plane (Data de UInt16,
     // mismo layout que produce scaledLuma). En unidades del work-plane (0..1023
-    // en 10-bit). Sub-ms para 1152×480. Usado por el fast-path estático.
+    // en 10-bit). Cadena vDSP (precompilada: ~0.3ms en debug vs ~38ms del loop
+    // Swift). La suma en Float pierde precisión entera muy por debajo del
+    // umbral del gate (6.0), irrelevante aquí.
     private func workMAD(_ a: Data, _ b: Data) -> Double {
         guard a.count == b.count, a.count % 2 == 0 else { return .infinity }
         let n = a.count / 2
-        var acc: UInt64 = 0
+        guard vdspA.count >= n, vdspB.count >= n, vdspC.count >= n else { return .infinity }
+        var sum: Float = 0
         a.withUnsafeBytes { ra in
             b.withUnsafeBytes { rb in
-                let pa = ra.bindMemory(to: UInt16.self).baseAddress!
-                let pb = rb.bindMemory(to: UInt16.self).baseAddress!
-                for i in 0..<n {
-                    let x = pa[i], y = pb[i]
-                    acc += UInt64(x >= y ? x - y : y - x)
+                vdspA.withUnsafeMutableBufferPointer { fa in
+                    vdspB.withUnsafeMutableBufferPointer { fb in
+                        vdspC.withUnsafeMutableBufferPointer { fc in
+                            vDSP_vfltu16(ra.bindMemory(to: UInt16.self).baseAddress!, 1,
+                                         fa.baseAddress!, 1, vDSP_Length(n))
+                            vDSP_vfltu16(rb.bindMemory(to: UInt16.self).baseAddress!, 1,
+                                         fb.baseAddress!, 1, vDSP_Length(n))
+                            vDSP_vsub(fb.baseAddress!, 1, fa.baseAddress!, 1,
+                                      fc.baseAddress!, 1, vDSP_Length(n))
+                            vDSP_vabs(fc.baseAddress!, 1, fc.baseAddress!, 1, vDSP_Length(n))
+                            vDSP_sve(fc.baseAddress!, 1, &sum, vDSP_Length(n))
+                        }
+                    }
                 }
             }
         }
-        return Double(acc) / Double(n)
+        return Double(sum) / Double(n)
     }
 
     // Fracción de píxeles con textura (gradiente local en cruz > `threshold`,
     // unidades del work-plane) en el interior del frame. Si el layout no cuadra
     // devuelve 1.0 para NO skipear (dirección segura).
+    //
+    // Cadena vDSP+vImage (precompilada: ~3.6ms en debug vs ~62ms del loop
+    // Swift), con IGUALDAD EXACTA al loop de referencia (verificado): shifts
+    // por memmove (correctos en todo píxel contado; bordes basura), bordes
+    // anulados a 0 (nunca contados), cuantización (g+3)>>2 que parte el bin
+    // justo en el borde 24/25, e histograma Planar8: contados = N - bins[0..6].
     private func texturedFraction(_ a: Data, width: Int, height: Int, threshold: Int) -> Double {
-        guard a.count == width * height * 2 else { return 1.0 }
-        var n = 0
-        var total = 0
+        guard a.count == width * height * 2, threshold == 24 else { return 1.0 }
+        let n = width * height
+        let w = width, h = height
+        guard vdspA.count >= n, vdspB.count >= n, vdspC.count >= n, vdspU8.count >= n else { return 1.0 }
+        var count = 0
         a.withUnsafeBytes { raw in
-            let p = raw.bindMemory(to: UInt16.self).baseAddress!
-            for y in 1..<(height - 1) {
-                for x in 1..<(width - 1) {
-                    let c = Int(p[y * width + x])
-                    let gx = abs(c - Int(p[y * width + (x - 1)])) + abs(Int(p[y * width + (x + 1)]) - c)
-                    let gy = abs(c - Int(p[(y - 1) * width + x])) + abs(Int(p[(y + 1) * width + x]) - c)
-                    total += 1
-                    if gx + gy > threshold { n += 1 }
+            vdspA.withUnsafeMutableBufferPointer { fa in
+                vdspB.withUnsafeMutableBufferPointer { fb in
+                    vdspC.withUnsafeMutableBufferPointer { fc in
+                        vdspU8.withUnsafeMutableBufferPointer { u8 in
+                            let F = fa.baseAddress!, S = fb.baseAddress!, G = fc.baseAddress!
+                            vDSP_vfltu16(raw.bindMemory(to: UInt16.self).baseAddress!, 1,
+                                         F, 1, vDSP_Length(n))
+                            let B = 4 * n
+                            // d1=|F-FL| con FL[i]=F[i-1]
+                            memmove(S, F, B - 4)
+                            vDSP_vsub(S, 1, F, 1, G, 1, vDSP_Length(n))
+                            vDSP_vabs(G, 1, G, 1, vDSP_Length(n))
+                            // d2=|FR-F| acumulado
+                            memmove(S, F + 1, B - 4)
+                            vDSP_vsub(F, 1, S, 1, S, 1, vDSP_Length(n))
+                            vDSP_vabs(S, 1, S, 1, vDSP_Length(n))
+                            vDSP_vadd(G, 1, S, 1, G, 1, vDSP_Length(n))
+                            // d3=|F-FU| acumulado
+                            memmove(S, F, B - 4 * w)
+                            vDSP_vsub(S, 1, F, 1, S, 1, vDSP_Length(n))
+                            vDSP_vabs(S, 1, S, 1, vDSP_Length(n))
+                            vDSP_vadd(G, 1, S, 1, G, 1, vDSP_Length(n))
+                            // d4=|FD-F| acumulado
+                            memmove(S, F + w, B - 4 * w)
+                            vDSP_vsub(F, 1, S, 1, S, 1, vDSP_Length(n))
+                            vDSP_vabs(S, 1, S, 1, vDSP_Length(n))
+                            vDSP_vadd(G, 1, S, 1, G, 1, vDSP_Length(n))
+                            // Anular bordes (filas 0,H-1 y columnas 0,W-1).
+                            for x in 0..<w { G[x] = 0; G[(h - 1) * w + x] = 0 }
+                            for y in 0..<h { G[y * w] = 0; G[y * w + w - 1] = 0 }
+                            // (g+3)>>2: g=24→bin6, g≥25→bin≥7. Contar N-bins[0..6].
+                            var three: Float = 3.0, quarter: Float = 0.25
+                            vDSP_vsadd(G, 1, &three, G, 1, vDSP_Length(n))
+                            vDSP_vsmul(G, 1, &quarter, G, 1, vDSP_Length(n))
+                            vDSP_vfixu8(G, 1, u8.baseAddress!, 1, vDSP_Length(n))
+                            var srcBuf = vImage_Buffer(data: u8.baseAddress!,
+                                                       height: vImagePixelCount(h),
+                                                       width: vImagePixelCount(w),
+                                                       rowBytes: w)
+                            for b in 0..<256 { vdspHist[b] = 0 }
+                            vdspHist.withUnsafeMutableBufferPointer { histBuf in
+                                vImageHistogramCalculation_Planar8(&srcBuf, histBuf.baseAddress!, vImage_Flags(kvImageNoFlags))
+                            }
+                            var lo: vImagePixelCount = 0
+                            for b in 0...6 { lo += vdspHist[b] }
+                            count = n - Int(lo)
+                        }
+                    }
                 }
             }
         }
-        return total > 0 ? Double(n) / Double(total) : 1.0
+        return Double(count) / Double(n)
     }
 
     // Gate del fast-path estático (conservador, dos señales): el MAD global
@@ -297,12 +371,17 @@ public final class MotionCompensator {
     // (workWidth × workHeight) en UInt16. Soporta el formato planar BiPlanar
     // 10-bit usado por VTDecoder (kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
     // / 'x420'). Para 8-bit (kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
-    // se hace upscale a 16-bit con left-shift 8.
+    // se preserva la escala histórica (value<<8).
     //
-    // Estrategia de downscale: nearest-neighbor por bloque. Suficiente para MVP
-    // (los MVs son robustos a aliasing leve y el warp luego opera a 480p). Si se
-    // observan artefactos en bordes de movimiento, cambiar a bilinear (unas
-    // pocas líneas más). Documentado en AGENTS.md como limitación conocida.
+    // Downscale con vImage (precompilado: rápido en debug Y release) en vez de
+    // loops Swift — en debug los loops costaban ~900ms/par y mataban el
+    // presupuesto. Mismas flags que el harness de medición
+    // (kvImageHighQualityResampling | kvImageDoNotTile) para que producción y
+    // medición vean exactamente el mismo work-plane. Fase de muestreo centrada
+    // como `upscaleLuma` (verificado empíricamente: sin offset sistemático en
+    // el round-trip). Tras escalar, normalización a la escala del work-plane
+    // (>>6 en 10-bit por linealidad: escalar-crudo-y-shiftear == shiftear-y-
+    // escalar salvo redondeo ≤1 LSB post-shift, irrelevante para ME).
 
     private func scaledLuma(_ buffer: CVPixelBuffer) -> Data? {
         guard CVPixelBufferIsPlanar(buffer), CVPixelBufferGetPlaneCount(buffer) >= 1 else { return nil }
@@ -318,64 +397,66 @@ public final class MotionCompensator {
         let is10Bit = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
             || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
 
-        // 1. Extraer luma de forma veloz usando UnsafeMutablePointer para evitar bounds-checking en Debug
-        var src = [UInt16](repeating: 0, count: sw * sh)
-        src.withUnsafeMutableBufferPointer { srcBuf in
-            guard let dstPtr = srcBuf.baseAddress else { return }
-            if is10Bit {
-                for y in 0..<sh {
-                    let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
-                    let dstRow = dstPtr.advanced(by: y * sw)
-                    for x in 0..<sw { dstRow[x] = row[x] >> 6 }
-                }
-            } else {
-                for y in 0..<sh {
-                    let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt8.self)
-                    let dstRow = dstPtr.advanced(by: y * sw)
-                    for x in 0..<sw { dstRow[x] = UInt16(row[x]) << 8 }
-                }
-            }
-        }
-
-        // 2. Downscale bilinear con fase centrada, consistente con `upscaleLuma`
-        // (kernel MSL): `p = (o + 0.5) * src/dst - 0.5`. El nearest anterior, aun
-        // centrado, dejaba un sesgo sistematico de ~0.65px en el round-trip porque
-        // cuantizaba cada texel del work-plane al entero mas cercano y el upscale
-        // bilinear ya no podia reconstruir la fase continua. Con bilinear en ambos
-        // lados, el round-trip full-res (downscale → warp quieto → upscale) es la
-        // identidad en coordenadas continuas: el contenido estatico deja de
-        // "bailar". Costo: ~4 lecturas + interpolacion por pixel de destino.
         let dw = config.workWidth
         let dh = config.workHeight
-        let xScale = Float(sw) / Float(dw)
-        let yScale = Float(sh) / Float(dh)
         var dst = Data(count: dw * dh * MemoryLayout<UInt16>.stride)
-        dst.withUnsafeMutableBytes { dstRaw in
-            let dst16 = dstRaw.bindMemory(to: UInt16.self).baseAddress!
-            src.withUnsafeBufferPointer { srcBuf in
-                let srcPtr = srcBuf.baseAddress!
-                for y in 0..<dh {
-                    let fyc = min(max((Float(y) + 0.5) * yScale - 0.5, 0), Float(sh - 1))
-                    let y0 = min(Int(fyc), sh - 2)
-                    let wy = fyc - Float(y0)
-                    let row0 = srcPtr.advanced(by: y0 * sw)
-                    let row1 = srcPtr.advanced(by: (y0 + 1) * sw)
-                    let dstRow = dst16.advanced(by: y * dw)
-                    for x in 0..<dw {
-                        let fxc = min(max((Float(x) + 0.5) * xScale - 0.5, 0), Float(sw - 1))
-                        let x0 = min(Int(fxc), sw - 2)
-                        let wx = fxc - Float(x0)
-                        let s00 = Float(row0[x0])
-                        let s10 = Float(row0[x0 + 1])
-                        let s01 = Float(row1[x0])
-                        let s11 = Float(row1[x0 + 1])
-                        let top = s00 + (s10 - s00) * wx
-                        let bot = s01 + (s11 - s01) * wx
-                        dstRow[x] = UInt16(top + (bot - top) * wy + 0.5)
-                    }
+        if is10Bit {
+            let err: vImage_Error = dst.withUnsafeMutableBytes { dstRaw in
+                guard let dstPtr = dstRaw.bindMemory(to: UInt16.self).baseAddress else {
+                    return vImage_Error(kvImageInvalidParameter)
+                }
+                var srcBuf = vImage_Buffer(data: base,
+                                           height: vImagePixelCount(sh),
+                                           width: vImagePixelCount(sw),
+                                           rowBytes: bpr)
+                var dstBuf = vImage_Buffer(data: dstPtr,
+                                           height: vImagePixelCount(dh),
+                                           width: vImagePixelCount(dw),
+                                           rowBytes: dw * MemoryLayout<UInt16>.stride)
+                return vImageScale_Planar16U(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling | kvImageDoNotTile))
+            }
+            guard err == kvImageNoError else { return nil }
+            // Normalizar 10-bit (bits altos) a la escala del work-plane con
+            // vDSP (precompilado; el loop Swift costaba ~30ms en debug).
+            // /64 y *256 son potencias de 2 exactas en Float32 y vfixu16
+            // trunca: bit-idéntico a >>6 / <<8 del camino anterior.
+            var div: Float = 1.0 / 64.0
+            dst.withUnsafeMutableBytes { dstRaw in
+                vdspA.withUnsafeMutableBufferPointer { fa in
+                    vDSP_vfltu16(dstRaw.bindMemory(to: UInt16.self).baseAddress!, 1,
+                                 fa.baseAddress!, 1, vDSP_Length(dw * dh))
+                    vDSP_vsmul(fa.baseAddress!, 1, &div,
+                               fa.baseAddress!, 1, vDSP_Length(dw * dh))
+                    vDSP_vfixu16(fa.baseAddress!, 1,
+                                 dstRaw.bindMemory(to: UInt16.self).baseAddress!, 1,
+                                 vDSP_Length(dw * dh))
                 }
             }
+            return dst
+        } else {
+            var tmp = [UInt8](repeating: 0, count: dw * dh)
+            let err: vImage_Error = tmp.withUnsafeMutableBufferPointer { tmpBuf in
+                guard let tmpPtr = tmpBuf.baseAddress else {
+                    return vImage_Error(kvImageInvalidParameter)
+                }
+                var srcBuf = vImage_Buffer(data: base,
+                                           height: vImagePixelCount(sh),
+                                           width: vImagePixelCount(sw),
+                                           rowBytes: bpr)
+                var dstBuf = vImage_Buffer(data: tmpPtr,
+                                           height: vImagePixelCount(dh),
+                                           width: vImagePixelCount(dw),
+                                           rowBytes: dw)
+                return vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling | kvImageDoNotTile))
+            }
+            guard err == kvImageNoError else { return nil }
+            // 8-bit: loop Swift (552k ops simples; este path es secundario —
+            // el contenido HDR de referencia es 10-bit).
+            dst.withUnsafeMutableBytes { dstRaw in
+                let p = dstRaw.bindMemory(to: UInt16.self).baseAddress!
+                for i in 0..<(dw * dh) { p[i] = UInt16(tmp[i]) << 8 }
+            }
+            return dst
         }
-        return dst
     }
 }
