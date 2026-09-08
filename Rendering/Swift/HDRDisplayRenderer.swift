@@ -51,9 +51,16 @@ public final class HDRDisplayRenderer {
     public func enqueue(_ sampleBuffer: CMSampleBuffer) {
         // Apple espera requestMediaDataWhenReady, pero para probe simple usamos isReady
         // En producción: displayLayer.requestMediaDataWhenReady(on: queue) { while isReady { enqueue } }
+        enqueuedFrames += 1
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
         } else {
+            notReadyEnqueues += 1
+            if displayLayer.status == .failed, let err = displayLayer.error {
+                if lastLayerError?.localizedDescription != err.localizedDescription {
+                    lastLayerError = err
+                }
+            }
             displayLayer.requestMediaDataWhenReady(on: DispatchQueue.main) { [weak self] in
                 guard let self else { return }
                 while self.displayLayer.isReadyForMoreMediaData {
@@ -64,6 +71,30 @@ public final class HDRDisplayRenderer {
             displayLayer.enqueue(sampleBuffer)
         }
     }
+
+    /// Diags de presentación vs encolado. `notReadyEnqueues > 0` sostenido
+    /// indica que la capa NO está drenando a su ritmo: los buffers encolados
+    /// en esa condición están en riesgo de descarte silencioso (el contador
+    /// FPS del UI cuenta encolados, no presentados → puede leer 60 y mostrar 24).
+    public func enqueueDiagnostics() -> String {
+        let st: String
+        if displayLayer.status == .failed {
+            st = "failed(\(lastLayerError?.localizedDescription ?? "?"))"
+        } else {
+            st = "\(displayLayer.status.rawValue)"
+        }
+        return "enqueued=\(enqueuedFrames) notReady=\(notReadyEnqueues) status=\(st) error=\(lastLayerError?.localizedDescription ?? "-")"
+    }
+
+    public func resetDiagnostics() {
+        enqueuedFrames = 0
+        notReadyEnqueues = 0
+        lastLayerError = nil
+    }
+
+    public private(set) var enqueuedFrames = 0
+    public private(set) var notReadyEnqueues = 0
+    public private(set) var lastLayerError: Error?
 
     public func flush() {
         displayLayer.flush()

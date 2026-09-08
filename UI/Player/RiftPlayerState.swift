@@ -186,6 +186,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Margen "stale" de la rama interpolada (equivalente de Fijación C): un par
     /// con `first.pts + margen < reloj` se descarta en vez de interpolarlo tarde.
     private let interpBehindMargin = 0.020
+    /// EXPERIMENTO de cadencia 60fps: la 3:2 clásica usa duraciones desiguales
+    /// (20.8ms/13.9ms → judder de telecine). La cadencia uniforme (default)
+    /// saca cada frame a 16.67ms exactos con t=0.4/0.8 y 0.2/0.6 (fase que
+    /// deriv hacia el par siguiente, como un FRC real). Revertir a 3:2 para
+    /// A/B visual: RIFT_CADENCE=telecine.
+    private let uniformCadence: Bool
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
     /// Seek coalescente: los drags del timeline disparan decenas de seeks por
@@ -342,6 +348,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     init() {
         decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 0.25
         interpLeadMargin = ProcessInfo.processInfo.environment["RIFT_INTERP_LEAD"].flatMap(Double.init) ?? 0.12
+        uniformCadence = ProcessInfo.processInfo.environment["RIFT_CADENCE"] != "telecine"
         let env = ProcessInfo.processInfo.environment
         guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
@@ -1325,7 +1332,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             if f.pts - clkN <= aheadMargin {
                                 self.markDisplayImmediately(sbuf)
                             }
-                            rend.displayLayer.enqueue(sbuf)
+                            rend.enqueue(sbuf)
                             self.enqueuedFramesInWindow += 1
                         }
                     }
@@ -1369,7 +1376,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
                         let dur = CMTime(seconds: second.pts - first.pts, preferredTimescale: 1200)
                         if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
-                            rend.displayLayer.enqueue(sbuf)
+                            rend.enqueue(sbuf)
                             self.enqueuedFramesInWindow += 1
                         }
                         pool.consumePair()
@@ -1381,21 +1388,63 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     //   .interpolated48 → 1 interp/par (t=0.5)           → 24→48
                     //   .interpolated60 → 3:2: [0.5] en pares pares,      → 24→60
                     //                    [1/3,2/3] en pares impares
+                    // Cadencia uniforme (default en .interpolated60, soap-opera):
+                    // 60fps sale cada 16.67ms con t transversal — 0.4/0.8 en el
+                    // par par, 0.2/0.6 en el impar — en vez de las duraciones
+                    // 20.8/13.9 alternantes de la 3:2 (judder de telecine).
+                    // Revertir a 3:2 para A/B: RIFT_CADENCE=telecine.
+                    let pairIsEven = interpPairIndex % 2 == 0
+                    interpPairIndex += 1
                     let tValues: [Float]
                     switch sched.mode {
+                    case .interpolated60 where uniformCadence:
+                        // Grid 60Hz uniforme (16.67ms = delta/2.5): par par [A,
+                        // 0.4, 0.8] a A+{0, .4*, .8*delta}; par impar [0.2, 0.6]
+                        // + B a A+{0.2, .6, 1.0}*delta del par (50/66.67/83.33).
+                        // La fase transversal evita las duraciones 20.8/13.9
+                        // alternantes de la 3:2 (judder).
+                        tValues = pairIsEven ? [0.4, 0.8] : [0.2, 0.6]
                     case .interpolated60:
-                        tValues = (interpPairIndex % 2 == 0) ? [0.5] : [1.0/3.0, 2.0/3.0]
+                        tValues = pairIsEven ? [0.5] : [1.0/3.0, 2.0/3.0]
                     default: // .interpolated48
                         tValues = [0.5]
                     }
-                    interpPairIndex += 1
 
                     let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues)
                     let interpBuffers = result.buffers.buffers
 
                     // Construir la secuencia ordenada de salida del par.
                     var outputs: [(pts: Double, isInterp: Bool, pb: CVPixelBuffer)] = []
-                    if result.totalMS > 0 || !interpBuffers.isEmpty || hasPresentedInterpolatedStart {
+                    let uniform60 = uniformCadence && sched.mode == .interpolated60
+                    if uniform60 {
+                        // Cadencia uniforme 60Hz: cada salida cae en el grid de
+                        // 16.67ms. El frame real central (B) de cada par par NO
+                        // cae sobre el grid (41.67 vs 0/16.67/33.33/50...) y se
+                        // sustituye por las interpolaciones que lo flanquean:
+                        //   par par   (A,B): [A?, M0.4@16.67, M0.8@33.33]   (sin B)
+                        //   par impar (B,C): [M0.2@50, M0.6@66.67, C@83.33] (sin I0)
+                        // Deltas consecutivos = 16.67 uniforme (sin judder).
+                        if result.totalMS > 0 || !interpBuffers.isEmpty || hasPresentedInterpolatedStart {
+                            if pairIsEven {
+                                if !hasPresentedInterpolatedStart {
+                                    outputs.append((first.pts, false, first.pixelBuffer))
+                                }
+                                for (idx, interpBuf) in interpBuffers.enumerated() where idx < tValues.count {
+                                    outputs.append((first.pts + delta * Double(tValues[idx]), true, interpBuf))
+                                }
+                            } else {
+                                for (idx, interpBuf) in interpBuffers.enumerated() where idx < tValues.count {
+                                    outputs.append((first.pts + delta * Double(tValues[idx]), true, interpBuf))
+                                }
+                                outputs.append((second.pts, false, second.pixelBuffer))
+                            }
+                        }
+                        // Fallback: interpolación devolvió nada (fallback interno)
+                        // → presentar I0 nativo en vez de quedarse sin frame.
+                        if outputs.isEmpty {
+                            outputs.append((first.pts, false, first.pixelBuffer))
+                        }
+                    } else if result.totalMS > 0 || !interpBuffers.isEmpty || hasPresentedInterpolatedStart {
                         // Real I0 (solo si aún no se presentó el arranque interpolado)
                         if !hasPresentedInterpolatedStart {
                             outputs.append((first.pts, false, first.pixelBuffer))
@@ -1412,12 +1461,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     for i in 0..<outputs.count {
                         let o = outputs[i]
                         let pts = CMTime(seconds: o.pts, preferredTimescale: 1200)
-                        let endPTS = (i + 1 < outputs.count)
-                            ? outputs[i + 1].pts
-                            : o.pts + delta / Double(max(tValues.count + 1, 2))
+                        let endPTS: Double
+                        if i + 1 < outputs.count {
+                            endPTS = outputs[i + 1].pts
+                        } else if uniform60 {
+                            // El siguiente frame del grid está a 0.4*delta
+                            // (16.67ms), no a delta/3 como en la 3:2.
+                            endPTS = o.pts + delta * 0.4
+                        } else {
+                            endPTS = o.pts + delta / Double(max(tValues.count + 1, 2))
+                        }
                         let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 1200)
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
-                            rend.displayLayer.enqueue(sbuf)
+                            rend.enqueue(sbuf)
                             self.enqueuedFramesInWindow += 1
                         }
                     }
@@ -1445,6 +1501,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     os_log("DisplayLoop baseline: avg=%.2fms p99=%.2fms samples=%d", log: benchLog, type: .info, avg, p99, benchSamples.count)
                     benchSamples.removeAll()
                     os_log("Interp3to2: pairsSingle=%d pairsDouble=%d (esperado ~1:1 en .interpolated60)", log: benchLog, type: .info, self.interpSinglePairCount, self.interpDoublePairCount)
+                    let diag = rend.enqueueDiagnostics()
+                    os_log("Render diag: %{public}@", log: benchLog, type: .info, diag)
+                    rend.resetDiagnostics()
                 }
                 if Task.isCancelled { break }
 
