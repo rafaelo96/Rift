@@ -41,6 +41,15 @@ actor AsyncSemaphore {
         waiters = []
         for w in parked { w.resume(returning: false) }
     }
+    /// Ejecuta `body` con acceso exclusivo al demuxer. El executor serial del
+    /// actor garantiza que dos llamadas (nextPacket del decode loop y seek
+    /// desde UI) jamás se solapan: av_seek_frame concurrente con av_read_frame
+    /// sobre el mismo contexto FFmpeg es UB y era la causa del video congelado
+    /// post-seek (decode muerto en silencio + audio ok). El body es síncrono:
+    /// no debe hacer await ni tocar el MainActor (bloquearía al resto).
+    func withDemuxAccess<T>(_ body: () throws -> T) rethrows -> T {
+        try body()
+    }
 }
 
 typealias DecodeCoordinator = AsyncSemaphore
@@ -179,6 +188,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private let interpBehindMargin = 0.020
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
+    /// Seek coalescente: los drags del timeline disparan decenas de seeks por
+    /// segundo; solo importa el último. `seek(to:)` (sync, UI-friendly) anota
+    /// el target y una única tarea drenadora los ejecuta en orden.
+    private var pendingSeekTarget: Double?
+    private var seekTask: Task<Void, Never>?
     private var audioTask: Task<Void, Never>?
     private var consumerTimer: Timer?
     private var currentTimeTimer: Timer?
@@ -470,12 +484,54 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
     func seek(to time: Double) {
+        pendingSeekTarget = time
+        pumpSeekQueue()
+    }
+    /// Drena seeks pendientes en orden; si llega otro seek mientras el actual
+    /// corre, el drainer lo retoma al terminar (sin llamadas superpuestas y
+    /// sin perder el último). Todo corre en MainActor: serial por construcción.
+    private func pumpSeekQueue() {
+        guard seekTask == nil, pendingSeekTarget != nil else { return }
+        seekTask = Task { @MainActor [weak self] in
+            while let target = self?.takePendingSeek() {
+                await self?.performSeek(to: target)
+            }
+            self?.seekTask = nil
+            // Re-chequeo: un seek que llegó en la ventana de teardown del
+            // drainer no debe perderse (seekTask ya es nil → re-bombea).
+            self?.pumpSeekQueue()
+        }
+    }
+    private func takePendingSeek() -> Double? {
+        let t = pendingSeekTarget
+        pendingSeekTarget = nil
+        return t
+    }
+    private func performSeek(to time: Double) async {
         audioTask?.cancel()
         currentTime = time
         // Actualizar el subtítulo de inmediato (los cues ya están todos en
         // memoria desde el inicio, no hace falta releer ni reiniciar ningún loop).
         updateActiveSubtitle(at: time)
-        try? demuxer?.seek(to: time); decoder?.flush(); framePool?.flush()
+        // Single-flight con el decode loop: cancelar + despertar parked +
+        // ESPERAR el teardown antes de tocar el demuxer. Sin esto,
+        // av_seek_frame corría concurrente con av_read_frame (UB en FFmpeg)
+        // y mataba el decode en silencio → video congelado + audio ok.
+        // El await es seguro: performSeek es async (MainActor queda libre) y
+        // el loop viejo solo necesita MainActor para un add residual.
+        decodeTask?.cancel()
+        await coordinator.reset()
+        await decodeTask?.value
+        decodeTask = nil
+        // Seek serializado vía actor (cinturón + tirantes tras el teardown).
+        if demuxer != nil {
+            do {
+                try await coordinator.withDemuxAccess { try demuxer?.seek(to: time) }
+            } catch {
+                os_log("seek: demuxer.seek falló: %{public}@", log: benchLog, type: .error, String(describing: error))
+            }
+        }
+        decoder?.flush(); framePool?.flush()
         // Vaciar también las colas de video y audio (frames/buffers encolados
         // del segmento anterior) para que no se "pegue" contenido viejo.
         if let rend = renderer { rend.displayLayer.flush() }
@@ -496,13 +552,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let url = sourceURL, let aTrack = audioTrack {
             startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
         }
-        // Tras el flush, el pool vacío puede dejar al decodeLoop bloqueado en
-        // wait() sin nadie que lo despierte (displayLoop no señaliza sin
-        // frames). Restaurar el cupo del semáforo señalando explícitamente.
-        Task { [weak self] in
-            guard let self else { return }
-            for _ in 0..<4 { await self.coordinator.signal() }
-        }
+        // Reiniciar el decode loop (nuevo task; el viejo terminó arriba).
+        // reset() ya restauró el cupo a capacidad — el +4 manual anterior
+        // inflaba el conteo sin cota con seeks repetidos y se elimina.
+        // Sin poke al display loop: ya corre (solo se re-pokea en loadVideo).
+        startDecodeLoop(callDisplayLoopOnFirstFrame: false)
     }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
     func setVolume(_ v: Double) { volume = v }
@@ -511,6 +565,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         decodeTask?.cancel(); decodeTask = nil
         audioTask?.cancel(); audioTask = nil
         displayTask?.cancel(); displayTask = nil
+        seekTask?.cancel(); seekTask = nil; pendingSeekTarget = nil
         consumerTimer?.invalidate(); consumerTimer = nil
         currentTimeTimer?.invalidate(); currentTimeTimer = nil
         fpsTimer?.invalidate(); fpsTimer = nil
@@ -594,6 +649,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     func loadVideo(_ url: URL) {
         audioTask?.cancel()
+        // Un seek en vuelo del video anterior no debe ejecutarse sobre el nuevo
+        // demuxer (seek a timestamp viejo en archivo nuevo).
+        seekTask?.cancel(); seekTask = nil; pendingSeekTarget = nil
         sourceURL = url
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
@@ -734,7 +792,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var firstPts: Double?
 
     // MARK: - 3a/3b: Decode + FramePool con backpressure real
-    private func startDecodeLoop() {
+    // `callDisplayLoopOnFirstFrame` = false en reinicios por seek (el display
+    // loop ya corre; re-pokearlo cancelaría y recrearía su Task a mitad de
+    // reproducción). loadVideo lo deja en true (arranque inicial).
+    private func startDecodeLoop(callDisplayLoopOnFirstFrame: Bool = true) {
         guard let d = demuxer, let dec = decoder, let pool = framePool else { return }
         let targetIndex = videoTrack?.streamIndex ?? -1
         decodeTask?.cancel()
@@ -749,7 +810,31 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if granted { await self.coordinator.signal() }
                     break
                 }
-                guard let pkt = try? d.nextPacket() else {
+                // Lectura serializada con seek (withDemuxAccess) + reintentos con
+                // log: antes un solo fallo mataba el decode en silencio para toda
+                // la sesión (video congelado + audio ok). nil = EOF limpio (fin
+                // del archivo, salida normal); throw = error real (reintentar
+                // acotado y luego morir CON log + mensaje visible, no en silencio).
+                var pkt: CompressedPacket?
+                var readError: Error?
+                for _ in 0..<3 {
+                    do {
+                        pkt = try await self.coordinator.withDemuxAccess { try d.nextPacket() }
+                        readError = nil
+                        break
+                    } catch {
+                        readError = error
+                    }
+                }
+                if let readError {
+                    os_log("decode: read error %{public}@ tras reintentos — loop terminado",
+                           log: benchLog, type: .error, String(describing: readError))
+                    await MainActor.run { self.statusMessage = "Decode error: \(readError)" }
+                    await self.coordinator.signal()
+                    break
+                }
+                guard let pkt else {
+                    // EOF limpio: fin del archivo, salida normal del loop.
                     await self.coordinator.signal()
                     break
                 }
@@ -789,7 +874,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 await MainActor.run {
                     self.totalDecoded = decoded
                     pool.add(buffer: pb, pts: pkt.pts)
-                    if decoded == 1 {
+                    if decoded == 1 && callDisplayLoopOnFirstFrame {
                         self.startDisplayLoop()
                     }
                 }
