@@ -931,6 +931,10 @@ var wcMoving = 0
 var wcGenuine = 0
 var wcAll = 0
 var wcNoWorse = 0
+var wcRatios: [Double] = []
+var wcRatiosSmall: [Double] = []
+var wcRatiosMed: [Double] = []
+var wcRatiosBig: [Double] = []
 let wcOn = envInt("MV_WARPCOPY", 1) == 1
 // Temporal-jitter collection: smoothed L0 field of every pair, kept in memory
 // and (optionally) dumped as CSVs so the same 8640 blocks can be compared
@@ -1054,6 +1058,17 @@ for i in 0..<pairCount {
                 }
                 wcMoving += 1
                 if sI0 < s01 && sI1 < s01 { wcGenuine += 1 }
+                // Midpoint-ratio en precision completa (10-bit): sI0/s01 ~= 0.5
+                // indica punto medio real; ~= 0 indica copia de I0. Solo en
+                // bloques con cambio real (s01 > 8/px) para no medir ruido.
+                // Bineado por magnitud de cambio para distinguir moción
+                // sub-pixel (ratio~0 correcto) de fallo en desplazamiento grande.
+                if s01 > 64 * 8 {
+                    wcRatios.append(Double(sI0) / Double(s01))
+                    if s01 <= 64 * 32 { wcRatiosSmall.append(Double(sI0) / Double(s01)) }
+                    else if s01 <= 64 * 128 { wcRatiosMed.append(Double(sI0) / Double(s01)) }
+                    else { wcRatiosBig.append(Double(sI0) / Double(s01)) }
+                }
             }
         }
         // Bypass-aware: sobre TODOS los bloques (incluye |MV|<=0.5px y copias),
@@ -1395,6 +1410,20 @@ if wcOn {
                  + "SAD(interp,I0)+SAD(interp,I1)<=SAD(I0,I1) = %.1f%%",
                  wcNoWorse, wcAll, pairCount,
                  wcAll > 0 ? 100.0 * Double(wcNoWorse) / Double(wcAll) : 0.0))
+    if !wcRatios.isEmpty {
+        let s = wcRatios.sorted()
+        print(String(format: "midpoint-ratio sI0/s01 en 10-bit (bloques en movimiento con cambio real): n=%d p25=%.3f p50=%.3f p75=%.3f (0.5 = punto medio ideal, 0.0 = copia de I0)",
+                     s.count, s[s.count / 4], s[s.count / 2], s[3 * s.count / 4]))
+        func med(_ v: [Double]) -> (Int, Double) {
+            let x = v.sorted()
+            return (x.count, x.isEmpty ? -1 : x[x.count / 2])
+        }
+        let (ns, ms) = med(wcRatiosSmall)
+        let (nm, mm) = med(wcRatiosMed)
+        let (nb, mb) = med(wcRatiosBig)
+        print(String(format: "  por cambio: leve(s01<=2048) n=%d p50=%.3f | medio n=%d p50=%.3f | grande(s01>8192) n=%d p50=%.3f",
+                     ns, ms, nm, mm, nb, mb))
+    }
 }
 
 if envInt("MV_BRUTE", 0) == 1 {
