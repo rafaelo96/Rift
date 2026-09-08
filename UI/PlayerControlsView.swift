@@ -204,14 +204,16 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Option Buttons
 
     private var interpolationButton: some View {
-        Button {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.7)) {
-                guard state.interpolationMode == .disabled else {
-                    state.setInterpolationMode(.disabled)
-                    return
+        Menu {
+            Picker("Frame Interpolation", selection: Binding(
+                get: { state.interpolationMode },
+                set: { state.setInterpolationMode($0) }
+            )) {
+                ForEach(InterpolationMode.allCases, id: \.self) { m in
+                    Text(m.displayName).tag(m)
                 }
-                state.setInterpolationMode(.motion2x)
             }
+            .pickerStyle(.inline)
         } label: {
             glassPill(
                 title: motionTitle,
@@ -224,8 +226,9 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Frame Interpolation", comment: "")
             )
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : NSLocalizedString("Interpolation active", comment: ""))")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : state.interpolationMode.displayName)")
     }
 
     private var speedButton: some View {
@@ -407,7 +410,9 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var motionTitle: String {
-        state.isFramePlusPreparing ? "Frame⁺..." : "Frame⁺"
+        if state.isFramePlusPreparing { return "Frame⁺..." }
+        if state.interpolationMode == .disabled { return "Frame⁺" }
+        return "Frame⁺ \(state.interpolationMode.displayName)"
     }
 
     private var framePlusStateTitle: String {
