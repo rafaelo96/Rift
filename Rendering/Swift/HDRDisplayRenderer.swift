@@ -49,13 +49,15 @@ public final class HDRDisplayRenderer {
     }
 
     public func enqueue(_ sampleBuffer: CMSampleBuffer) {
-        // Apple espera requestMediaDataWhenReady, pero para probe simple usamos isReady
-        // En producción: displayLayer.requestMediaDataWhenReady(on: queue) { while isReady { enqueue } }
         enqueuedFrames += 1
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
         } else {
             notReadyEnqueues += 1
+            let line = "[RIFT-DIAG] enqueue while NOT ready — total notReady=\(notReadyEnqueues) enqueued=\(enqueuedFrames)\n"
+            if let h = FileHandle(forWritingAtPath: "/tmp/rift_diag.log") {
+                h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
+            }
             if displayLayer.status == .failed, let err = displayLayer.error {
                 if lastLayerError?.localizedDescription != err.localizedDescription {
                     lastLayerError = err
@@ -64,7 +66,6 @@ public final class HDRDisplayRenderer {
             displayLayer.requestMediaDataWhenReady(on: DispatchQueue.main) { [weak self] in
                 guard let self else { return }
                 while self.displayLayer.isReadyForMoreMediaData {
-                    // caller should have queued via sampleBuffer(from:)
                     break
                 }
             }

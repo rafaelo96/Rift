@@ -192,6 +192,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// deriv hacia el par siguiente, como un FRC real). Revertir a 3:2 para
     /// A/B visual: RIFT_CADENCE=telecine.
     private let uniformCadence: Bool
+    private var interpBurstDropped = 0
+    // MARK: - Delivery diagnostics (soap-opera root-cause investigation)
+    /// Frames enqueued when isReadyForMoreMediaData was true.
+    private var framesEnqueuedReady: Int = 0
+    /// Frames enqueued when isReadyForMoreMediaData was false (silently discarded by layer).
+    private var framesEnqueuedNotReady: Int = 0
+    /// Frames dropped because enqueuePaced timed out (>50ms waiting for ready).
+    private var framesDroppedTimeout: Int = 0
+    /// Wall-clock of last diagnostic log emission.
+    private var lastDiagLogTime: CFAbsoluteTime = 0
+    /// Sampling counters for isReady state.
+    private var readyStateSamples: Int = 0
+    private var notReadySamples: Int = 0
+    /// Feature flag: force DisplayImmediately on interpolated frames (A/B test).
+    /// Activate with RIFT_FORCE_DISPLAY_IMMEDIATE=1 env var.
+    private static let forceDisplayImmediateOnInterpolated =
+        ProcessInfo.processInfo.environment["RIFT_FORCE_DISPLAY_IMMEDIATE"] == "1"
     private var totalDecoded = 0
     private var decodeTask: Task<Void, Never>?
     /// Seek coalescente: los drags del timeline disparan decenas de seeks por
@@ -234,6 +251,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpPairIndex = 0
         interpSinglePairCount = 0
         interpDoublePairCount = 0
+        interpBurstDropped = 0
         // Throughput gate: clean slate for the new evaluation window.
         pairCompletionTimes = []
         weakThroughputWindows = 0
@@ -343,6 +361,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // that many seconds after launch (used to validate rearmFallbackInterpolation
     // after a fallback). RIFT_AUTO_REOPEN=<file> + RIFT_AUTO_REOPEN_AT=<secs>
     // schedule a loadVideo() to validate the same rearm on file change.
+    // RIFT_AUTO_MODE_AT=<secs> activates an interpolation mode mid-playback
+    // (same path as the menu toggle: setInterpolationMode) to reproduce the
+    // "toggle mode then seek" flow without GUI interaction. RIFT_AUTO_MODE still
+    // applies at display-loop start; use MODE_AT to delay it.
     // Permite verificar el pipeline de reproducción/interpolación sin interacción
     // GUI (NSOpenPanel no funciona en corridas headless — ver AGENTS.md).
     init() {
@@ -356,11 +378,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let seekTo = env["RIFT_AUTO_SEEK_TO"].flatMap(Double.init)
         let reopenAt = env["RIFT_AUTO_REOPEN_AT"].flatMap(Double.init)
         let reopenURL = env["RIFT_AUTO_REOPEN"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+        let modeAt = env["RIFT_AUTO_MODE_AT"].flatMap(Double.init)
+        let delayedMode = env["RIFT_AUTO_MODE"].flatMap(InterpolationMode.init(rawValue:))
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard let self else { return }
             print("RIFT_AUTO_OPEN → loadVideo \(url.lastPathComponent)")
             self.loadVideo(url)
+            if let modeAt, let delayedMode {
+                try? await Task.sleep(nanoseconds: UInt64(modeAt * 1e9))
+                guard !Task.isCancelled else { return }
+                os_log("RIFT_AUTO_MODE_AT=%.0f → setInterpolationMode(%{public}@)",
+                       log: benchLog, type: .info, modeAt, delayedMode.rawValue)
+                self.setInterpolationMode(delayedMode)
+            }
             if let seekAt, let seekTo {
                 try? await Task.sleep(nanoseconds: UInt64(seekAt * 1e9))
                 guard !Task.isCancelled else { return }
@@ -1132,6 +1163,49 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         FileManager.default.createFile(atPath: "/tmp/rift_timing.csv", contents: line.data(using: .utf8))
     }
 
+    // MARK: - Delivery diagnostics (soap-opera investigation)
+
+    /// Emit a [RIFT-DIAG] log once per second with ready/notReady/dropped counters.
+    /// Resets counters after each emission so each line represents a 1s window.
+    private func logDiagIfDue() {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastDiagLogTime >= 1.0 else { return }
+        lastDiagLogTime = now
+        let total = framesEnqueuedReady + framesEnqueuedNotReady + framesDroppedTimeout
+        let line = "[RIFT-DIAG] enqueued=\(total) ready=\(framesEnqueuedReady) notReady=\(framesEnqueuedNotReady) dropped=\(framesDroppedTimeout)\n"
+        RiftPlayerState.writeDiagLog(line)
+        framesEnqueuedReady = 0
+        framesEnqueuedNotReady = 0
+        framesDroppedTimeout = 0
+    }
+
+    /// Sample isReadyForMoreMediaData state; log percentage of not-ready samples
+    /// every 60 samples (~1 second at display-loop rate).
+    private func sampleReadyState(_ rend: HDRDisplayRenderer) {
+        readyStateSamples += 1
+        if !rend.displayLayer.isReadyForMoreMediaData {
+            notReadySamples += 1
+        }
+        if readyStateSamples >= 60 {
+            let pct = Double(notReadySamples) / Double(readyStateSamples) * 100
+            let line = String(format: "[RIFT-DIAG] isReady=false en %.1f%% de las muestras (notReady=%d/%d)\n", pct, notReadySamples, readyStateSamples)
+            RiftPlayerState.writeDiagLog(line)
+            readyStateSamples = 0
+            notReadySamples = 0
+        }
+    }
+
+    /// Write a diagnostic line to /tmp/rift_diag.log for headless capture.
+    private static func writeDiagLog(_ line: String) {
+        if let h = FileHandle(forWritingAtPath: "/tmp/rift_diag.log") {
+            h.seekToEndOfFile()
+            h.write(line.data(using: .utf8)!)
+            h.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: "/tmp/rift_diag.log", contents: line.data(using: .utf8))
+        }
+    }
+
     /// Espera hasta que el reloj del synchronizer alcance el pts objetivo. Si el
     /// frame está más de 1s en el futuro (p.ej. tras un seek con el reloj
     /// desalineado), lo presenta de inmediato para no dejar la imagen congelada.
@@ -1159,6 +1233,35 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             let clk = sched.synchronizer.currentTime().seconds
             if clk >= firstPTS - lead { return }
             try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    /// Encola un frame del par interpolado respetando la capacidad de la capa.
+    /// La ráfaga de 3 frames/par de la cadencia uniforme satura la cola del
+    /// AVSampleBufferDisplayLayer (isReadyForMoreMediaData=false en ~55-75% de
+    /// los enqueues medidos): los frames encolados en esa condición se descartan
+    /// en silencio, y con displayLayer.flush() tras un seek pueden dejar el video
+    /// congelado mientras el audio (loop separado) sigue. Este helper espera a
+    /// que la capa readmita (con tope de espera) antes de encolar.
+    private func enqueuePaced(_ rend: HDRDisplayRenderer, _ sbuf: CMSampleBuffer) async {
+        let maxWaitNS = UInt64(3 * 16_666_667)
+        var waited = UInt64(0)
+        while !Task.isCancelled {
+            if rend.displayLayer.isReadyForMoreMediaData {
+                rend.enqueue(sbuf)
+                self.enqueuedFramesInWindow += 1
+                self.framesEnqueuedReady += 1
+                self.logDiagIfDue()
+                return
+            }
+            if waited >= maxWaitNS {
+                self.interpBurstDropped += 1
+                self.framesDroppedTimeout += 1
+                self.logDiagIfDue()
+                return
+            }
+            try? await Task.sleep(nanoseconds: 4_000_000)
+            waited += 4_000_000
         }
     }
 
@@ -1277,9 +1380,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
         // Test harness: arrancar con un modo de interpolación forzado (inert sin env var).
-        if let raw = ProcessInfo.processInfo.environment["RIFT_AUTO_MODE"],
-           let m = InterpolationMode(rawValue: raw), m != .disabled, interpolationMode == .disabled {
-            os_log("RIFT_AUTO_MODE=%{public}@ → activando interpolación", log: benchLog, type: .info, raw)
+        // Si se usa RIFT_AUTO_MODE_AT, el arranque comienza nativo y el modo se aplica
+        // en vivo más tarde (mismo camino que el toggle del menú) — no aplicar dos veces.
+        let autoMode = ProcessInfo.processInfo.environment["RIFT_AUTO_MODE"]
+        let autoModeAt = ProcessInfo.processInfo.environment["RIFT_AUTO_MODE_AT"]
+        if let autoMode, autoModeAt == nil,
+           let m = InterpolationMode(rawValue: autoMode), m != .disabled, interpolationMode == .disabled {
+            os_log("RIFT_AUTO_MODE=%{public}@ → activando interpolación", log: benchLog, type: .info, autoMode)
             self.setInterpolationMode(m)
         }
         if let sched = scheduler, sched.synchronizer.rate == 0 {
@@ -1473,10 +1580,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                         let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 1200)
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
-                            rend.enqueue(sbuf)
-                            self.enqueuedFramesInWindow += 1
+                            if Self.forceDisplayImmediateOnInterpolated {
+                                self.markDisplayImmediately(sbuf)
+                            }
+                            await self.enqueuePaced(rend, sbuf)
                         }
                     }
+                    // Diagnostic: sample isReady state every iteration.
+                    self.sampleReadyState(rend)
                     if hasPresentedInterpolatedStart == false, !outputs.isEmpty {
                         hasPresentedInterpolatedStart = true
                     }
@@ -1502,7 +1613,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     benchSamples.removeAll()
                     os_log("Interp3to2: pairsSingle=%d pairsDouble=%d (esperado ~1:1 en .interpolated60)", log: benchLog, type: .info, self.interpSinglePairCount, self.interpDoublePairCount)
                     let diag = rend.enqueueDiagnostics()
-                    os_log("Render diag: %{public}@", log: benchLog, type: .info, diag)
+                    os_log("Render diag: %{public}@ burstDropped=%d", log: benchLog, type: .info, diag, self.interpBurstDropped)
                     rend.resetDiagnostics()
                 }
                 if Task.isCancelled { break }
