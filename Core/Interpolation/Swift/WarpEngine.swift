@@ -14,6 +14,9 @@ public final class WarpEngine {
     let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
     private let upscalePipeline: MTLComputePipelineState
+    private let chromaDownPipeline: MTLComputePipelineState
+    private let chromaWarpPipeline: MTLComputePipelineState
+    private let chromaUpPipeline: MTLComputePipelineState
     private var outTex: MTLTexture?
     private var textureCache: CVMetalTextureCache?
 
@@ -49,9 +52,17 @@ public final class WarpEngine {
         guard let upscaleFn = library.makeFunction(name: "upscaleLuma") else {
             throw Error.pipeline("missing upscaleLuma function")
         }
+        guard let cDownFn = library.makeFunction(name: "chromaDownscale2"),
+              let cWarpFn = library.makeFunction(name: "warpBlendChroma2"),
+              let cUpFn = library.makeFunction(name: "upscaleChroma2") else {
+            throw Error.pipeline("missing chroma shaders")
+        }
         do {
             pipeline = try device.makeComputePipelineState(function: warpFn)
             upscalePipeline = try device.makeComputePipelineState(function: upscaleFn)
+            chromaDownPipeline = try device.makeComputePipelineState(function: cDownFn)
+            chromaWarpPipeline = try device.makeComputePipelineState(function: cWarpFn)
+            chromaUpPipeline = try device.makeComputePipelineState(function: cUpFn)
         } catch {
             throw Error.pipeline("\(error)")
         }
@@ -167,27 +178,26 @@ public final class WarpEngine {
               let tOut = cvTexOut, let texOut = CVMetalTextureGetTexture(tOut) else { return (nil, warpMS, 0) }
         let upscaleMS = upscale(from: texOutW, to: texOut, srcW: UInt32(workWidth), srcH: UInt32(workHeight), outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
 
-        // 4. CbCr copiado de I0 → out (sin cambios).
-        CVPixelBufferLockBaseAddress(out, [])
-        CVPixelBufferLockBaseAddress(I0, .readOnly)
-        if CVPixelBufferGetPlaneCount(out) >= 2,
-           let dstCbCr = CVPixelBufferGetBaseAddressOfPlane(out, 1),
-           let srcCbCr = CVPixelBufferGetBaseAddressOfPlane(I0, 1) {
-            let cbcrH = CVPixelBufferGetHeightOfPlane(out, 1)
-            let dstBPR = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
-            let srcBPR = CVPixelBufferGetBytesPerRowOfPlane(I0, 1)
-            let copyW = min(dstBPR, srcBPR)
-            for y in 0..<cbcrH {
-                memcpy(dstCbCr.advanced(by: y * dstBPR),
-                       srcCbCr.advanced(by: y * srcBPR),
-                       copyW)
-            }
+        // 4. CbCr warpeado (antes: copia verbatim de I0 → color pegado en t=0).
+        let chromaIs10 = isChroma10Bit(I0)
+        let cwCh = CVPixelBufferGetWidthOfPlane(I0, 1)
+        let chCh = CVPixelBufferGetHeightOfPlane(I0, 1)
+        var chromaTotal = 0.0
+        if let prepared = prepareChromaWork(I0: I0, I1: I1, workWidth: workWidth, workHeight: workHeight),
+           cwCh > 0, chCh > 0,
+           let cOutW = device.makeTexture(descriptor: workTextureDescriptor(width: prepared.outW, height: prepared.outH, format: .rg16Uint)),
+           let cOutFull = device.makeTexture(descriptor: workTextureDescriptor(width: cwCh, height: chCh, format: .rg16Uint)) {
+            chromaTotal += prepared.downMS
+            chromaTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
+                                      gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+            chromaTotal += chromaUpscale(src: cOutW, outTex: cOutFull,
+                                         srcW: prepared.outW, srcH: prepared.outH,
+                                         dstW: cwCh, dstH: chCh, fmt10: chromaIs10)
+            writeChromaPlane(from: cOutFull, is10Bit: chromaIs10, into: out)
         }
-        CVPixelBufferUnlockBaseAddress(I0, .readOnly)
-        CVPixelBufferUnlockBaseAddress(out, [])
 
         propagateHDR(from: I0, to: out)
-        return (out, warpMS, upscaleMS)
+        return (out, warpMS + chromaTotal, upscaleMS)
     }
 
     /// Variante por-par de `interpolatePixelBuffer`: recibe el par de luma
@@ -248,9 +258,25 @@ public final class WarpEngine {
 
         ensureOutputPool(w: w, h: h, pixelFormat: pixelFormat)
 
+        // CbCr: warp preparado una vez por par (downscale full → work de croma).
+        // Antes de este cambio el plano 1 se copiaba verbatim de I0 (color
+        // pegado en t=0 con el luma ya warpeado → fringe/doble-imagen de color
+        // en objetos en movimiento).
+        let cwCh = CVPixelBufferGetWidthOfPlane(I0, 1)
+        let chCh = CVPixelBufferGetHeightOfPlane(I0, 1)
+        let chromaIs10 = isChroma10Bit(I0)
+        let prepared = prepareChromaWork(I0: I0, I1: I1, workWidth: workWidth, workHeight: workHeight)
+        var cOutFull: MTLTexture?
+        var cOutW: MTLTexture?
+        if let prepared, cwCh > 0, chCh > 0 {
+            cOutFull = device.makeTexture(descriptor: workTextureDescriptor(width: cwCh, height: chCh, format: .rg16Uint))
+            cOutW = device.makeTexture(descriptor: workTextureDescriptor(width: prepared.outW, height: prepared.outH, format: .rg16Uint))
+        }
+
         var buffers: [CVPixelBuffer] = []
         var warpTotal = 0.0
         var upscaleTotal = 0.0
+        if let prepared { warpTotal += prepared.downMS }
         for t in tValues {
             guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else { continue }
 
@@ -264,7 +290,15 @@ public final class WarpEngine {
                                     srcW: UInt32(workWidth), srcH: UInt32(workHeight),
                                     outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
 
-            copyCbCr(from: I0, to: out)
+            if let prepared, let cOutFull, let cOutW {
+                warpTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
+                                        gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+                upscaleTotal += chromaUpscale(src: cOutW, outTex: cOutFull,
+                                              srcW: prepared.outW, srcH: prepared.outH,
+                                              dstW: cwCh, dstH: chCh, fmt10: chromaIs10)
+                writeChromaPlane(from: cOutFull, is10Bit: chromaIs10, into: out)
+            }
+
             propagateHDR(from: I0, to: out)
 
             buffers.append(out)
@@ -353,26 +387,158 @@ public final class WarpEngine {
         return (w2, tex)
     }
 
-    /// Copia el plano CbCr de I0 → out (puede ser un buffer del pool con datos de
-    /// un frame anterior; se sobreescribe COMPLETO, no hay residuo posible).
-    private func copyCbCr(from src: CVPixelBuffer, to dst: CVPixelBuffer) {
-        CVPixelBufferLockBaseAddress(dst, [])
-        CVPixelBufferLockBaseAddress(src, .readOnly)
-        if CVPixelBufferGetPlaneCount(dst) >= 2,
-           let dstCbCr = CVPixelBufferGetBaseAddressOfPlane(dst, 1),
-           let srcCbCr = CVPixelBufferGetBaseAddressOfPlane(src, 1) {
-            let cbcrH = CVPixelBufferGetHeightOfPlane(dst, 1)
-            let dstBPR = CVPixelBufferGetBytesPerRowOfPlane(dst, 1)
-            let srcBPR = CVPixelBufferGetBytesPerRowOfPlane(src, 1)
-            let copyW = min(dstBPR, srcBPR)
-            for y in 0..<cbcrH {
-                memcpy(dstCbCr.advanced(by: y * dstBPR),
-                       srcCbCr.advanced(by: y * srcBPR),
-                       copyW)
+    // MARK: - Chroma warping
+    //
+    // La versión anterior copiaba el plano CbCr de I0 verbatim, dejando el color
+    // pegado en t=0 mientras el luma se warpeaba. Estas helpers warpean AMBOS
+    // planos con el mismo campo MV (resolución de croma = mitad del work-plane
+    // de luma), a través de un work-plane de croma (workWidth/2 × workHeight/2)
+    // y un upscale bilinear de vuelta a la resolución de cromo completa.
+
+    private func isChroma10Bit(_ pb: CVPixelBuffer) -> Bool {
+        let fmt = CVPixelBufferGetPixelFormatType(pb)
+        return fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+            || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    }
+
+    /// Construye la textura Metal del plano 1 (CbCr) completo de `pb`, desde su
+    /// base address (row stride real del plane, copia síncrona con `replace`).
+    /// 8-bit → .rg8Uint, 10-bit → .rg16Uint. Nil si no hay plano de croma.
+    private func makeFullChromaTexture(_ pb: CVPixelBuffer, is10Bit: Bool) -> MTLTexture? {
+        guard CVPixelBufferGetPlaneCount(pb) >= 2 else { return nil }
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        let sw = CVPixelBufferGetWidthOfPlane(pb, 1)
+        let sh = CVPixelBufferGetHeightOfPlane(pb, 1)
+        guard sw > 0, sh > 0,
+              let base = CVPixelBufferGetBaseAddressOfPlane(pb, 1) else { return nil }
+        let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 1)
+        let format: MTLPixelFormat = is10Bit ? .rg16Uint : .rg8Uint
+        guard let tex = device.makeTexture(descriptor: workTextureDescriptor(width: sw, height: sh, format: format)) else { return nil }
+        tex.replace(region: MTLRegionMake2D(0, 0, sw, sh), mipmapLevel: 0, withBytes: base, bytesPerRow: bpr)
+        return tex
+    }
+
+    /// Prepara los work-planes de croma del par (downscale full → work 1 vez, se
+    /// reusan por t). Devuelve sinonimos, dims del work-plane y el flag 10-bit;
+    /// nil si no hay croma.
+    private func prepareChromaWork(
+        I0: CVPixelBuffer, I1: CVPixelBuffer,
+        workWidth: Int, workHeight: Int
+    ) -> (c0: MTLTexture, c1: MTLTexture, outW: Int, outH: Int, is10Bit: Bool, downMS: Double)? {
+        let is10Bit = isChroma10Bit(I0)
+        let cw = CVPixelBufferGetWidthOfPlane(I0, 1)
+        let ch = CVPixelBufferGetHeightOfPlane(I0, 1)
+        guard cw > 0, ch > 0,
+              CVPixelBufferGetPlaneCount(I0) >= 2, CVPixelBufferGetPlaneCount(I1) >= 2,
+              CVPixelBufferGetWidthOfPlane(I1, 1) == cw,
+              CVPixelBufferGetHeightOfPlane(I1, 1) == ch,
+              let t0 = makeFullChromaTexture(I0, is10Bit: is10Bit),
+              let t1 = makeFullChromaTexture(I1, is10Bit: is10Bit) else { return nil }
+        let ww = max(1, workWidth / 2)
+        let wh = max(1, workHeight / 2)
+        let wdesc = workTextureDescriptor(width: ww, height: wh, format: .rg16Uint)
+        guard let c0w = device.makeTexture(descriptor: wdesc),
+              let c1w = device.makeTexture(descriptor: wdesc) else { return nil }
+        let down0 = chromaDown(src: t0, outTex: c0w, srcW: cw, srcH: ch, dstW: ww, dstH: wh, fmt10: is10Bit)
+        let down1 = chromaDown(src: t1, outTex: c1w, srcW: cw, srcH: ch, dstW: ww, dstH: wh, fmt10: is10Bit)
+        return (c0w, c1w, ww, wh, is10Bit, down0 + down1)
+    }
+
+    /// Downscale bilinear del croma full-res → work-plane de croma.
+    private func chromaDown(src: MTLTexture, outTex: MTLTexture, srcW: Int, srcH: Int, dstW: Int, dstH: Int, fmt10: Bool) -> Double {
+        let start = DispatchTime.now().uptimeNanoseconds
+        guard let cmd = queue.makeCommandBuffer(), let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        enc.setComputePipelineState(chromaDownPipeline)
+        enc.setTexture(src, index: 0)
+        enc.setTexture(outTex, index: 1)
+        var uni = UpscaleUniforms(srcW: UInt32(srcW), srcH: UInt32(srcH), outW: UInt32(dstW), outH: UInt32(dstH), fmt10: fmt10 ? 1 : 0)
+        enc.setBytes(&uni, length: MemoryLayout<UpscaleUniforms>.stride, index: 0)
+        let tg = MTLSize(width: 16, height: 16, depth: 1)
+        let n = MTLSize(width: (dstW + tg.width - 1) / tg.width, height: (dstH + tg.height - 1) / tg.height, depth: 1)
+        enc.dispatchThreadgroups(n, threadsPerThreadgroup: tg)
+        enc.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+    }
+
+    /// Warp de croma en el work-plane de croma (2 canales), mismos MV que el luma.
+    private func chromaWarp(c0: MTLTexture, c1: MTLTexture, mv: MTLBuffer, outW: MTLTexture, gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float) -> Double {
+        let w = outW.width, h = outW.height
+        guard let cmd = queue.makeCommandBuffer(), let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        let start = DispatchTime.now().uptimeNanoseconds
+        enc.setComputePipelineState(chromaWarpPipeline)
+        enc.setTexture(c0, index: 0)
+        enc.setTexture(c1, index: 1)
+        enc.setBuffer(mv, offset: 0, index: 0)
+        enc.setTexture(outW, index: 2)
+        var uni = WarpUniforms(width: UInt32(w), height: UInt32(h), gridW: UInt32(gridW), gridH: UInt32(gridH), blockSize: UInt32(blockSize), t: t, occThresh: occThresh)
+        enc.setBytes(&uni, length: MemoryLayout<WarpUniforms>.stride, index: 1)
+        let tg = MTLSize(width: 16, height: 16, depth: 1)
+        let n = MTLSize(width: (w + tg.width - 1) / tg.width, height: (h + tg.height - 1) / tg.height, depth: 1)
+        enc.dispatchThreadgroups(n, threadsPerThreadgroup: tg)
+        enc.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+    }
+
+    /// Upscale bilinear del work-plane de croma → croma full-res (rg16Uint).
+    private func chromaUpscale(src: MTLTexture, outTex: MTLTexture, srcW: Int, srcH: Int, dstW: Int, dstH: Int, fmt10: Bool) -> Double {
+        let start = DispatchTime.now().uptimeNanoseconds
+        guard let cmd = queue.makeCommandBuffer(), let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        enc.setComputePipelineState(chromaUpPipeline)
+        enc.setTexture(src, index: 0)
+        enc.setTexture(outTex, index: 1)
+        var uni = UpscaleUniforms(srcW: UInt32(srcW), srcH: UInt32(srcH), outW: UInt32(dstW), outH: UInt32(dstH), fmt10: fmt10 ? 1 : 0)
+        enc.setBytes(&uni, length: MemoryLayout<UpscaleUniforms>.stride, index: 0)
+        let tg = MTLSize(width: 16, height: 16, depth: 1)
+        let n = MTLSize(width: (dstW + tg.width - 1) / tg.width, height: (dstH + tg.height - 1) / tg.height, depth: 1)
+        enc.dispatchThreadgroups(n, threadsPerThreadgroup: tg)
+        enc.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+    }
+
+    /// Escribe el resultado del warp de croma (textura rg16Uint full-croma) en el
+    /// plano 1 de `out`. 10-bit: los words de 16 bits coinciden con el layout del
+    /// plano; 8-bit: los bytes ya viven en el byte bajo (>>8 en el shader) pero el
+    /// layout rg16 intercala bytes nulos → compactado fila a fila con el BPR real.
+    private func writeChromaPlane(from tex: MTLTexture, is10Bit: Bool, into out: CVPixelBuffer) {
+        guard CVPixelBufferGetPlaneCount(out) >= 2 else { return }
+        CVPixelBufferLockBaseAddress(out, [])
+        defer { CVPixelBufferUnlockBaseAddress(out, []) }
+        let cw = tex.width
+        let ch = min(tex.height, CVPixelBufferGetHeightOfPlane(out, 1))
+        let dstBPR = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
+        guard let dst = CVPixelBufferGetBaseAddressOfPlane(out, 1), cw > 0 else { return }
+
+        let rowBytes = cw * 4 // rg16Uint: 2 canales × 2 bytes
+        var buf = [UInt8](repeating: 0, count: rowBytes * ch)
+        let region = MTLRegionMake2D(0, 0, cw, ch)
+        buf.withUnsafeMutableBytes { tex.getBytes($0.baseAddress!, bytesPerRow: rowBytes, from: region, mipmapLevel: 0) }
+
+        buf.withUnsafeBytes { raw in
+            if is10Bit {
+                for y in 0..<ch {
+                    memcpy(dst.advanced(by: y * dstBPR),
+                           raw.baseAddress!.advanced(by: y * rowBytes),
+                           min(dstBPR, rowBytes))
+                }
+            } else {
+                let words = raw.bindMemory(to: UInt16.self)
+                for y in 0..<ch {
+                    let dRow = dst.advanced(by: y * dstBPR).assumingMemoryBound(to: UInt8.self)
+                    let rowBase = y * cw
+                    for x in 0..<cw {
+                        dRow[x * 2] = UInt8(truncatingIfNeeded: words[rowBase + x * 2])
+                        dRow[x * 2 + 1] = UInt8(truncatingIfNeeded: words[rowBase + x * 2 + 1])
+                    }
+                }
             }
         }
-        CVPixelBufferUnlockBaseAddress(src, .readOnly)
-        CVPixelBufferUnlockBaseAddress(dst, [])
     }
 
     private func workTextureDescriptor(width: Int, height: Int, format: MTLPixelFormat) -> MTLTextureDescriptor {
