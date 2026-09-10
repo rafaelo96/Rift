@@ -29,6 +29,9 @@ public final class WarpEngine {
     private var outPool: CVPixelBufferPool?
     private var outPoolSize: (w: Int, h: Int, pixelFormat: OSType)?
     private var pooledTex: [UInt32: (CVPixelBuffer, CVMetalTexture)] = [:]
+    private var pooledChromaTex: [UInt32: (CVPixelBuffer, CVMetalTexture)] = [:]
+    private var loggedChromaPath = false
+    private var loggedChromaStride = false
     private let outPoolCapacity: Int = 8
 
     public init(msl: String) throws {
@@ -214,98 +217,103 @@ public final class WarpEngine {
     /// se re-registra por frame). El pool es el primitive thread-safe de
     /// CoreVideo; overflow → degrada a create aislado si el displayLayer aún
     /// retiene todos los slots.
-    func interpolatePixelBufferPair(
-        I0: CVPixelBuffer,
-        I1: CVPixelBuffer,
-        luma0: Data,
-        luma1: Data,
-        workWidth: Int,
-        workHeight: Int,
-        mv: [SIMD2<Int32>],
-        gridW: Int,
-        gridH: Int,
-        blockSize: Int,
-        tValues: [Float],
-        occThresh: Float = 1.0
-    ) -> (buffers: [CVPixelBuffer], warpMS: Double, upscaleMS: Double) {
-        guard !tValues.isEmpty else { return ([], 0, 0) }
-        let w = CVPixelBufferGetWidth(I0), h = CVPixelBufferGetHeight(I0)
-        let pixelFormat = CVPixelBufferGetPixelFormatType(I0)
-        let metalLumaFormat: MTLPixelFormat
-        switch pixelFormat {
-        case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
-             kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
-            metalLumaFormat = .r16Uint
-        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
-            metalLumaFormat = .r8Uint
-        default:
-            return ([], 0, 0)
-        }
-        let is10Bit = metalLumaFormat == .r16Uint
-        guard let cache = textureCache else { return ([], 0, 0) }
+func interpolatePixelBufferPair(
+    I0: CVPixelBuffer,
+    I1: CVPixelBuffer,
+    luma0: Data,
+    luma1: Data,
+    workWidth: Int,
+    workHeight: Int,
+    mv: [SIMD2<Int32>],
+    gridW: Int,
+    gridH: Int,
+    blockSize: Int,
+    tValues: [Float],
+    occThresh: Float = 1.0
+) -> (buffers: [CVPixelBuffer], warpMS: Double, upscaleMS: Double) {
+    guard !tValues.isEmpty else { return ([], 0, 0) }
+    let w = CVPixelBufferGetWidth(I0), h = CVPixelBufferGetHeight(I0)
+    let pixelFormat = CVPixelBufferGetPixelFormatType(I0)
+    let metalLumaFormat: MTLPixelFormat
+    switch pixelFormat {
+    case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+         kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+        metalLumaFormat = .r16Uint
+    case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+         kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+        metalLumaFormat = .r8Uint
+    default:
+        return ([], 0, 0)
+    }
+    let is10Bit = metalLumaFormat == .r16Uint
+    guard let cache = textureCache else { return ([], 0, 0) }
 
-        // Recursos por-par: texturas de luma del work-plane + textura de salida
-        // del warp (el warp escribe/lee secuencialmente por t).
-        let workLumaFormat = MTLPixelFormat.r16Uint
-        guard let tex0w = makeWorkTexture(data: luma0, width: workWidth, height: workHeight, format: workLumaFormat),
-              let tex1w = makeWorkTexture(data: luma1, width: workWidth, height: workHeight, format: workLumaFormat),
-              let texOutW = device.makeTexture(descriptor: workTextureDescriptor(width: workWidth, height: workHeight, format: workLumaFormat)) else {
-            return ([], 0, 0)
-        }
+    let workLumaFormat = MTLPixelFormat.r16Uint
+    guard let tex0w = makeWorkTexture(data: luma0, width: workWidth, height: workHeight, format: workLumaFormat),
+          let tex1w = makeWorkTexture(data: luma1, width: workWidth, height: workHeight, format: workLumaFormat),
+          let texOutW = device.makeTexture(descriptor: workTextureDescriptor(width: workWidth, height: workHeight, format: workLumaFormat)) else {
+        return ([], 0, 0)
+    }
 
-        let mvBuf = device.makeBuffer(bytes: mv, length: mv.count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)!
+    let mvBuf = device.makeBuffer(bytes: mv, length: mv.count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)!
 
-        ensureOutputPool(w: w, h: h, pixelFormat: pixelFormat)
+    ensureOutputPool(w: w, h: h, pixelFormat: pixelFormat)
 
-        // CbCr: warp preparado una vez por par (downscale full → work de croma).
-        // Antes de este cambio el plano 1 se copiaba verbatim de I0 (color
-        // pegado en t=0 con el luma ya warpeado → fringe/doble-imagen de color
-        // en objetos en movimiento).
-        let cwCh = CVPixelBufferGetWidthOfPlane(I0, 1)
-        let chCh = CVPixelBufferGetHeightOfPlane(I0, 1)
-        let chromaIs10 = isChroma10Bit(I0)
-        let prepared = prepareChromaWork(I0: I0, I1: I1, workWidth: workWidth, workHeight: workHeight)
-        var cOutFull: MTLTexture?
-        var cOutW: MTLTexture?
-        if let prepared, cwCh > 0, chCh > 0 {
-            cOutFull = device.makeTexture(descriptor: workTextureDescriptor(width: cwCh, height: chCh, format: .rg16Uint))
-            cOutW = device.makeTexture(descriptor: workTextureDescriptor(width: prepared.outW, height: prepared.outH, format: .rg16Uint))
-        }
+    let cwCh = CVPixelBufferGetWidthOfPlane(I0, 1)
+    let chCh = CVPixelBufferGetHeightOfPlane(I0, 1)
+    let chromaIs10 = isChroma10Bit(I0)
+    let prepared = prepareChromaWork(I0: I0, I1: I1, workWidth: workWidth, workHeight: workHeight)
+    var cOutFull: MTLTexture?
+    var cOutW: MTLTexture?
+    if let prepared, cwCh > 0, chCh > 0 {
+        cOutFull = device.makeTexture(descriptor: workTextureDescriptor(width: cwCh, height: chCh, format: .rg16Uint))
+        cOutW = device.makeTexture(descriptor: workTextureDescriptor(width: prepared.outW, height: prepared.outH, format: .rg16Uint))
+    }
 
-        var buffers: [CVPixelBuffer] = []
-        var warpTotal = 0.0
-        var upscaleTotal = 0.0
-        if let prepared { warpTotal += prepared.downMS }
-        for t in tValues {
-            guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else { continue }
+    var buffers: [CVPixelBuffer] = []
+    var warpTotal = 0.0
+    var upscaleTotal = 0.0
+    if let prepared { warpTotal += prepared.downMS }
+    for t in tValues {
+        guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else { continue }
 
-            // Warp t → texOutW, luego upscale texOutW → luma full-res del out.
-            let wrapped = wrapOutputTexture(out, format: metalLumaFormat, w: w, h: h, cache: cache)
-            guard let texOut = wrapped.1 else { continue }
-            warpTotal += interpolate(tex0: tex0w, tex1: tex1w, mv: mvBuf,
-                                     gridW: UInt32(gridW), gridH: UInt32(gridH),
+        let wrapped = wrapOutputTexture(out, format: metalLumaFormat, w: w, h: h, cache: cache)
+        guard let texOut = wrapped.1 else { continue }
+        warpTotal += interpolate(tex0: tex0w, tex1: tex1w, mv: mvBuf,
+                                 gridW: UInt32(gridW), gridH: UInt32(gridH),
                                      blockSize: UInt32(blockSize), t: t, occThresh: occThresh, outTex: texOutW)
-            upscaleTotal += upscale(from: texOutW, to: texOut,
-                                    srcW: UInt32(workWidth), srcH: UInt32(workHeight),
-                                    outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
+        upscaleTotal += upscale(from: texOutW, to: texOut,
+                                srcW: UInt32(workWidth), srcH: UInt32(workHeight),
+                                outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
 
-            if let prepared, let cOutFull, let cOutW {
-                warpTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
-                                        gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+        if let prepared, let cOutW {
+            warpTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
+                                    gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+
+            if chromaIs10 {
+                let chromaWrapped = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache)
+                if let chromaTexOut = chromaWrapped.1 {
+                    logChromaPathOnce(zeroCopy: true)
+                    upscaleTotal += chromaUpscale(src: cOutW, outTex: chromaTexOut,
+                                                  srcW: prepared.outW, srcH: prepared.outH,
+                                                  dstW: cwCh, dstH: chCh, fmt10: true)
+                }
+            } else if let cOutFull {
+                logChromaPathOnce(zeroCopy: false)
                 upscaleTotal += chromaUpscale(src: cOutW, outTex: cOutFull,
                                               srcW: prepared.outW, srcH: prepared.outH,
                                               dstW: cwCh, dstH: chCh, fmt10: chromaIs10)
                 writeChromaPlane(from: cOutFull, is10Bit: chromaIs10, into: out)
             }
-
-            propagateHDR(from: I0, to: out)
-
-            buffers.append(out)
         }
 
-        return (buffers, warpTotal, upscaleTotal)
+        propagateHDR(from: I0, to: out)
+
+        buffers.append(out)
     }
+
+    return (buffers, warpTotal, upscaleTotal)
+}
 
     /// Crea (si hace falta) el pool de buffers de salida con las dims/formato del
     /// par actual. Si el video cambia de resolución/formato se recrea y se vacía
@@ -370,8 +378,6 @@ public final class WarpEngine {
             if CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
                let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) {
                 if pooledTex.count >= outPoolCapacity * 2 {
-                    // Desaloja el envoltorio más antiguo (libera su buffer → el pool
-                    // vuelve a recuperar esa superficie, ya sin wraps pendientes).
                     if let oldest = pooledTex.keys.first {
                         pooledTex.removeValue(forKey: oldest)
                     }
@@ -380,11 +386,47 @@ public final class WarpEngine {
                 return (w2, tex)
             }
         }
-        // Sin IOSurface (overflow sin surface) → registrar el envoltorio sin cachear.
         var wrapped: CVMetalTexture?
         guard CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
               let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) else { return (nil, nil) }
         return (w2, tex)
+    }
+
+    private func wrapOutputChromaTexture(_ pb: CVPixelBuffer, w: Int, h: Int, cache: CVMetalTextureCache) -> (CVMetalTexture?, MTLTexture?) {
+        if !loggedChromaStride {
+            loggedChromaStride = true
+            print("[RIFT-DIAG-CHROMA-STRIDE] bytesPerRow=\(CVPixelBufferGetBytesPerRowOfPlane(pb, 1)) expectedBytesPerRow=\(CVPixelBufferGetWidthOfPlane(pb, 1) * 4) height=\(CVPixelBufferGetHeightOfPlane(pb, 1))")
+        }
+        let format: MTLPixelFormat = .rg16Uint
+        if let surfaceUnmanaged = CVPixelBufferGetIOSurface(pb) {
+            let surface = surfaceUnmanaged.takeUnretainedValue()
+            let sid = IOSurfaceGetID(surface)
+            if let cached = pooledChromaTex[sid], let tex = CVMetalTextureGetTexture(cached.1) {
+                return (cached.1, tex)
+            }
+            var wrappedC: CVMetalTexture?
+            if CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 1, &wrappedC) == kCVReturnSuccess,
+               let w2 = wrappedC, let tex = CVMetalTextureGetTexture(w2) {
+                if pooledChromaTex.count >= outPoolCapacity * 2 {
+                    if let oldest = pooledChromaTex.keys.first {
+                        pooledChromaTex.removeValue(forKey: oldest)
+                    }
+                }
+                pooledChromaTex[sid] = (pb, w2)
+                return (w2, tex)
+            }
+        }
+        var wrappedC: CVMetalTexture?
+        guard CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 1, &wrappedC) == kCVReturnSuccess,
+              let w2 = wrappedC, let tex = CVMetalTextureGetTexture(w2) else { return (nil, nil) }
+        return (w2, tex)
+    }
+
+    private func logChromaPathOnce(zeroCopy: Bool) {
+        guard !loggedChromaPath else { return }
+        loggedChromaPath = true
+        let msg = zeroCopy ? "zero-copy 10-bit" : "legacy 8-bit getBytes"
+        print("[RIFT-DIAG-CHROMA-PATH] \(msg)")
     }
 
     // MARK: - Chroma warping
