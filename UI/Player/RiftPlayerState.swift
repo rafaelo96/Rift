@@ -205,6 +205,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Sampling counters for isReady state.
     private var readyStateSamples: Int = 0
     private var notReadySamples: Int = 0
+    /// Count of enqueuePaced invocations requested this window (before success/drop).
+    private var framesRequestedForEnqueue: Int = 0
+    // MARK: - Stage timing diagnostics (reserve/pace/interp/enqueueLoop breakdown)
+    private var stagePairs: Int = 0
+    private var stageReserveMS: Double = 0
+    private var stagePaceMS: Double = 0
+    private var stageInterpMS: Double = 0
+    private var stageEnqueueLoopMS: Double = 0
+    private var lastStageLogTime: CFAbsoluteTime = 0
     /// Feature flag: force DisplayImmediately on interpolated frames (A/B test).
     /// Activate with RIFT_FORCE_DISPLAY_IMMEDIATE=1 env var.
     private static let forceDisplayImmediateOnInterpolated =
@@ -1172,8 +1181,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         guard now - lastDiagLogTime >= 1.0 else { return }
         lastDiagLogTime = now
         let total = framesEnqueuedReady + framesEnqueuedNotReady + framesDroppedTimeout
-        let line = "[RIFT-DIAG] enqueued=\(total) ready=\(framesEnqueuedReady) notReady=\(framesEnqueuedNotReady) dropped=\(framesDroppedTimeout)\n"
+        let line = "[RIFT-DIAG] requested=\(framesRequestedForEnqueue) enqueued=\(total) ready=\(framesEnqueuedReady) notReady=\(framesEnqueuedNotReady) dropped=\(framesDroppedTimeout)\n"
         RiftPlayerState.writeDiagLog(line)
+        framesRequestedForEnqueue = 0
         framesEnqueuedReady = 0
         framesEnqueuedNotReady = 0
         framesDroppedTimeout = 0
@@ -1193,6 +1203,34 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             readyStateSamples = 0
             notReadySamples = 0
         }
+    }
+
+    /// Accumulates the four per-pair stage timings (reserve/pace/interp/enqueueLoop)
+    /// measured around the interpolated-branch display loop, and emits a throttled
+    /// [RIFT-DIAG-STAGE] average once per second via logStageIfDue().
+    private func accumulateStageTimes(reserveMS: Double, paceMS: Double, interpMS: Double, enqueueLoopMS: Double) {
+        stagePairs += 1
+        stageReserveMS += reserveMS
+        stagePaceMS += paceMS
+        stageInterpMS += interpMS
+        stageEnqueueLoopMS += enqueueLoopMS
+        logStageIfDue()
+    }
+
+    private func logStageIfDue() {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastStageLogTime >= 1.0, stagePairs > 0 else { return }
+        lastStageLogTime = now
+        let n = Double(stagePairs)
+        let line = String(format: "[RIFT-DIAG-STAGE] pairs=%d reserve=%.2fms pace=%.2fms interp=%.2fms enqueueLoop=%.2fms total=%.2fms\n",
+            stagePairs, stageReserveMS/n, stagePaceMS/n, stageInterpMS/n, stageEnqueueLoopMS/n,
+            (stageReserveMS+stagePaceMS+stageInterpMS+stageEnqueueLoopMS)/n)
+        RiftPlayerState.writeDiagLog(line)
+        stagePairs = 0
+        stageReserveMS = 0
+        stagePaceMS = 0
+        stageInterpMS = 0
+        stageEnqueueLoopMS = 0
     }
 
     /// Write a diagnostic line to /tmp/rift_diag.log for headless capture.
@@ -1444,10 +1482,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                     }
                 } else {
+                    let tStageStart = DispatchTime.now().uptimeNanoseconds
                     guard let pair = pool.reservePair() else {
                         try? await Task.sleep(nanoseconds: 10_000_000)
                         continue
                     }
+                    let tAfterReserve = DispatchTime.now().uptimeNanoseconds
+                    let stageReserveMS = Double(tAfterReserve - tStageStart) / 1_000_000.0
                     let first = pair.0
                     let second = pair.1
                     let delta = max(second.pts - first.pts, 1.0 / 24.0)
@@ -1459,6 +1500,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // cola de la capa (drops silenciosos: isReady==false) y huecos de
                     // pool (PTS hacia atrás). 
                     await self.paceInterpPair(firstPTS: first.pts, lead: self.interpLeadMargin)
+                    let tAfterPace = DispatchTime.now().uptimeNanoseconds
+                    let stagePaceMS = Double(tAfterPace - tAfterReserve) / 1_000_000.0
                     if Task.isCancelled { break }
                     // Equivalente de Fijación C en la rama interpolada: si el par
                     // quedó obsoleto (first.pts + margen < reloj) descartarlo en vez
@@ -1518,6 +1561,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
 
                     let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues)
+                    let tAfterInterp = DispatchTime.now().uptimeNanoseconds
+                    let stageInterpMS = Double(tAfterInterp - tAfterPace) / 1_000_000.0
                     let interpBuffers = result.buffers.buffers
 
                     // Construir la secuencia ordenada de salida del par.
@@ -1583,9 +1628,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             if Self.forceDisplayImmediateOnInterpolated {
                                 self.markDisplayImmediately(sbuf)
                             }
+                            self.framesRequestedForEnqueue += 1
                             await self.enqueuePaced(rend, sbuf)
                         }
                     }
+                    let tAfterEnqueueLoop = DispatchTime.now().uptimeNanoseconds
+                    let stageEnqueueLoopMS = Double(tAfterEnqueueLoop - tAfterInterp) / 1_000_000.0
+                    self.accumulateStageTimes(reserveMS: stageReserveMS, paceMS: stagePaceMS, interpMS: stageInterpMS, enqueueLoopMS: stageEnqueueLoopMS)
                     // Diagnostic: sample isReady state every iteration.
                     self.sampleReadyState(rend)
                     if hasPresentedInterpolatedStart == false, !outputs.isEmpty {
