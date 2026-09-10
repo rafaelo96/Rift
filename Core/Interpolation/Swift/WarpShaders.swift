@@ -252,22 +252,27 @@ kernel void warpBlendChroma2(
     const float2 bS = float2(c1);
     const float adS = fabs(aS.x - bS.x) + fabs(aS.y - bS.y);
     const float sm = aS.x + aS.y + bS.x + bS.y;
-    if (adS * 16.0 <= sm) { // static: inputs agree -> copy I0 exactly
+    if (adS * 16.0 <= sm) {
         outTex.write(uint4(c0.x, c0.y, 0, 0), gid);
         return;
     }
 
-    // Flow at the luma coord this chroma texel represents (x2 + half-pel site),
-    // re-scaled to chroma work scale (*0.5).
     float2 flow = sampleMVBilinear(mv, float2(float(gid.x) * 2.0 + 1.0, float(gid.y) * 2.0 + 1.0),
-                                   u.gridW, u.gridH, u.blockSize) * 0.5;
+                                    u.gridW, u.gridH, u.blockSize) * 0.5;
 
     float2 p = float2(float(gid.x), float(gid.y));
     float2 p0 = p - u.t * flow;
     float2 p1 = p + (1.0 - u.t) * flow;
 
-    float2 v0 = sampleBilinear2xU16(tex0, p0, int(u.width), int(u.height));
-    float2 v1 = sampleBilinear2xU16(tex1, p1, int(u.width), int(u.height));
+    bool oob0 = (p0.x < 0.0 || p0.x > float(u.width - 1) || p0.y < 0.0 || p0.y > float(u.height - 1));
+    bool oob1 = (p1.x < 0.0 || p1.x > float(u.width - 1) || p1.y < 0.0 || p1.y > float(u.height - 1));
+    if (oob0 && oob1) {
+        outTex.write(uint4(c0.x, c0.y, 0, 0), gid);
+        return;
+    }
+
+    float2 v0 = oob0 ? aS : sampleBilinear2xU16(tex0, p0, int(u.width), int(u.height));
+    float2 v1 = oob1 ? bS : sampleBilinear2xU16(tex1, p1, int(u.width), int(u.height));
 
     float2 pp = clamp(p + flow, float2(0, 0), float2(float(u.width - 1), float(u.height - 1)));
     float2 flow1 = sampleMVBilinear(mv, float2(pp.x * 2.0 + 1.0, pp.y * 2.0 + 1.0),
@@ -279,11 +284,11 @@ kernel void warpBlendChroma2(
     float sum = wF + wB;
     float2 out;
     if (sum < 1e-4) {
-        out = 0.5 * (v0 + v1);
+        out = aS;
     } else {
         out = (wF * v0 + wB * v1) / sum;
     }
-    if (occ > 0.5 && adS * 8.0 <= sm) { // incoherent but agreeing -> I0
+    if (occ > 0.5 && adS * 8.0 <= sm) {
         out = aS;
     }
     outTex.write(uint4(uint(out.x + 0.5), uint(out.y + 0.5), 0, 0), gid);

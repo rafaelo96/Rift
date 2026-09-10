@@ -32,6 +32,8 @@ public final class WarpEngine {
     private var pooledChromaTex: [UInt32: (CVPixelBuffer, CVMetalTexture)] = [:]
     private var loggedChromaPath = false
     private var loggedChromaStride = false
+    private var loggedNoChromaWarp = false
+    private let noChromaWarp: Bool
     private let outPoolCapacity: Int = 8
 
     public init(msl: String) throws {
@@ -41,6 +43,7 @@ public final class WarpEngine {
         }
         self.device = device
         self.queue = queue
+        self.noChromaWarp = ProcessInfo.processInfo.environment["RIFT_CHROMA_NO_WARP"] == "1"
         CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &textureCache)
         
         let library: MTLLibrary
@@ -287,20 +290,30 @@ func interpolatePixelBufferPair(
                                 outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
 
         if let prepared, let cOutW {
-            warpTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
-                                    gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+            let chromaSrc: MTLTexture
+            if noChromaWarp {
+                chromaSrc = prepared.c0
+                if !loggedNoChromaWarp {
+                    print("[RIFT-DIAG-CHROMA-PATH] noChromaWarp=1 (I0 chroma passthrough, warp skipped)")
+                    loggedNoChromaWarp = true
+                }
+            } else {
+                warpTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
+                                        gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
+                chromaSrc = cOutW
+            }
 
-            if chromaIs10 {
+            if chromaIs10 && ProcessInfo.processInfo.environment["RIFT_CHROMA_ZEROCOPY"] != "0" {
                 let chromaWrapped = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache)
                 if let chromaTexOut = chromaWrapped.1 {
                     logChromaPathOnce(zeroCopy: true)
-                    upscaleTotal += chromaUpscale(src: cOutW, outTex: chromaTexOut,
+                    upscaleTotal += chromaUpscale(src: chromaSrc, outTex: chromaTexOut,
                                                   srcW: prepared.outW, srcH: prepared.outH,
                                                   dstW: cwCh, dstH: chCh, fmt10: true)
                 }
             } else if let cOutFull {
                 logChromaPathOnce(zeroCopy: false)
-                upscaleTotal += chromaUpscale(src: cOutW, outTex: cOutFull,
+                upscaleTotal += chromaUpscale(src: chromaSrc, outTex: cOutFull,
                                               srcW: prepared.outW, srcH: prepared.outH,
                                               dstW: cwCh, dstH: chCh, fmt10: chromaIs10)
                 writeChromaPlane(from: cOutFull, is10Bit: chromaIs10, into: out)
