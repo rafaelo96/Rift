@@ -1546,7 +1546,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             continue
                         }
                         let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
-                        let dur = CMTime(seconds: second.pts - first.pts, preferredTimescale: 1200)
+                        let gridStep = uniformCadence ? (sourcePeriod * 0.4) : (second.pts - first.pts)
+                        let dur = CMTime(seconds: gridStep, preferredTimescale: 1200)
                         rend.pendingOrigin = "gapFallback"; rend.pendingType = "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
                             rend.enqueue(sbuf)
