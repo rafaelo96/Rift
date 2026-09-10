@@ -48,8 +48,29 @@ public final class HDRDisplayRenderer {
         return sbuf
     }
 
+    // Tags de diagnóstico — el caller los setea ANTES de llamar sampleBuffer().
+    // Solo lectura en enqueue(); no afectan lógica.
+    public var pendingOrigin: String = "unknown"
+    public var pendingType: String = "unknown"
+    public var pendingSchedulerMode: String = "unknown"
+
     public func enqueue(_ sampleBuffer: CMSampleBuffer) {
         enqueuedFrames += 1
+        if cadenceLogCount < 300 {
+            var timingInfo = CMSampleTimingInfo()
+            if CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timingInfo) == noErr {
+                let ptsSec = CMTimeGetSeconds(timingInfo.presentationTimeStamp)
+                let durSec = CMTimeGetSeconds(timingInfo.duration)
+                let line = String(format: "[RIFT-CADENCE] #%d origin=%@ type=%@ pts=%.6f dur=%.6f mode=%@\n",
+                                  enqueuedFrames, pendingOrigin, pendingType, ptsSec, durSec, pendingSchedulerMode)
+                cadenceLogCount += 1
+                if let h = FileHandle(forWritingAtPath: "/tmp/rift_cadence.log") {
+                    h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
+                } else {
+                    FileManager.default.createFile(atPath: "/tmp/rift_cadence.log", contents: line.data(using: .utf8))
+                }
+            }
+        }
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
         } else {
@@ -91,11 +112,13 @@ public final class HDRDisplayRenderer {
         enqueuedFrames = 0
         notReadyEnqueues = 0
         lastLayerError = nil
+        cadenceLogCount = 0
     }
 
     public private(set) var enqueuedFrames = 0
     public private(set) var notReadyEnqueues = 0
     public private(set) var lastLayerError: Error?
+    private var cadenceLogCount = 0
 
     public func flush() {
         displayLayer.flush()

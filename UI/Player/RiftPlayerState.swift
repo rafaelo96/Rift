@@ -1434,12 +1434,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         displayTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var hasPresentedInterpolatedStart = false
+            // Fix gap-duplicate: when interpOutputs emits `second` as SOURCE,
+            // the next iteration's `first` (== prev `second`) would be emitted
+            // again by gapFallback. Track whether previous pair emitted `second`
+            // so gapFallback can skip the redundant emission.
+            var prevPairEmittedSecondSource = false
             while true {
                 if Task.isCancelled { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
                 }
+                // Diagnostic tag: scheduler mode (set once per iteration).
+                rend.pendingSchedulerMode = sched.mode == .interpolated60 ? "interpolated60"
+                    : sched.mode == .interpolated48 ? "interpolated48"
+                    : sched.mode == .native24 ? "native24" : "other"
                 // Si está pausado, no consumir el pool ni encolar nada —
                 // el synchronizer detiene la presentación con rate=0.
                 if sched.synchronizer.rate == 0 {
@@ -1473,6 +1482,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if f.pts + behindMargin >= clkN {
                         let pts = CMTime(seconds: f.pts, preferredTimescale: 1200)
                         let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 1200)
+                        rend.pendingOrigin = "native"; rend.pendingType = "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
                             if f.pts - clkN <= aheadMargin {
                                 self.markDisplayImmediately(sbuf)
@@ -1511,6 +1521,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.interpolationStaleDrops += 1
                         pool.consumePair()
                         await self.coordinator.signal()
+                        // Stale pair consumed without emitting anything:
+                        // reset flag so gapFallback doesn't incorrectly skip.
+                        prevPairEmittedSecondSource = false
                         continue
                     }
 
@@ -1523,14 +1536,25 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // lugar se presenta `first` nativo y se avanza; el siguiente
                     // par contiguo retoma la interpolación sin duplicar contenido.
                     if second.pts - first.pts > 1.5 * sourcePeriod {
+                        // If previous iteration already emitted `second` as
+                        // SOURCE (via interpOutputs), then `first` here is
+                        // the same frame — skip to avoid duplicate PTS.
+                        if prevPairEmittedSecondSource {
+                            pool.consumePair()
+                            await self.coordinator.signal()
+                            prevPairEmittedSecondSource = false
+                            continue
+                        }
                         let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
                         let dur = CMTime(seconds: second.pts - first.pts, preferredTimescale: 1200)
+                        rend.pendingOrigin = "gapFallback"; rend.pendingType = "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
                             rend.enqueue(sbuf)
                             self.enqueuedFramesInWindow += 1
                         }
                         pool.consumePair()
                         await self.coordinator.signal()
+                        prevPairEmittedSecondSource = false
                         continue
                     }
 
@@ -1624,6 +1648,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             endPTS = o.pts + delta / Double(max(tValues.count + 1, 2))
                         }
                         let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 1200)
+                        rend.pendingOrigin = "interpOutputs"; rend.pendingType = o.isInterp ? "INTERP" : "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
                             if Self.forceDisplayImmediateOnInterpolated {
                                 self.markDisplayImmediately(sbuf)
@@ -1640,6 +1665,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if hasPresentedInterpolatedStart == false, !outputs.isEmpty {
                         hasPresentedInterpolatedStart = true
                     }
+                    // Track whether `second` was emitted as SOURCE so the
+                    // next iteration's gapFallback knows to skip it.
+                    prevPairEmittedSecondSource = outputs.contains { !$0.isInterp && abs($0.pts - second.pts) < 1e-6 }
                     // Conteo diagnóstico 1-vs-2 interps por par.
                     if tValues.count == 1 {
                         interpSinglePairCount += 1
