@@ -326,4 +326,36 @@ kernel void upscaleChroma2(
     if (u.fmt10 == 0) { outVal = outVal >> 8; } // work value (<<8) -> byte in low bits
     outTex.write(uint4(outVal.x, outVal.y, 0, 0), gid);
 }
+
+// Zero-copy variant for 8-bit planes: writes packed CbCr into the output
+// buffer's chroma plane (wrapped as .rg8Uint) directly, so the host-side
+// compaction in writeChromaPlane (per-pixel Swift loop, ~40ms per t in debug)
+// is eliminated. Same bilinear math as upscaleChroma2 with fmt10=0.
+kernel void upscaleChroma2Packed8(
+    texture2d<uint, access::read>   srcTex [[texture(0)]],
+    texture2d<uint, access::write> outTex [[texture(1)]],
+    constant UpscaleUniforms &u     [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= u.outW || gid.y >= u.outH) return;
+    float2 p = clamp((float2(float(gid.x), float(gid.y)) + 0.5)
+                     * float2(float(u.srcW), float(u.srcH))
+                     / float2(float(u.outW), float(u.outH)) - 0.5,
+                     float2(0, 0), float2(float(u.srcW - 1), float(u.srcH - 1)));
+    int2 i0 = int2(floor(p));
+    i0 = clamp(i0, int2(0, 0), int2(int(u.srcW) - 1, int(u.srcH) - 1));
+    int2 i1 = min(i0 + int2(1, 0), int2(int(u.srcW) - 1, int(u.srcH) - 1));
+    int2 i2 = min(i0 + int2(0, 1), int2(int(u.srcW) - 1, int(u.srcH) - 1));
+    int2 i3 = min(i0 + int2(1, 1), int2(int(u.srcW) - 1, int(u.srcH) - 1));
+    float2 f = fract(p);
+    uint2 v00 = srcTex.read(uint2(uint(i0.x), uint(i0.y))).xy;
+    uint2 v10 = srcTex.read(uint2(uint(i1.x), uint(i1.y))).xy;
+    uint2 v01 = srcTex.read(uint2(uint(i2.x), uint(i2.y))).xy;
+    uint2 v11 = srcTex.read(uint2(uint(i3.x), uint(i3.y))).xy;
+    float2 v0 = mix(float2(v00), float2(v10), f.x);
+    float2 v1 = mix(float2(v01), float2(v11), f.x);
+    float2 v = mix(v0, v1, f.y);
+    uint2 outVal = uint2(v + 0.5) >> 8; // work scale (<<8) -> 8-bit byte
+    outTex.write(uint4(outVal.x, outVal.y, 0, 0), gid);
+}
 """

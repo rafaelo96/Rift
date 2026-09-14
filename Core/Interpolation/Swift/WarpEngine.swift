@@ -17,6 +17,7 @@ public final class WarpEngine {
     private let chromaDownPipeline: MTLComputePipelineState
     private let chromaWarpPipeline: MTLComputePipelineState
     private let chromaUpPipeline: MTLComputePipelineState
+    private let chromaUp8Pipeline: MTLComputePipelineState
     private var outTex: MTLTexture?
     private var textureCache: CVMetalTextureCache?
 
@@ -60,7 +61,8 @@ public final class WarpEngine {
         }
         guard let cDownFn = library.makeFunction(name: "chromaDownscale2"),
               let cWarpFn = library.makeFunction(name: "warpBlendChroma2"),
-              let cUpFn = library.makeFunction(name: "upscaleChroma2") else {
+              let cUpFn = library.makeFunction(name: "upscaleChroma2"),
+              let cUp8Fn = library.makeFunction(name: "upscaleChroma2Packed8") else {
             throw Error.pipeline("missing chroma shaders")
         }
         do {
@@ -69,6 +71,7 @@ public final class WarpEngine {
             chromaDownPipeline = try device.makeComputePipelineState(function: cDownFn)
             chromaWarpPipeline = try device.makeComputePipelineState(function: cWarpFn)
             chromaUpPipeline = try device.makeComputePipelineState(function: cUpFn)
+            chromaUp8Pipeline = try device.makeComputePipelineState(function: cUp8Fn)
         } catch {
             throw Error.pipeline("\(error)")
         }
@@ -311,6 +314,14 @@ func interpolatePixelBufferPair(
                                                   srcW: prepared.outW, srcH: prepared.outH,
                                                   dstW: cwCh, dstH: chCh, fmt10: true)
                 }
+            } else if !chromaIs10, let chromaWrapped8 = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache, is8Bit: true).1 {
+                // Zero-copy 8-bit: el upscale escribe el plano CbCr empaquetado
+                // directamente (rg8Uint), sin el compactado host de
+                // writeChromaPlane (loop Swift por píxel, ~40ms por t en debug).
+                logChromaPathOnce(zeroCopy: true)
+                upscaleTotal += chromaUpscale8(src: chromaSrc, outTex: chromaWrapped8,
+                                               srcW: prepared.outW, srcH: prepared.outH,
+                                               dstW: cwCh, dstH: chCh)
             } else if let cOutFull {
                 logChromaPathOnce(zeroCopy: false)
                 upscaleTotal += chromaUpscale(src: chromaSrc, outTex: cOutFull,
@@ -405,12 +416,13 @@ func interpolatePixelBufferPair(
         return (w2, tex)
     }
 
-    private func wrapOutputChromaTexture(_ pb: CVPixelBuffer, w: Int, h: Int, cache: CVMetalTextureCache) -> (CVMetalTexture?, MTLTexture?) {
+    private func wrapOutputChromaTexture(_ pb: CVPixelBuffer, w: Int, h: Int, cache: CVMetalTextureCache, is8Bit: Bool = false) -> (CVMetalTexture?, MTLTexture?) {
         if !loggedChromaStride {
             loggedChromaStride = true
-            print("[RIFT-DIAG-CHROMA-STRIDE] bytesPerRow=\(CVPixelBufferGetBytesPerRowOfPlane(pb, 1)) expectedBytesPerRow=\(CVPixelBufferGetWidthOfPlane(pb, 1) * 4) height=\(CVPixelBufferGetHeightOfPlane(pb, 1))")
+            let expPBR = CVPixelBufferGetWidthOfPlane(pb, 1) * (is8Bit ? 2 : 4)
+            print("[RIFT-DIAG-CHROMA-STRIDE] bytesPerRow=\(CVPixelBufferGetBytesPerRowOfPlane(pb, 1)) expectedBytesPerRow=\(expPBR) height=\(CVPixelBufferGetHeightOfPlane(pb, 1))")
         }
-        let format: MTLPixelFormat = .rg16Uint
+        let format: MTLPixelFormat = is8Bit ? .rg8Uint : .rg16Uint
         if let surfaceUnmanaged = CVPixelBufferGetIOSurface(pb) {
             let surface = surfaceUnmanaged.takeUnretainedValue()
             let sid = IOSurfaceGetID(surface)
@@ -438,7 +450,7 @@ func interpolatePixelBufferPair(
     private func logChromaPathOnce(zeroCopy: Bool) {
         guard !loggedChromaPath else { return }
         loggedChromaPath = true
-        let msg = zeroCopy ? "zero-copy 10-bit" : "legacy 8-bit getBytes"
+        let msg = zeroCopy ? "zero-copy" : "legacy getBytes"
         print("[RIFT-DIAG-CHROMA-PATH] \(msg)")
     }
 
@@ -547,6 +559,26 @@ func interpolatePixelBufferPair(
         enc.setTexture(src, index: 0)
         enc.setTexture(outTex, index: 1)
         var uni = UpscaleUniforms(srcW: UInt32(srcW), srcH: UInt32(srcH), outW: UInt32(dstW), outH: UInt32(dstH), fmt10: fmt10 ? 1 : 0)
+        enc.setBytes(&uni, length: MemoryLayout<UpscaleUniforms>.stride, index: 0)
+        let tg = MTLSize(width: 16, height: 16, depth: 1)
+        let n = MTLSize(width: (dstW + tg.width - 1) / tg.width, height: (dstH + tg.height - 1) / tg.height, depth: 1)
+        enc.dispatchThreadgroups(n, threadsPerThreadgroup: tg)
+        enc.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+    }
+
+    /// Variante zero-copy 8-bit: el upscale escribe el plano CbCr empaquetado
+    /// (.rg8Uint) directamente en el buffer de salida, evitando el compactado
+    /// host de writeChromaPlane (loop Swift por píxel, ~40ms por t en debug).
+    private func chromaUpscale8(src: MTLTexture, outTex: MTLTexture, srcW: Int, srcH: Int, dstW: Int, dstH: Int) -> Double {
+        let start = DispatchTime.now().uptimeNanoseconds
+        guard let cmd = queue.makeCommandBuffer(), let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        enc.setComputePipelineState(chromaUp8Pipeline)
+        enc.setTexture(src, index: 0)
+        enc.setTexture(outTex, index: 1)
+        var uni = UpscaleUniforms(srcW: UInt32(srcW), srcH: UInt32(srcH), outW: UInt32(dstW), outH: UInt32(dstH), fmt10: 0)
         enc.setBytes(&uni, length: MemoryLayout<UpscaleUniforms>.stride, index: 0)
         let tg = MTLSize(width: 16, height: 16, depth: 1)
         let n = MTLSize(width: (dstW + tg.width - 1) / tg.width, height: (dstH + tg.height - 1) / tg.height, depth: 1)

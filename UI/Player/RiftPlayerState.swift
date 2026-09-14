@@ -132,6 +132,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private let throughputSkipStartupSeconds = 8.0
     /// Wall-clock of the first completed pair (arms the startup skip).
     private var firstPairCompletedAt: UInt64 = 0
+    // ── Timeline instrumentation (diagnostic only, no behavior change) ──────
+    struct FrameTimeline {
+        let pts: Double
+        var decodeStartNS: UInt64 = 0
+        var decodeEndNS: UInt64 = 0
+        var poolAddNS: UInt64 = 0
+    }
+    private var frameTimelines: [Int64: FrameTimeline] = [:]
+    private static func timelineKey(_ pts: Double) -> Int64 { Int64(pts * 1_000) }
+    private static let timelineLogPath = "/tmp/rift_timeline.log"
+    private static func writeTimelineLog(_ s: String) {
+        let line = s + "\n"
+        if let h = FileHandle(forWritingAtPath: timelineLogPath) {
+            h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: timelineLogPath, contents: line.data(using: .utf8))
+        }
+    }
     /// Wall-clock timestamps of recently completed pair iterations (legacy
     /// bookkeeping; el gate actual usa latencia, no pares/s).
     private var pairCompletionTimes: [UInt64] = []
@@ -606,7 +624,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         startDecodeLoop(callDisplayLoopOnFirstFrame: false)
     }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
-    func setVolume(_ v: Double) { volume = v }
+    func setVolume(_ v: Double) {
+        volume = v
+        audioRenderer?.volume = Float(v)
+    }
     func cyclePlaybackRate() {}
     func closeVideo() {
         decodeTask?.cancel(); decodeTask = nil
@@ -784,7 +805,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             self.audioTrack = aTrack
             self.selectedAudioTrackIndex = aTrack.streamIndex
             let ar = AVSampleBufferAudioRenderer()
-            ar.volume = 1.0
+            ar.volume = Float(volume)
             ar.isMuted = false
             self.audioRenderer = ar
             // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
@@ -913,14 +934,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                     }
                 }
+                let tDecodeStartNS = DispatchTime.now().uptimeNanoseconds
                 guard let pb = try? dec.decodeFrame(pkt) else {
                     await self.coordinator.signal()
                     continue
                 }
+                let tDecodeEndNS = DispatchTime.now().uptimeNanoseconds
                 decoded += 1
                 await MainActor.run {
                     self.totalDecoded = decoded
                     pool.add(buffer: pb, pts: pkt.pts)
+                    let tPoolAddNS = DispatchTime.now().uptimeNanoseconds
+                    let key = RiftPlayerState.timelineKey(pkt.pts)
+                    self.frameTimelines[key] = FrameTimeline(
+                        pts: pkt.pts,
+                        decodeStartNS: tDecodeStartNS,
+                        decodeEndNS: tDecodeEndNS,
+                        poolAddNS: tPoolAddNS
+                    )
                     if decoded == 1 && callDisplayLoopOnFirstFrame {
                         self.startDisplayLoop()
                     }
@@ -1172,6 +1203,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         FileManager.default.createFile(atPath: "/tmp/rift_timing.csv", contents: line.data(using: .utf8))
     }
 
+    // MARK: - Negative-PTS diagnostic (B-frame investigation)
+
+    /// Writes a single line to /tmp/rift_negpts.log. Creates the file if needed.
+    private static func writeNegPTSLog(_ s: String) {
+        let line = s + "\n"
+        let path = "/tmp/rift_negpts.log"
+        if let h = FileHandle(forWritingAtPath: path) {
+            h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
+        }
+    }
+
     // MARK: - Delivery diagnostics (soap-opera investigation)
 
     /// Emit a [RIFT-DIAG] log once per second with ready/notReady/dropped counters.
@@ -1388,9 +1432,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                    log: benchLog, type: .info,
                    recentPairTimings.count, interpolationTimingWindow, avg, tValues.count,
                    measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
-            if avg > budgetThreshold {
-                disableInterpolation(reason: String(format: "coste medio %.1fms/frame > presupuesto %.1fms", avg, budgetThreshold))
-                return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
+            // Falso positivo de arranque (medido en BLEACH 1080p y Avatar 4K):
+            // el decoder/GPU en frío + warm-up dejan muestras de 45-100ms en los
+            // primeros pares, y una media de 1-2 muestras dispara el gate antes
+            // de que el pipeline alcance régimen. Dos condiciones extra:
+            //  1) promedio estable: exigir la ventana llena (10 pares), no 1;
+            //  2) skip de arranque: no evaluar durante la misma rampa que el gate
+            //     de latencia (throughputSkipStartupSeconds). El déficit real
+            //     sostenido lo sigue capturando ese gate, ya calibrado.
+            if avg > budgetThreshold,
+               recentPairTimings.count >= interpolationTimingWindow {
+                let startupElapsed = firstPairCompletedAt == 0
+                    ? 0
+                    : Double(DispatchTime.now().uptimeNanoseconds - firstPairCompletedAt) / 1e9
+                if startupElapsed >= throughputSkipStartupSeconds {
+                    disableInterpolation(reason: String(format: "coste medio %.1fms/frame > presupuesto %.1fms", avg, budgetThreshold))
+                    return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
+                }
             }
         }
 
@@ -1439,6 +1497,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // again by gapFallback. Track whether previous pair emitted `second`
             // so gapFallback can skip the redundant emission.
             var prevPairEmittedSecondSource = false
+            var previousEnqueuedPTS: Double = -1
+            var lastEnqueuedInvocationID: UInt64 = 0
+            var interpInvocationID: UInt64 = 0
+            var interpEntryTime: UInt64 = 0
+            var poolFlushCount: UInt64 = 0
+            var prevPoolFrameCount: Int = 0
+            // --- GAP CORRELATION STATE ---
+            var lastEmittedPTS: Double = -1
+            var lastEmittedID: UInt64 = 0
+            var invEnqueueWaitNS: UInt64 = 0
+            var invEnqueueCalls: Int = 0
+            var invEnqueueNotReady: Int = 0
             while true {
                 if Task.isCancelled { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
@@ -1449,6 +1519,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 rend.pendingSchedulerMode = sched.mode == .interpolated60 ? "interpolated60"
                     : sched.mode == .interpolated48 ? "interpolated48"
                     : sched.mode == .native24 ? "native24" : "other"
+                // --- INVOCATION TRACKING ---
+                interpInvocationID += 1
+                interpEntryTime = DispatchTime.now().uptimeNanoseconds
+                let currentPoolCount = pool.count
+                if prevPoolFrameCount > 0 && currentPoolCount == 0 {
+                    poolFlushCount += 1
+                    RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-POOL-FLUSH] id=%d flushN=%d prevCount=%d pts=???", interpInvocationID, poolFlushCount, prevPoolFrameCount))
+                }
+                prevPoolFrameCount = currentPoolCount
                 // Si está pausado, no consumir el pool ni encolar nada —
                 // el synchronizer detiene la presentación con rate=0.
                 if sched.synchronizer.rate == 0 {
@@ -1502,13 +1581,40 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let first = pair.0
                     let second = pair.1
                     let delta = max(second.pts - first.pts, 1.0 / 24.0)
+                    // ── Timeline log: display reserve ──────────────────────────────
+                    do {
+                        let isConsecutive = abs(delta - sourcePeriod) < 1e-4
+                        let isDoubleGap = abs(delta - 2 * sourcePeriod) < 1e-3
+                        let nPlusOnePTS = first.pts + sourcePeriod
+                        let hasNPlusOne = pool.frames.contains { abs($0.pts - nPlusOnePTS) < 1e-3 }
+                        // Tolerance-based lookup: find timeline entry closest to nPlusOnePTS within 2ms
+                        var nPlusOneTL: FrameTimeline?
+                        for (_, entry) in frameTimelines where abs(entry.pts - nPlusOnePTS) < 0.002 {
+                            if nPlusOneTL == nil || abs(entry.pts - nPlusOnePTS) < abs(nPlusOneTL!.pts - nPlusOnePTS) {
+                                nPlusOneTL = entry
+                            }
+                        }
+                        let nPlusOnePoolAddMS = nPlusOneTL.map { Double($0.poolAddNS) / 1_000_000.0 } ?? -1
+                        let nPlusOneDecodeEndMS = nPlusOneTL.map { Double($0.decodeEndNS) / 1_000_000.0 } ?? -1
+                        let firstKey = RiftPlayerState.timelineKey(first.pts)
+                        let firstTL = frameTimelines[firstKey]
+                        let firstDecodeMS = firstTL.map { Double($0.decodeEndNS) / 1_000_000.0 } ?? -1
+                        let firstPoolAddMS = firstTL.map { Double($0.poolAddNS) / 1_000_000.0 } ?? -1
+                        let secondKey = RiftPlayerState.timelineKey(second.pts)
+                        let secondTL = frameTimelines[secondKey]
+                        let secondDecodeMS = secondTL.map { Double($0.decodeEndNS) / 1_000_000.0 } ?? -1
+                        let secondPoolAddMS = secondTL.map { Double($0.poolAddNS) / 1_000_000.0 } ?? -1
+                        let reserveMS = Double(tAfterReserve) / 1_000_000.0
+                        let poolN = pool.count
+                        let gapType = isDoubleGap ? "2x" : (isConsecutive ? "1x" : "other")
+                        let n1FoundPTS = nPlusOneTL.map { String(format: "%.3f", $0.pts) } ?? "n/a"
+                        RiftPlayerState.writeTimelineLog(String(format:
+                            "[RIFT-TL-RESERVE] id=%d reserveMS=%.1f first=%.3f sec=%.3f delta=%.4f gap=%@ poolN=%d firstDec=%.1f firstPool=%.1f secDec=%.1f secPool=%.1f n1Has=%d n1FoundPTS=%@ n1PoolAdd=%.1f n1DecEnd=%.1f",
+                            interpInvocationID, reserveMS, first.pts, second.pts, delta, gapType, poolN,
+                            firstDecodeMS, firstPoolAddMS, secondDecodeMS, secondPoolAddMS,
+                            hasNPlusOne ? 1 : 0, n1FoundPTS, nPlusOnePoolAddMS, nPlusOneDecodeEndMS))
+                    }
 
-                    // Pacing de la rama interpolada: interpolar/encolar el par solo
-                    // cuando su first.pts se aproxime al reloj (lead = pocos frames).
-                    // Pre-fix la rama interp corría por delante del clock (consumía
-                    // pares lo más rápido posible), producía ~1s de backlog en la
-                    // cola de la capa (drops silenciosos: isReady==false) y huecos de
-                    // pool (PTS hacia atrás). 
                     await self.paceInterpPair(firstPTS: first.pts, lead: self.interpLeadMargin)
                     let tAfterPace = DispatchTime.now().uptimeNanoseconds
                     let stagePaceMS = Double(tAfterPace - tAfterReserve) / 1_000_000.0
@@ -1519,6 +1625,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let clkPace = sched.synchronizer.currentTime().seconds
                     if first.pts + self.interpBehindMargin < clkPace {
                         self.interpolationStaleDrops += 1
+                        let staleDeltaMS = (clkPace - (first.pts + self.interpBehindMargin)) * 1000.0
+                        RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-STALE] id=%d pair=(%.3f,%.3f) clock=%.3f behindMargin=%.3f staleDelta=%.1fms poolN=%d prevPTS=%.3f",
+                            interpInvocationID, first.pts, second.pts,
+                            clkPace, self.interpBehindMargin, staleDeltaMS,
+                            pool.count, lastEmittedPTS))
                         pool.consumePair()
                         await self.coordinator.signal()
                         // Stale pair consumed without emitting anything:
@@ -1540,11 +1651,31 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         // SOURCE (via interpOutputs), then `first` here is
                         // the same frame — skip to avoid duplicate PTS.
                         if prevPairEmittedSecondSource {
-                            pool.consumePair()
-                            await self.coordinator.signal()
+                        pool.consumePair()
+                        // --- GAP-POOL: snapshot del pool DESPUÉS del consumePair ---
+                        let poolPtsAfter = pool.frames.map { String(format: "%.3f", $0.pts) }.joined(separator: ",")
+                        let nPlusOnePTS2 = first.pts + sourcePeriod
+                        let hasNPlusOneAfter = pool.frames.contains { abs($0.pts - nPlusOnePTS2) < 1e-4 }
+                        RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-GAP-AFTER] id=%d poolAfter=[%@] hasN1After=%d(%.3f) poolNAfter=%d",
+                            interpInvocationID, poolPtsAfter,
+                            hasNPlusOneAfter ? 1 : 0, nPlusOnePTS2, pool.count))
+                        await self.coordinator.signal()
                             prevPairEmittedSecondSource = false
                             continue
                         }
+                        // --- GAP-POOL: snapshot del pool ANTES del fallback ---
+                        let poolPtsStr = pool.frames.map { String(format: "%.3f", $0.pts) }.joined(separator: ",")
+                        let poolDelta = second.pts - first.pts
+                        let nPlusOnePTS = first.pts + sourcePeriod
+                        let hasNPlusOne = pool.frames.contains { abs($0.pts - nPlusOnePTS) < 1e-3 }
+                        let nPlusTwoPTS = first.pts + 2 * sourcePeriod
+                        let hasNPlusTwo = pool.frames.contains { abs($0.pts - nPlusTwoPTS) < 1e-4 }
+                        RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-GAP-POOL] id=%d first=%.3f second=%.3f delta=%.3fs pool=[%@] hasN1=%d(%.3f) hasN2=%d(%.3f) prevPTS=%.3f gapFallbackPTS=%.3f poolN=%d",
+                            interpInvocationID, first.pts, second.pts, poolDelta,
+                            poolPtsStr,
+                            hasNPlusOne ? 1 : 0, nPlusOnePTS,
+                            hasNPlusTwo ? 1 : 0, nPlusTwoPTS,
+                            previousEnqueuedPTS, first.pts, pool.count))
                         let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
                         let gridStep = uniformCadence ? (sourcePeriod * 0.4) : (second.pts - first.pts)
                         let dur = CMTime(seconds: gridStep, preferredTimescale: 1200)
@@ -1552,6 +1683,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
                             rend.enqueue(sbuf)
                             self.enqueuedFramesInWindow += 1
+                            // --- DIAGNOSTIC: gapFallback enqueue ---
+                            let diagLine = String(format: "[RIFT-GAP] id=%d pair=(%.3f,%.3f) enqueued=%.3f poolN=%d prev=%.3f",
+                                interpInvocationID, first.pts, second.pts, first.pts, pool.count, previousEnqueuedPTS)
+                            RiftPlayerState.writeNegPTSLog(diagLine)
+                            if first.pts < previousEnqueuedPTS && previousEnqueuedPTS >= 0 {
+                                let delta = first.pts - previousEnqueuedPTS
+                                let marker = String(format: "[RIFT-NEGATIVE-PTS] id=%d prevId=%d prev=%.3f curr=%.3f delta=%.6f src=gapFallback first=%.3f second=%.3f poolN=%d",
+                                    interpInvocationID, lastEnqueuedInvocationID,
+                                    previousEnqueuedPTS, first.pts, delta, first.pts, second.pts,
+                                    pool.count)
+                                RiftPlayerState.writeNegPTSLog(marker)
+                                os_log("RIFT-NEGATIVE-PTS via gapFallback: id=%d prevId=%d prev=%.3f curr=%.3f delta=%.6f", interpInvocationID, lastEnqueuedInvocationID, previousEnqueuedPTS, first.pts, delta)
+                            }
+                            previousEnqueuedPTS = first.pts
+                            lastEnqueuedInvocationID = interpInvocationID
                         }
                         pool.consumePair()
                         await self.coordinator.signal()
@@ -1634,6 +1780,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         outputs.append((second.pts, false, second.pixelBuffer))
                     }
 
+                    // --- INVOCATION ENTRY LOG ---
+                    let tEnqueueStart = DispatchTime.now().uptimeNanoseconds
+                    RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-ENQ-START] id=%d pair=(%.3f,%.3f) even=%d outN=%d poolN=%d entryMsAgo=%.1f",
+                        interpInvocationID, first.pts, second.pts, pairIsEven ? 1 : 0,
+                        outputs.count, pool.count,
+                        Double(tEnqueueStart - interpEntryTime) / 1_000_000.0))
+                    // --- GAP CORRELATION: reset per-invocation enqueue counters ---
+                    invEnqueueWaitNS = 0
+                    invEnqueueCalls = 0
+                    invEnqueueNotReady = 0
+
                     // Encolar con duración = intervalo hasta el siguiente pts.
                     for i in 0..<outputs.count {
                         let o = outputs[i]
@@ -1655,8 +1812,54 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                                 self.markDisplayImmediately(sbuf)
                             }
                             self.framesRequestedForEnqueue += 1
+                            let wasReadyBefore = rend.displayLayer.isReadyForMoreMediaData
+                            let tBeforeEnq = DispatchTime.now().uptimeNanoseconds
                             await self.enqueuePaced(rend, sbuf)
+                            let tAfterEnq = DispatchTime.now().uptimeNanoseconds
+                            invEnqueueWaitNS += (tAfterEnq - tBeforeEnq)
+                            invEnqueueCalls += 1
+                            if !wasReadyBefore { invEnqueueNotReady += 1 }
+                            // --- DIAGNOSTIC: interpOutputs enqueue ---
+                            let diagLine = String(format: "[RIFT-INTERP] id=%d out[%d/%d] pts=%.3f type=%@ pair=(%.3f,%.3f) t=%.2f poolN=%d prev=%.3f",
+                                interpInvocationID, i, outputs.count, o.pts, o.isInterp ? "INTERP" : "SOURCE",
+                                first.pts, second.pts, tValues.count > i ? Double(tValues[i]) : 0,
+                                pool.count, previousEnqueuedPTS)
+                            RiftPlayerState.writeNegPTSLog(diagLine)
+                            if o.pts < previousEnqueuedPTS && previousEnqueuedPTS >= 0 {
+                                let delta = o.pts - previousEnqueuedPTS
+                                let marker = String(format: "[RIFT-NEGATIVE-PTS] id=%d prevId=%d prev=%.3f curr=%.3f delta=%.6f src=interpOutputs outIdx=%d/%d type=%@ first=%.3f second=%.3f t=%.2f poolN=%d",
+                                    interpInvocationID, lastEnqueuedInvocationID,
+                                    previousEnqueuedPTS, o.pts, delta, i, outputs.count,
+                                    o.isInterp ? "INTERP" : "SOURCE", first.pts, second.pts,
+                                    tValues.count > i ? Double(tValues[i]) : 0,
+                                    pool.count)
+                                RiftPlayerState.writeNegPTSLog(marker)
+                                os_log("RIFT-NEGATIVE-PTS via interpOutputs: id=%d prevId=%d prev=%.3f curr=%.3f delta=%.6f out[%d/%d]", interpInvocationID, lastEnqueuedInvocationID, previousEnqueuedPTS, o.pts, delta, i, outputs.count)
+                            }
+                            previousEnqueuedPTS = o.pts
+                            lastEnqueuedInvocationID = interpInvocationID
                         }
+                    }
+                    // --- GAP CORRELATION: detect gaps >50ms ---
+                    if !outputs.isEmpty {
+                        let firstOutPTS = outputs[0].pts
+                        if lastEmittedPTS >= 0 {
+                            let gapMS = (firstOutPTS - lastEmittedPTS) * 1000.0
+                            if gapMS > 50.0 {
+                                let enqWaitMS = Double(invEnqueueWaitNS) / 1_000_000.0
+                                let skipCount = interpInvocationID > lastEmittedID ? interpInvocationID - lastEmittedID : 0
+                                RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-GAP-EVENT] id=%d prevId=%d pair=(%.3f,%.3f) prevPTS=%.3f nextPTS=%.3f gap=%.1fms paceMS=%.1f interpMS=%.1f enqLoopMS=%.1f enqWaitMS=%.1f enqCalls=%d enqNotReady=%d clock=%.3f margin=%.3f poolN=%d skip=%d",
+                                    interpInvocationID, lastEmittedID,
+                                    first.pts, second.pts,
+                                    lastEmittedPTS, firstOutPTS, gapMS,
+                                    stagePaceMS, stageInterpMS, stageEnqueueLoopMS,
+                                    enqWaitMS, invEnqueueCalls, invEnqueueNotReady,
+                                    clkPace, self.interpBehindMargin,
+                                    pool.count, skipCount))
+                            }
+                        }
+                        lastEmittedPTS = outputs[outputs.count - 1].pts
+                        lastEmittedID = interpInvocationID
                     }
                     let tAfterEnqueueLoop = DispatchTime.now().uptimeNanoseconds
                     let stageEnqueueLoopMS = Double(tAfterEnqueueLoop - tAfterInterp) / 1_000_000.0

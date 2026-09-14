@@ -450,11 +450,23 @@ public final class MotionCompensator {
                 return vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling | kvImageDoNotTile))
             }
             guard err == kvImageNoError else { return nil }
-            // 8-bit: loop Swift (552k ops simples; este path es secundario —
-            // el contenido HDR de referencia es 10-bit).
+            // 8-bit → work-plane UInt16 (value<<8, misma escala que scaledLuma 10-bit).
+            // vDSP precompilado (reemplaza el loop Swift de 552k ops, ~30-40ms en
+            // debug), que era el principal residuo de coste del path 8-bit SDR
+            // (BLEACH h264 1080p) y disparaba el gate de presupuesto. El *256 y
+            // vfixu16 son potencias de 2 exactas en Float32 → bit-idéntico al
+            // loop anterior (UInt16(v)<<8).
+            var smul: Float = 256.0
             dst.withUnsafeMutableBytes { dstRaw in
-                let p = dstRaw.bindMemory(to: UInt16.self).baseAddress!
-                for i in 0..<(dw * dh) { p[i] = UInt16(tmp[i]) << 8 }
+                vdspA.withUnsafeMutableBufferPointer { fa in
+                    vDSP_vfltu8(tmp, 1,
+                                fa.baseAddress!, 1, vDSP_Length(dw * dh))
+                    vDSP_vsmul(fa.baseAddress!, 1, &smul,
+                               fa.baseAddress!, 1, vDSP_Length(dw * dh))
+                    vDSP_vfixu16(fa.baseAddress!, 1,
+                                 dstRaw.bindMemory(to: UInt16.self).baseAddress!, 1,
+                                 vDSP_Length(dw * dh))
+                }
             }
             return dst
         }
