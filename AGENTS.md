@@ -131,6 +131,14 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
 - **Pantalla negra+pantalla solo en una ventana pequeña** fue resuelto con `HDRDisplayView`+`NSViewRepresentable`; no reducir el area del displayLayer.
 - **Parpadeo sutil en texto/superficies planas con interpolación activa**: ruido residual de vectores de movimiento del MCFI clásico, ya mitigado por mediana 3×3 + gates (`smoothL0`/`gateL0`/`clearWinGate`, `mvMedian3` en MotionShaders.swift). Diagnosticado (determinismo byte-idéntico descarta regresión de Fase B). Es un trade-off inherente aceptado (ver §3); NO "arreglarlo" por otra vía sin propuesta nueva.
 
+## Limitaciones conocidas del interpolador
+
+> **MCFI / motion blur / bokeh:** El modelo actual de 2 frames + 1 MV por bloque + warp bilineal presenta artefactos de parche en determinadas regiones de motion blur/bokeh. La investigación reproducible determinó que el problema aparece durante la síntesis temporal y no se resuelve de forma general mediante ajustes de ME, thresholds, crossfade regional o pesos de blend. No reabrir estas líneas de investigación como solución al mismo artefacto sin una hipótesis nueva. Ver `docs/diagnostics/mcfi-motion-blur-bokeh-artifacts.md`.
+>
+> **`warpBlend` / oclusión:** La oclusión suave mediante `smoothstep` y selección del lado dominante es intencional. No reemplazarla por el antiguo fallback 50/50 para intentar corregir los parches de motion blur/bokeh; esos artefactos restantes no corresponden a ese problema.
+>
+> **W0/W1:** Se observó una asimetría aproximada de 2–2.3× más error en W1 que en W0. Queda como investigación futura independiente y no forma parte de la conclusión anterior.
+
 ## Rango de hardware soportado
 
 Rift debe funcionar en cualquier Mac Apple Silicon (M1 en adelante),

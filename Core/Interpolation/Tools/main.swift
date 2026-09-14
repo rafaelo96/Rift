@@ -17,6 +17,14 @@
 //               the TJITTER report shows the gated-EMA field, not the raw one.
 //    MV_TEMARESET_AT  pair index at which to call resetTemporalState() mid-run
 //               to simulate a seek discontinuity with EMA active (-1 = never)
+//    MV_ARTIFACT   1 runs the artifact-stage diagnosis (default 0): renders the
+//               production warp at t=0/0.5/1, maps the occlusion/ghost mask,
+//               quantifies block quantization + chroma contribution, and dumps
+//               crops + CSV. Read-only: does not modify engines, shaders or params.
+//    MV_ARTIFACT_AT   pair index for the diagnosis (-1 = auto-select the pair with
+//               the worst MAD in the decoded window)
+//    MV_ARTIFACT_MAX  pairs scanned when auto-selecting (default 16)
+//    MV_ARTIFACT_DIR  output directory (default <dumpDir>/artifact)
 //
 // Success criterion: real measured time per stage on ≥100 real pairs from an
 // MKV, reported as mean/p50/p95 on the M4, and a visually verifiable MV field.
@@ -25,6 +33,7 @@
 // Core/Decode as-is (read-only), touches no other module.
 
 import Foundation
+import Darwin
 import CoreVideo
 import Metal
 import CoreMedia
@@ -719,6 +728,594 @@ private func bruteProbe(cur: [UInt16], ref: [UInt16]) -> [(bx: Int, by: Int, dx:
     return samples
 }
 
+// MARK: - Diagnóstico de artefactos visuales (MV_ARTIFACT=1)
+//
+// Aísla en qué etapa del warp se introduce la deformación visual (halos, bordes
+// irregulares) que se ve alrededor de objetos en movimiento con MCFI. Es SOLO
+// instrumentación (lectura): no cambia engines, shaders ni parámetros.
+//
+// La clave: en `warpBlend`, para un píxel SIN oclusión el blend en t=0 devuelve
+// exactamente I0 (p0 = p − 0·flow, peso 1.0) y en t=1 exactamente I1. Por tanto
+// |warp(t=0) − I0| ≠ 0 aísla EXACTAMENTE los píxeles con oclusión activa cuyo
+// resultado cayó en el fallback `0.5·(v0+v1)` (mezcla 50/50 de dos posiciones
+// incompatibles = ghosting literal), o en el snap a I0. Ese mapa es la "máscara
+// de ghost": se cuantifica, geolocaliza y se compara contra el output full-res
+// de producción (MotionCompensator) con/sin warp de croma.
+
+private func artifactExtractLuma(_ buffer: CVPixelBuffer, workWidth: Int, workHeight: Int) -> (data: Data, shift: Int)? {
+    guard CVPixelBufferIsPlanar(buffer), CVPixelBufferGetPlaneCount(buffer) >= 1 else { return nil }
+    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+    let sw = CVPixelBufferGetWidthOfPlane(buffer, 0)
+    let sh = CVPixelBufferGetHeightOfPlane(buffer, 0)
+    let bpr = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+    guard sw > 0, sh > 0, let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else { return nil }
+    let fmt = CVPixelBufferGetPixelFormatType(buffer)
+    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    let n = workWidth * workHeight
+    var dst = Data(count: n * MemoryLayout<UInt16>.stride)
+    if is10 {
+        let err: vImage_Error = dst.withUnsafeMutableBytes { dstRaw in
+            guard let dstPtr = dstRaw.bindMemory(to: UInt16.self).baseAddress else { return vImage_Error(kvImageInvalidParameter) }
+            var srcBuf = vImage_Buffer(data: base, height: vImagePixelCount(sh), width: vImagePixelCount(sw), rowBytes: bpr)
+            var dstBuf = vImage_Buffer(data: dstPtr, height: vImagePixelCount(workHeight), width: vImagePixelCount(workWidth), rowBytes: workWidth * MemoryLayout<UInt16>.stride)
+            return vImageScale_Planar16U(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling | kvImageDoNotTile))
+        }
+        guard err == kvImageNoError else { return nil }
+        // Escala exacta de MotionCompensator.scaledLuma: 10-bit en bits altos,
+        // >>6 → 0..1023. normalizeWork posterior: /4.
+        var div: Float = 1.0 / 64.0
+        dst.withUnsafeMutableBytes { dstRaw in
+            let p = dstRaw.bindMemory(to: UInt16.self).baseAddress!
+            var f = [Float](repeating: 0, count: n)
+            f.withUnsafeMutableBufferPointer { fb in
+                vDSP_vfltu16(p, 1, fb.baseAddress!, 1, vDSP_Length(n))
+                vDSP_vsmul(fb.baseAddress!, 1, &div, fb.baseAddress!, 1, vDSP_Length(n))
+                vDSP_vfixu16(fb.baseAddress!, 1, p, 1, vDSP_Length(n))
+            }
+        }
+        return (dst, 2)
+    } else {
+        var tmp = [UInt8](repeating: 0, count: n)
+        let err: vImage_Error = tmp.withUnsafeMutableBufferPointer { tmpBuf in
+            guard let tmpPtr = tmpBuf.baseAddress else { return vImage_Error(kvImageInvalidParameter) }
+            var srcBuf = vImage_Buffer(data: base, height: vImagePixelCount(sh), width: vImagePixelCount(sw), rowBytes: bpr)
+            var dstBuf = vImage_Buffer(data: tmpPtr, height: vImagePixelCount(workHeight), width: vImagePixelCount(workWidth), rowBytes: workWidth)
+            return vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling | kvImageDoNotTile))
+        }
+        guard err == kvImageNoError else { return nil }
+        // Escala exacta de MotionCompensator.scaledLuma: byte<<8 → 0..65280.
+        // normalizeWork posterior: /256.
+        var smul: Float = 256.0
+        dst.withUnsafeMutableBytes { dstRaw in
+            let p = dstRaw.bindMemory(to: UInt16.self).baseAddress!
+            var f = [Float](repeating: 0, count: n)
+            f.withUnsafeMutableBufferPointer { fb in
+                vDSP_vfltu8(tmp, 1, fb.baseAddress!, 1, vDSP_Length(n))
+                vDSP_vsmul(fb.baseAddress!, 1, &smul, fb.baseAddress!, 1, vDSP_Length(n))
+                vDSP_vfixu16(fb.baseAddress!, 1, p, 1, vDSP_Length(n))
+            }
+        }
+        return (dst, 8)
+    }
+}
+
+private func artifactTo8(_ data: Data, shift: Int) -> [UInt8] {
+    let n = data.count / 2
+    var out = [UInt8](repeating: 0, count: n)
+    data.withUnsafeBytes { raw in
+        let p = raw.bindMemory(to: UInt16.self)
+        for i in 0..<n {
+            let v = Int(p[i]) >> shift
+            out[i] = v > 255 ? 255 : UInt8(v)
+        }
+    }
+    return out
+}
+
+private func artifactDiffStats(_ a: [UInt8], _ b: [UInt8], thresh: Int) -> (count: Int, frac: Double, mean: Double, max: Int, p95: Double) {
+    var count = 0
+    var acc = 0
+    var mx = 0
+    var ds = [Int](repeating: 0, count: a.count)
+    for i in 0..<a.count {
+        let d = abs(Int(a[i]) - Int(b[i]))
+        ds[i] = d
+        acc += d
+        if d >= thresh { count += 1 }
+        if d > mx { mx = d }
+    }
+    ds.sort()
+    let p95 = ds.isEmpty ? 0 : Double(ds[Int(Double(ds.count - 1) * 0.95)])
+    return (count, Double(count) / Double(max(a.count, 1)), Double(acc) / Double(max(a.count, 1)), mx, p95)
+}
+
+private func artifactMaskBBox(_ mask: [UInt8], w: Int, h: Int) -> (x: Int, y: Int, bw: Int, bh: Int, count: Int)? {
+    var x0 = w, y0 = h, x1 = -1, y1 = -1
+    var count = 0
+    for y in 0..<h {
+        for x in 0..<w where mask[y * w + x] > 0 {
+            count += 1
+            if x < x0 { x0 = x }
+            if x > x1 { x1 = x }
+            if y < y0 { y0 = y }
+            if y > y1 { y1 = y }
+        }
+    }
+    guard count > 0 else { return nil }
+    return (x0, y0, x1 - x0 + 1, y1 - y0 + 1, count)
+}
+
+/// Réplica host de `sampleMVBilinear` (misma interp. entre centros de bloque)
+/// para el análisis de cuantización/rampa del campo MV.
+private func artifactPixelFlow(_ mv: [SIMD2<Int32>], gridW: Int, gridH: Int, bs: Int, w: Int, h: Int) -> (fx: [Float], fy: [Float]) {
+    var fx = [Float](repeating: 0, count: w * h)
+    var fy = [Float](repeating: 0, count: w * h)
+    for y in 0..<h {
+        for x in 0..<w {
+            let gx = Float(x) / Float(bs)
+            let gy = Float(y) / Float(bs)
+            let ix = min(max(Int(floor(gx)), 0), gridW - 1)
+            let iy = min(max(Int(floor(gy)), 0), gridH - 1)
+            let jx = min(ix + 1, gridW - 1)
+            let jy = min(iy + 1, gridH - 1)
+            let ax = gx - Float(ix)
+            let ay = gy - Float(iy)
+            let m00 = mv[iy * gridW + ix]
+            let m10 = mv[iy * gridW + jx]
+            let m01 = mv[jy * gridW + ix]
+            let m11 = mv[jy * gridW + jx]
+            let m0x = Float(m00.x) + ax * Float(m10.x - m00.x)
+            let m1x = Float(m01.x) + ax * Float(m11.x - m01.x)
+            let m0y = Float(m00.y) + ay * Float(m10.y - m00.y)
+            let m1y = Float(m01.y) + ay * Float(m11.y - m01.y)
+            let idx = y * w + x
+            fx[idx] = (m0x + ay * (m1x - m0x)) * 0.5
+            fy[idx] = (m0y + ay * (m1y - m0y)) * 0.5
+        }
+    }
+    return (fx, fy)
+}
+
+/// Muestra bilineal de un campo de flujo en píxeles (como sampleMVBilinear del
+/// shader) en una posición arbitraria — réplica del forward-backward de warpBlend.
+private func artifactFlowAt(fx: [Float], fy: [Float], w: Int, h: Int, x: Float, y: Float) -> (Float, Float) {
+    let cx = min(max(x, 0), Float(w - 1))
+    let cy = min(max(y, 0), Float(h - 1))
+    let ix = min(Int(cx), w - 2)
+    let iy = min(Int(cy), h - 2)
+    let ax = cx - Float(ix)
+    let ay = cy - Float(iy)
+    let i0 = iy * w + ix
+    func lerp(_ a: Float, _ b: Float, _ t: Float) -> Float { a + t * (b - a) }
+    let xx = lerp(lerp(fx[i0], fx[i0 + 1], ax), lerp(fx[i0 + w], fx[i0 + w + 1], ax), ay)
+    let yy = lerp(lerp(fy[i0], fy[i0 + 1], ax), lerp(fy[i0 + w], fy[i0 + w + 1], ax), ay)
+    return (xx, yy)
+}
+
+private func artifactMaskOverlay(_ base: [UInt8], mask: [UInt8]) -> [UInt8] {
+    var rgba = [UInt8](repeating: 0, count: base.count * 4)
+    for i in 0..<base.count {
+        let m = mask[i] > 0
+        rgba[i * 4] = m ? 255 : base[i]
+        rgba[i * 4 + 1] = m ? 0 : base[i]
+        rgba[i * 4 + 2] = m ? 0 : base[i]
+        rgba[i * 4 + 3] = 255
+    }
+    return rgba
+}
+
+private func artifactDilate(_ mask: [UInt8], w: Int, h: Int, radius: Int) -> [UInt8] {
+    var out = [UInt8](repeating: 0, count: mask.count)
+    for y in 0..<h {
+        for x in 0..<w where mask[y * w + x] > 0 {
+            let x0 = max(x - radius, 0), x1 = min(x + radius, w - 1)
+            let y0 = max(y - radius, 0), y1 = min(y + radius, h - 1)
+            for yy in y0...y1 {
+                for xx in x0...x1 { out[yy * w + xx] = 255 }
+            }
+        }
+    }
+    return out
+}
+
+private func artifactFullLumaU8(_ pb: CVPixelBuffer) -> [UInt8]? {
+    guard CVPixelBufferIsPlanar(pb), CVPixelBufferGetPlaneCount(pb) >= 1 else { return nil }
+    CVPixelBufferLockBaseAddress(pb, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+    let w = CVPixelBufferGetWidthOfPlane(pb, 0)
+    let h = CVPixelBufferGetHeightOfPlane(pb, 0)
+    let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
+    guard let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) else { return nil }
+    let fmt = CVPixelBufferGetPixelFormatType(pb)
+    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    var out = [UInt8](repeating: 0, count: w * h)
+    if is10 {
+        for y in 0..<h {
+            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
+            for x in 0..<w {
+                let v = Int(row[x]) >> 8
+                out[y * w + x] = v > 255 ? 255 : UInt8(v)
+            }
+        }
+    } else {
+        for y in 0..<h {
+            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt8.self)
+            for x in 0..<w { out[y * w + x] = row[x] }
+        }
+    }
+    return out
+}
+
+private func artifactChromaU8(_ pb: CVPixelBuffer) -> [UInt8]? {
+    guard CVPixelBufferIsPlanar(pb), CVPixelBufferGetPlaneCount(pb) >= 2 else { return nil }
+    CVPixelBufferLockBaseAddress(pb, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+    let cw = CVPixelBufferGetWidthOfPlane(pb, 1)
+    let ch = CVPixelBufferGetHeightOfPlane(pb, 1)
+    let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 1)
+    guard let base = CVPixelBufferGetBaseAddressOfPlane(pb, 1) else { return nil }
+    let fmt = CVPixelBufferGetPixelFormatType(pb)
+    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    var out = [UInt8](repeating: 0, count: cw * ch * 2)
+    if is10 {
+        for y in 0..<ch {
+            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt16.self)
+            for x in 0..<cw {
+                let cb = Int(row[x * 2]) >> 8
+                let cr = Int(row[x * 2 + 1]) >> 8
+                out[(y * cw + x) * 2] = cb > 255 ? 255 : UInt8(cb)
+                out[(y * cw + x) * 2 + 1] = cr > 255 ? 255 : UInt8(cr)
+            }
+        }
+    } else {
+        for y in 0..<ch {
+            let row = base.advanced(by: y * bpr).assumingMemoryBound(to: UInt8.self)
+            for x in 0..<cw {
+                out[(y * cw + x) * 2] = row[x * 2]
+                out[(y * cw + x) * 2 + 1] = row[x * 2 + 1]
+            }
+        }
+    }
+    return out
+}
+
+private func runArtifactDiagnosis(
+    I0: CVPixelBuffer, I1: CVPixelBuffer, pairIndex: Int, approxTime: Double,
+    warpEngine: WarpEngine, config: InterpolationConfig, dumpDir: String
+) throws {
+    let ww = config.workWidth, wh = config.workHeight
+    let prefix = "\(dumpDir)/a"
+    print("\n--- MV_ARTIFACT par \(pairIndex)-\(pairIndex + 1) (≈\(String(format: "%.2f", approxTime)) s) ---")
+    print("  formato fuente: \(pixFmtName(CVPixelBufferGetPixelFormatType(I0)))")
+
+    guard let l0 = artifactExtractLuma(I0, workWidth: ww, workHeight: wh),
+          let l1 = artifactExtractLuma(I1, workWidth: ww, workHeight: wh) else {
+        print("  MV_ARTIFACT: no se pudo extraer luma"); return
+    }
+    let shift = l0.shift
+    let c0 = artifactTo8(l0.data, shift: shift)
+    let c1 = artifactTo8(l1.data, shift: shift)
+    let s0: [UInt16] = l0.data.withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
+    let s1: [UInt16] = l1.data.withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
+    let pxCount = ww * wh
+
+    // ME de producción (mismo spec/params que MotionCompensator). Un solo par ⇒
+    // el estado EMA temporal parte de cero (igual que al abrir archivo).
+    let spec: [LevelSpec] = [
+        LevelSpec(width: ww, height: wh, blockSize: config.blockSize, searchHalfPel: 8, halfPelRefine: config.subpel, inheritFactor: 4),
+        LevelSpec(width: ww / 2, height: wh / 2, blockSize: 16, searchHalfPel: 16, halfPelRefine: false, inheritFactor: 2),
+        LevelSpec(width: ww / 4, height: wh / 4, blockSize: 16, searchHalfPel: 32, halfPelRefine: false, inheritFactor: 2),
+        LevelSpec(width: ww / 8, height: wh / 8, blockSize: 16, searchHalfPel: 32, halfPelRefine: false, inheritFactor: 1),
+    ]
+    let me = try MotionSearchEngine(msl: motionShadersMSL, spec: spec, lambdaPx: config.lambdaPx, smoothL0: true, gateL0: true, temporalGatePx: config.temporalGatePx)
+    let meStart = DispatchTime.now().uptimeNanoseconds
+    _ = me.runPair(cur: l0.data, ref: l1.data)
+    let meMS = elapsedMilliseconds(from: meStart)
+    let mv = me.downloadMV(level: 0, smoothed: true)
+    // Bidireccional: segundo engine espejo I1 -> I0, MISMOS parámetros. Solo
+    // instrumentación para cycle-consistency (diagnóstico, no corrige nada).
+    let meBwd = try MotionSearchEngine(msl: motionShadersMSL, spec: spec, lambdaPx: config.lambdaPx, smoothL0: true, gateL0: true, temporalGatePx: config.temporalGatePx)
+    _ = meBwd.runPair(cur: l1.data, ref: l0.data)
+    let mvBwd = meBwd.downloadMV(level: 0, smoothed: true)
+    let g = me.grids[0]
+
+    // Warp a t=0/0.5/1 (el mismo warpBlend de producción).
+    let (t0, ms0) = warpEngine.interpolate(I0: s0, I1: s1, mv: mv, width: ww, height: wh, gridW: g.w, gridH: g.h, blockSize: config.blockSize, t: 0.0)
+    let (t05, ms05) = warpEngine.interpolate(I0: s0, I1: s1, mv: mv, width: ww, height: wh, gridW: g.w, gridH: g.h, blockSize: config.blockSize, t: 0.5)
+    let (t1, ms1) = warpEngine.interpolate(I0: s0, I1: s1, mv: mv, width: ww, height: wh, gridW: g.w, gridH: g.h, blockSize: config.blockSize, t: 1.0)
+    guard t0.count == pxCount, t05.count == pxCount, t1.count == pxCount else {
+        print("  MV_ARTIFACT: warp no produjo salida"); return
+    }
+    let uT0 = t0.map { UInt8(min(255, Int($0 >> shift))) }
+    let uT05 = t05.map { UInt8(min(255, Int($0 >> shift))) }
+    let uT1 = t1.map { UInt8(min(255, Int($0 >> shift))) }
+    print(String(format: "  ME %.2f ms | warp t0/t05/t1: %.2f/%.2f/%.2f ms", meMS, ms0, ms05, ms1))
+
+    // Round-trip estático: warp(I0, I0, MV=0, t=0.5) debe ser EXACTAMENTE I0
+    // (el bypass estático copia aS). Diff > 0 ⇒ el warp deforma sin movimiento.
+    let zeroMV = [SIMD2<Int32>](repeating: SIMD2<Int32>(0, 0), count: g.w * g.h)
+    let (selfWarp, _) = warpEngine.interpolate(I0: s0, I1: s0, mv: zeroMV, width: ww, height: wh, gridW: g.w, gridH: g.h, blockSize: config.blockSize, t: 0.5)
+    var selfMax = 0
+    for i in 0..<min(selfWarp.count, s0.count) {
+        let d = abs(Int(selfWarp[i]) - Int(s0[i]))
+        if d > selfMax { selfMax = d }
+    }
+    let selfMax8 = shift == 2 ? Double(selfMax) / 4.0 : Double(selfMax) / 256.0
+
+    func diff8(_ a: [UInt8], _ b: [UInt8]) -> [UInt8] {
+        var d = [UInt8](repeating: 0, count: a.count)
+        for i in 0..<a.count { d[i] = UInt8(min(255, abs(Int(a[i]) - Int(b[i])))) }
+        return d
+    }
+    let dInputs = diff8(c0, c1)
+    let dT0 = diff8(uT0, c0)
+    let _ = diff8(uT05, c0)
+    let _ = diff8(uT1, c1)
+    let ghostMask: [UInt8] = dT0.map { $0 >= 8 ? 255 : 0 }
+
+    var csv: [String] = ["key,value"]
+    csv.append("source_fmt,\(pixFmtName(CVPixelBufferGetPixelFormatType(I0)))")
+    csv.append("pair,\(pairIndex)-\(pairIndex + 1)")
+    csv.append("approx_time_s,\(String(format: "%.2f", approxTime))")
+    csv.append("work_plane,\(ww)x\(wh)")
+    csv.append("me_ms,\(String(format: "%.2f", meMS))")
+    csv.append("warp_t05_ms,\(String(format: "%.2f", ms05))")
+    for th in [4, 8, 12] {
+        let st = artifactDiffStats(uT0, c0, thresh: th)
+        csv.append("ghost_like_t0_frac_th\(th),\(String(format: "%.6f", st.frac))")
+        csv.append("ghost_like_t0_mean8_th\(th),\(String(format: "%.3f", st.mean))")
+    }
+    let ghostSt = artifactDiffStats(uT0, c0, thresh: 8)
+
+    var ghostCnt = 0
+    var ghostChange = 0
+    for i in 0..<pxCount where ghostMask[i] > 0 {
+        ghostCnt += 1
+        if dInputs[i] > 1 { ghostChange += 1 }
+    }
+    let inputChangeFrac = ghostCnt > 0 ? Double(ghostChange) / Double(ghostCnt) : 0
+    csv.append("ghost_mask_px,\(ghostCnt)")
+    csv.append("ghost_frac8,\(String(format: "%.6f", ghostSt.frac))")
+    csv.append("ghost_mean8,\(String(format: "%.3f", ghostSt.mean))")
+    csv.append("ghost_max8,\(ghostSt.max)")
+    csv.append("ghost_input_change_frac,\(String(format: "%.6f", inputChangeFrac))")
+    csv.append("self_roundtrip_maxdiff_8bit,\(String(format: "%.2f", selfMax8))")
+    let stEnd1 = artifactDiffStats(uT1, c1, thresh: 8)
+    let stT05 = artifactDiffStats(uT05, c0, thresh: 8)
+    csv.append("endpoint_t1_frac_th8,\(String(format: "%.6f", stEnd1.frac))")
+    csv.append("endpoint_t1_mean8,\(String(format: "%.3f", stEnd1.mean))")
+    csv.append("t05_vs_cur_frac_th8,\(String(format: "%.6f", stT05.frac))")
+
+    // Flujo por píxel + métricas de rampa/cuantización dentro de la máscara.
+    let flow = artifactPixelFlow(mv, gridW: g.w, gridH: g.h, bs: config.blockSize, w: ww, h: wh)
+    var sumFlow = 0.0, sumGrad = 0.0, sumRamp = 0.0
+    for y in 1..<(wh - 1) {
+        for x in 1..<(ww - 1) where ghostMask[y * ww + x] > 0 {
+            let idx = y * ww + x
+            let fm = (Double(flow.fx[idx]) * Double(flow.fx[idx]) + Double(flow.fy[idx]) * Double(flow.fy[idx])).squareRoot()
+            let gx = abs(Double(flow.fx[idx + 1]) - Double(flow.fx[idx])) + abs(Double(flow.fy[idx + 1]) - Double(flow.fy[idx]))
+            let gy = abs(Double(flow.fx[idx + ww]) - Double(flow.fx[idx])) + abs(Double(flow.fy[idx + ww]) - Double(flow.fy[idx]))
+            let bx = min(max(x / config.blockSize, 0), g.w - 1)
+            let by = min(max(y / config.blockSize, 0), g.h - 1)
+            let cmv = mv[by * g.w + bx]
+            let rdx = Double(flow.fx[idx]) - Double(cmv.x) * 0.5
+            let rdy = Double(flow.fy[idx]) - Double(cmv.y) * 0.5
+            sumFlow += fm
+            sumGrad += gx + gy
+            sumRamp += (rdx * rdx + rdy * rdy).squareRoot()
+        }
+    }
+    let ghostPixels = max(ghostCnt, 1)
+    let meanFlow = sumFlow / Double(ghostPixels)
+    let meanGrad = sumGrad / Double(ghostPixels)
+    let meanRamp = sumRamp / Double(ghostPixels)
+    csv.append("ghost_mean_flow_px,\(String(format: "%.2f", meanFlow))")
+    csv.append("ghost_mean_flow_grad_px_perpx,\(String(format: "%.2f", meanGrad))")
+    csv.append("ghost_block_ramp_dev_px,\(String(format: "%.2f", meanRamp))")
+
+    // --- Output full-res de producción (MotionCompensator) con/sin warp de croma ---
+    let mcA: MotionCompensator
+    do { mcA = try MotionCompensator(config: config) } catch { print("  MV_ARTIFACT: MotionCompensator A falló — \(error)"); return }
+    let pa = mcA.interpolatePair(I0: I0, I1: I1, tValues: [0.5]).pixelBuffers.first
+    let hadNoWarp = getenv("RIFT_CHROMA_NO_WARP")
+    setenv("RIFT_CHROMA_NO_WARP", "1", 1)
+    let mcB: MotionCompensator
+    do { mcB = try MotionCompensator(config: config) } catch {
+        if let hadNoWarp { setenv("RIFT_CHROMA_NO_WARP", hadNoWarp, 1) } else { unsetenv("RIFT_CHROMA_NO_WARP") }
+        print("  MV_ARTIFACT: MotionCompensator B (no-warp) falló — \(error)"); return
+    }
+    let pb = mcB.interpolatePair(I0: I0, I1: I1, tValues: [0.5]).pixelBuffers.first
+    if let hadNoWarp { setenv("RIFT_CHROMA_NO_WARP", hadNoWarp, 1) } else { unsetenv("RIFT_CHROMA_NO_WARP") }
+
+    guard let ha = pa, let hb = pb,
+          let la = artifactFullLumaU8(ha), let li = artifactFullLumaU8(I0),
+          let ca = artifactChromaU8(ha), let ci = artifactChromaU8(I0) else {
+        print("  MV_ARTIFACT: falló leer el output full-res de producción"); return
+    }
+    let lb = artifactFullLumaU8(hb)
+    let cb = artifactChromaU8(hb)
+    let fullW = CVPixelBufferGetWidth(I0), fullH = CVPixelBufferGetHeight(I0)
+
+    var lumaAB = 0
+    if let lb {
+        for i in 0..<min(la.count, lb.count) where la[i] != lb[i] { lumaAB += 1 }
+    }
+    var chromaAB = 0.0
+    var chromaAI = 0.0
+    if let cb {
+        let n = Double(min(ca.count, cb.count))
+        for i in 0..<min(ca.count, cb.count) {
+            chromaAB += Double(abs(Int(ca[i]) - Int(cb[i])))
+            chromaAI += Double(abs(Int(ca[i]) - Int(ci[i])))
+        }
+        chromaAB /= max(n, 1)
+        chromaAI /= max(n, 1)
+    }
+    csv.append("fullres_luma_warp_vs_nowarp_diff_px,\(lumaAB)")
+    csv.append("fullres_chroma_warp_vs_nowarp_mean8,\(String(format: "%.3f", chromaAB))")
+    csv.append("fullres_chroma_interp_vs_I0_mean8,\(String(format: "%.3f", chromaAI))")
+
+    // Overlap: ¿la deformación del output full-res cae dentro de la máscara de
+    // ghost del work-plane (reetiquetada, ±4px)? Umbral 10/255 en full-res.
+    let fullScaleX = Double(fullW) / Double(ww)
+    let fullScaleY = Double(fullH) / Double(wh)
+    let dilMask = artifactDilate(ghostMask, w: ww, h: wh, radius: 4)
+    var maskFull = [UInt8](repeating: 0, count: fullW * fullH)
+    var fullArt = 0
+    var fullOverlap = 0
+    for y in 0..<fullH {
+        for x in 0..<fullW {
+            let d = abs(Int(la[y * fullW + x]) - Int(li[y * fullW + x]))
+            if d >= 10 {
+                maskFull[y * fullW + x] = 255
+                fullArt += 1
+                let wx = min(max(Int(Double(x) / fullScaleX), 0), ww - 1)
+                let wy = min(max(Int(Double(y) / fullScaleY), 0), wh - 1)
+                if dilMask[wy * ww + wx] > 0 { fullOverlap += 1 }
+            }
+        }
+    }
+    let fullFrac = Double(fullArt) / Double(max(fullW * fullH, 1))
+    let overlapFrac = fullArt > 0 ? Double(fullOverlap) / Double(fullArt) : 0
+    csv.append("fullres_artifact_frac_th10,\(String(format: "%.6f", fullFrac))")
+    csv.append("fullres_overlap_with_ghost_mask,\(String(format: "%.4f", overlapFrac))")
+
+    // --- Análisis por bloque (preguntas A/B/C/D): un CSV con una fila por
+    // bloque 8x8 del work plane: MV, textura local (sigma de I0), distancia a
+    // inputs, far-from-both en t=0.5, y errores en los endpoints t=0/t=1.
+    let bs2 = config.blockSize
+    var blockRows: [String] = ["bx,by,x,y,mvx,mvy,magpx,sigma0,meanAbsDiffInputs,far05_frac,err0_frac,err1_frac,dMin0,dMin1,t05closer,avgocc,mvBwdx,mvBwdy,cyclePx"]
+    var aggFarHi = 0, aggFarHiLowTex = 0, aggFarHiMagGt8 = 0, aggFarHiMagLe1 = 0
+    var aggSolid = 0, aggSolidLowTex = 0
+    var aggPartial = 0, aggClean = 0
+    var sumFarInLowTex = 0.0
+    var cntLowTex = 0
+    var corrMagFarNumSum = 0.0, corrMagFarMagSum = 0.0, corrMagFarFarSum = 0.0
+    var corrMagFarMag2Sum = 0.0, corrMagFarFar2Sum = 0.0, corrMagFarN = 0.0
+    var corrSigFarNumSum = 0.0, corrSigFarSigSum = 0.0
+    var corrSigFarSig2Sum = 0.0, corrSigFarN = 0.0
+    for by in 0..<g.h {
+        for bx in 0..<g.w {
+            let v = mv[by * g.w + bx]
+            let mag = (Double(v.x / 2) * Double(v.x / 2) + Double(v.y / 2) * Double(v.y / 2)).squareRoot()
+            var sacc = 0.0, s2 = 0.0, dacc = 0
+            var far = 0, e0 = 0, e1 = 0, occN = 0
+            var mind0 = 255, mind1 = 255
+            var closer0 = 0, closer1 = 0
+            for dy in 0..<bs2 {
+                for dx in 0..<bs2 {
+                    let px = by * bs2 + dy < wh && bx * bs2 + dx < ww ? (by * bs2 + dy) * ww + (bx * bs2 + dx) : 0
+                    let c = Int(c0[px]), r = Int(c1[px]), t5 = Int(uT05[px])
+                    sacc += Double(c); s2 += Double(c) * Double(c)
+                    dacc += abs(c - r)
+                    let d0 = abs(t5 - c), d1 = abs(t5 - r)
+                    if d0 > 12 && d1 > 12 { far += 1 }
+                    if d0 < mind0 { mind0 = d0 }
+                    if d1 < mind1 { mind1 = d1 }
+                    if d0 <= d1 { closer0 += 1 } else { closer1 += 1 }
+                    if abs(Int(uT0[px]) - c) > 8 { e0 += 1 }
+                    if abs(Int(uT1[px]) - r) > 8 { e1 += 1 }
+                    // forward-backward err del shader: |flow(p) - flow(p+flow/p)| (px)
+                    let fxp = bx * bs2 + dx, fyp = by * bs2 + dy
+                    if fxp < ww - 1 && fyp < wh - 1 {
+                        let (fxp0, fyp0) = artifactFlowAt(fx: flow.fx, fy: flow.fy, w: ww, h: wh, x: Float(fxp), y: Float(fyp))
+                        let (fxp1, fyp1) = artifactFlowAt(fx: flow.fx, fy: flow.fy, w: ww, h: wh, x: Float(fxp) + fxp0, y: Float(fyp) + fyp0)
+                        let e = sqrt(Double((fxp0 - fxp1) * (fxp0 - fxp1) + (fyp0 - fyp1) * (fyp0 - fyp1)))
+                        if e > 1.0 { occN += 1 }
+                    }
+                }
+            }
+            let n = Double(bs2 * bs2)
+            let mean = sacc / n
+            let sigma = (s2 / n - mean * mean).squareRoot()
+            let farF = Double(far) / n
+            let dAvg = Double(dacc) / n
+            let occF = Double(occN) / n
+            let bv = mvBwd[by * g.w + bx]
+            // cycleError = |MV_fwd + MV_bwd| en px (mismas unidades: medio-pel → px con ×0.5)
+            let cycle = (Double((v.x + bv.x) * (v.x + bv.x)) + Double((v.y + bv.y) * (v.y + bv.y))).squareRoot() * 0.5
+            let t05closer = closer0 >= closer1 ? "I0" : "I1"
+            blockRows.append("\(bx),\(by),\(bx * bs2),\(by * bs2),\(v.x / 2),\(v.y / 2),\(String(format: "%.2f", mag)),\(String(format: "%.2f", sigma)),\(String(format: "%.2f", dAvg)),\(String(format: "%.4f", farF)),\(String(format: "%.4f", Double(e0) / n)),\(String(format: "%.4f", Double(e1) / n)),\(mind0),\(mind1),\(t05closer),\(String(format: "%.4f", occF)),\(bv.x / 2),\(bv.y / 2),\(String(format: "%.2f", cycle))")
+            if farF >= 0.8 { aggSolid += 1 } else if farF <= 0.2 { aggClean += 1 } else { aggPartial += 1 }
+            if farF >= 0.5 {
+                aggFarHi += 1
+                if sigma < 6.0 { aggFarHiLowTex += 1 }
+                if mag > 8 { aggFarHiMagGt8 += 1 }
+                if mag <= 1 { aggFarHiMagLe1 += 1 }
+            }
+            if farF >= 0.8 && sigma < 6.0 { aggSolidLowTex += 1 }
+            if sigma < 6.0 { cntLowTex += 1; sumFarInLowTex += farF }
+            corrMagFarMagSum += mag; corrMagFarFarSum += farF
+            corrMagFarMag2Sum += mag * mag; corrMagFarFar2Sum += farF * farF
+            corrMagFarNumSum += mag * farF; corrMagFarN += 1
+            corrSigFarSigSum += sigma; corrSigFarSig2Sum += sigma * sigma
+            corrSigFarNumSum += sigma * farF; corrSigFarN += 1
+        }
+    }
+    let nBlocks = Double(g.w * g.h)
+    func pearson(_ num: Double, _ sx: Double, _ sx2: Double, _ sy: Double, _ sy2: Double, _ n: Double) -> Double {
+        let denom = ((sx2 - sx * sx / n) * (sy2 - sy * sy / n)).squareRoot()
+        return denom > 1e-9 ? (num - sx * sy / n) / denom : 0
+    }
+    let rMagFar = pearson(corrMagFarNumSum, corrMagFarMagSum, corrMagFarMag2Sum, corrMagFarFarSum, corrMagFarFar2Sum, corrMagFarN)
+    let rSigFar = pearson(corrSigFarNumSum, corrSigFarSigSum, corrSigFarSig2Sum, corrMagFarFarSum, corrMagFarFar2Sum, corrSigFarN)
+    let blocksCSV = blockRows.joined(separator: "\n")
+    try? blocksCSV.write(toFile: "\(prefix)_blocks.csv", atomically: true, encoding: .utf8)
+    csv.append("blocks_solid_far_ge80,\(aggSolid)")
+    csv.append("blocks_partial_far,\(aggPartial)")
+    csv.append("blocks_clean_far_le20,\(aggClean)")
+    csv.append("blocks_far_hi,\(aggFarHi)")
+    csv.append("blocks_far_hi_lowtex_sigma_lt6,\(aggFarHiLowTex)")
+    csv.append("blocks_solid_lowtex,\(aggSolidLowTex)")
+    csv.append("blocks_far_hi_mag_gt8px,\(aggFarHiMagGt8)")
+    csv.append("blocks_far_hi_mag_le1px,\(aggFarHiMagLe1)")
+    csv.append("lowtex_blocks_frac,\(String(format: "%.4f", Double(cntLowTex) / nBlocks))")
+    csv.append("mean_far_in_lowtex,\(String(format: "%.4f", cntLowTex > 0 ? sumFarInLowTex / Double(cntLowTex) : 0))")
+    csv.append("corr_magxpx_vs_far05,\(String(format: "%.3f", rMagFar))")
+    csv.append("corr_sigma_vs_far05,\(String(format: "%.3f", rSigFar))")
+    print(String(format: "  bloques: sólidos far>=80%%: %d (%.2f%%), parciales %d, limpios %d | en far≥50%%: bajaTextura=%d, mag>8px=%d, mag<=1px=%d",
+                 aggSolid, Double(aggSolid) / nBlocks * 100, aggPartial, aggClean, aggFarHiLowTex, aggFarHiMagGt8, aggFarHiMagLe1))
+    print(String(format: "  correlaciones por bloque: r(|MV|, far05)=%.3f  r(σ local, far05)=%.3f  (n=%lu bloques)", rMagFar, rSigFar, Int(corrMagFarN)))
+    print(String(format: "  baja textura (σ<6): %.2f%% de bloques, far medio dentro=%.3f | CSV por bloque: %@_blocks.csv",
+                 Double(cntLowTex) / nBlocks * 100, cntLowTex > 0 ? sumFarInLowTex / Double(cntLowTex) : 0, prefix))
+
+    // Dumps del par
+    try? FileManager.default.createDirectory(atPath: dumpDir, withIntermediateDirectories: true)
+    _ = writeGrayPNG(c0, width: ww, height: wh, to: "\(prefix)_cur.png")
+    _ = writeGrayPNG(c1, width: ww, height: wh, to: "\(prefix)_ref.png")
+    _ = writeGrayPNG(uT0, width: ww, height: wh, to: "\(prefix)_t0.png")
+    _ = writeGrayPNG(uT05, width: ww, height: wh, to: "\(prefix)_t05.png")
+    _ = writeGrayPNG(uT1, width: ww, height: wh, to: "\(prefix)_t1.png")
+    _ = writeGrayPNG(ghostMask, width: ww, height: wh, to: "\(prefix)_ghost_mask.png")
+    _ = writeGrayPNG(dT0, width: ww, height: wh, to: "\(prefix)_diff_t0_vs_cur.png")
+    _ = writeGrayPNG(dInputs, width: ww, height: wh, to: "\(prefix)_diff_inputs.png")
+    _ = writeRGBA(artifactMaskOverlay(uT05, mask: ghostMask), width: ww, height: wh, to: "\(prefix)_t05_ghost_overlay.png")
+    _ = writeRGBA(mvDiagramL0(mv, gridW: g.w, gridH: g.h, blockSize: config.blockSize),
+                  width: g.w * config.blockSize, height: g.h * config.blockSize, to: "\(prefix)_mv_field.png")
+    _ = writeGrayPNG(li, width: fullW, height: fullH, to: "\(prefix)_fullres_cur.png")
+    _ = writeGrayPNG(la, width: fullW, height: fullH, to: "\(prefix)_fullres_interp.png")
+    _ = writeGrayPNG(maskFull, width: fullW, height: fullH, to: "\(prefix)_fullres_artifact_mask.png")
+
+    let reportPath = "\(prefix)_report.csv"
+    try? csv.joined(separator: "\n").write(toFile: reportPath, atomically: true, encoding: .utf8)
+
+    print(String(format: "  ghost (fallback oclusión, thresh 8/255): %.3f%% píxeles, mean=%.2f max=%d p95=%.1f", ghostSt.frac * 100, ghostSt.mean, ghostSt.max, ghostSt.p95))
+    if let bb = artifactMaskBBox(ghostMask, w: ww, h: wh) {
+        let fb = (Int(Double(bb.x) * fullScaleX), Int(Double(bb.y) * fullScaleY),
+                  Int(Double(bb.bw) * fullScaleX), Int(Double(bb.bh) * fullScaleY))
+        print("  bbox ghost work=\(bb.x),\(bb.y) \(bb.bw)x\(bb.bh) → full-res ≈ \(fb.0),\(fb.1) \(fb.2)x\(fb.3)")
+    }
+    print(String(format: "  ghost generado en contenido en movimiento (I0≠I1): %.2f%% de la máscara", inputChangeFrac * 100))
+    print(String(format: "  round-trip estático (MV=0): max diff = %.2f/255 \(selfMax8 == 0 ? "→ bypass exacto (SOURCE/estático intacto)" : "→ ¡el round-trip deforma!")", selfMax8))
+    print(String(format: "  dentro de la máscara: |MV| medio=%.2f px, gradiente=%.2f px/px, desvío rampa bloque=%.2f px", meanFlow, meanGrad, meanRamp))
+    print(String(format: "  full-res producción: artefacto=%d px (%.3f%%), overlap con máscara ghost(±4px)=%.2f%%", fullArt, fullFrac * 100, overlapFrac * 100))
+    print(String(format: "  chroma: warp vs no-warp → luma diff=%d px, |ΔCbCr| medio=%.2f/255; interp vs I0=%.2f/255", lumaAB, chromaAB, chromaAI))
+    print("  dumps: \(dumpDir)/a_{cur,ref,t0,t05,t1,ghost_mask,diff_t0_vs_cur,diff_inputs,t05_ghost_overlay,mv_field}.png")
+    print("  dumps full-res: \(dumpDir)/a_fullres_{cur,interp,artifact_mask}.png")
+    print("  CSV: \(reportPath)")
+}
+
 // MARK: - Main
 
 let path = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : defaultPath
@@ -1126,6 +1723,52 @@ for i in 0..<pairCount {
         _ = writeGrayPNG(interpGray, width: workWidth, height: workHeight, to: "\(dumpDir)/interp_t05_pair0.png")
         print("artifacts: \(dumpDir)/{mv_l0_pair0.png, cur_l0_pair0_gray.png, nxt_l0_pair0_gray.png, mv_l0_pair0.csv, interp_t05_pair0.png}")
     }
+}
+
+// Diagnóstico de artefactos visuales (MV_ARTIFACT=1). Instrumentación read-only:
+// aísla la deformación introducida por motion estimation + warp (ghost/oclusión,
+// cuantización de bloque, contribución de croma) sobre un par real, comparando el
+// output full-res de producción (MotionCompensator) con/sin warp de croma.
+if envInt("MV_ARTIFACT", 0) == 1 && frameBuffers.count >= 2 {
+    let artifactDir = ProcessInfo.processInfo.environment["MV_ARTIFACT_DIR"] ?? "\(dumpDir)/artifact"
+    var artifactIdx = envInt("MV_ARTIFACT_AT", -1)
+    var window = min(envInt("MV_ARTIFACT_MAX", 16), frameBuffers.count - 1)
+    if artifactIdx < 0 {
+        // Auto-selección del peor par: máximo MAD full-res en la ventana
+        // (alto movimiento ⇒ máxima actividad de oclusión/ghost).
+        var bestMAD = -1.0
+        var bestIdx = -1
+        var bestF0: [UInt8] = []
+        var bestF1: [UInt8] = []
+        for i in 0..<window {
+            guard let f0 = artifactFullLumaU8(frameBuffers[i]),
+                  let f1 = artifactFullLumaU8(frameBuffers[i + 1]) else { continue }
+            var acc = 0
+            for k in 0..<min(f0.count, f1.count) { acc += abs(Int(f0[k]) - Int(f1[k])) }
+            let mad = Double(acc) / Double(max(f0.count, 1))
+            if mad > bestMAD {
+                bestMAD = mad
+                bestIdx = i
+                bestF0 = f0
+                bestF1 = f1
+            }
+        }
+        _ = (bestF0, bestF1)
+        artifactIdx = bestIdx
+    }
+    if artifactIdx < 0 || artifactIdx >= frameBuffers.count - 1 {
+        print("MV_ARTIFACT: par inválido (\(artifactIdx)); MVs/crops no exportados")
+    } else {
+        let fps = video.frameRate ?? 24.0
+        let approxTime = seekTime + Double(artifactIdx) / fps
+        let cfg = InterpolationConfig()
+        try? runArtifactDiagnosis(
+            I0: frameBuffers[artifactIdx], I1: frameBuffers[artifactIdx + 1],
+            pairIndex: artifactIdx, approxTime: approxTime,
+            warpEngine: warpEngine, config: cfg, dumpDir: artifactDir
+        )
+    }
+    window = max(window, 0)
 }
 
 if tjitOn && tjFields.count >= 2 {

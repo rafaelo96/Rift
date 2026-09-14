@@ -103,17 +103,19 @@ kernel void warpBlend(
     float2 pp = clamp(p + flow, float2(0,0), float2(float(u.width-1), float(u.height-1)));
     float2 flow1 = sampleMVBilinear(mv, pp, u.gridW, u.gridH, bs);
     float err = length(flow - flow1);
-    float occ = err > u.occThresh ? 1.0 : 0.0;
+    // Soft occlusion: smoothstep over [thresh, 2*thresh] instead of a hard
+    // 0/1 step, so silhouette borders blend instead of popping. Under full
+    // occlusion the 50/50 fallback (literal ghosting of two incompatible
+    // positions) is replaced by the dominant (foreground-guess) side by t.
+    float occHi = u.occThresh * 2.0 + 1e-3;
+    float occ = smoothstep(u.occThresh, occHi, err);
     // simple split: occF = occ, occB = occ (symmetric approx)
     float wF = (1.0 - u.t) * (1.0 - occ);
     float wB = u.t * (1.0 - occ);
-    float sum = wF + wB;
-    float out;
-    if (sum < 1e-4) {
-        out = 0.5 * (v0 + v1);
-    } else {
-        out = (wF * v0 + wB * v1) / sum;
-    }
+    float wDom = occ;
+    float dom = (u.t < 0.5) ? v0 : v1;
+    float sum = wF + wB + wDom;
+    float out = (wF * v0 + wB * v1 + wDom * dom) / max(sum, 1e-4);
     // Incoherent-flow zones whose inputs still agree are spurious twists, not
     // occlusions (self-similar strokes / dither on static content): snap to I0.
     // Real occlusions disagree in the inputs, so they keep the blended result.
@@ -122,8 +124,8 @@ kernel void warpBlend(
     if (occ > 0.5 && adS * 8.0 <= (aS + bS)) {
         out = aS;
     }
-    // also handle single-side occlusion more explicitly: if err large, prefer the sample with smaller err direction?
-    // v1 approx is sufficient for v1 prototype; OBMC omitted.
+    // Single-side occlusion is handled above via the dominant-side pick;
+    // OBMC omitted.
     outTex.write(uint(out + 0.5), gid);
 }
 
