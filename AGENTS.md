@@ -137,7 +137,7 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
 >
 > **`warpBlend` / oclusión:** La oclusión suave mediante `smoothstep` y selección del lado dominante es intencional. No reemplazarla por el antiguo fallback 50/50 para intentar corregir los parches de motion blur/bokeh; esos artefactos restantes no corresponden a ese problema.
 >
-> **W0/W1:** Se observó una asimetría aproximada de 2–2.3× más error en W1 que en W0. Queda como investigación futura independiente y no forma parte de la conclusión anterior.
+> **W0/W1:** Investigada con experimento sintético (2025-09-14): **no hay bug**. W0(t=0)==I0 y W1(t=1)==I1 son exactos (error=0); el residuo ~0.11 en t=0.5 es la diferencia de precisión bilineal Swift vs Metal. La asimetría 2–2.3× observada en escenas reales es inherente al contenido real (MV field no uniforme, oclusiones). Ver `docs/diagnostics/mcfi-motion-blur-bokeh-artifacts.md` sección "Investigación W0/W1 (sintético)". Cerrada.
 
 ## Rango de hardware soportado
 

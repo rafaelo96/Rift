@@ -235,8 +235,8 @@ kernel void chromaDownscale2(
 }
 
 // Motion-compensated chroma warp on the work plane, mirroring warpBlend:
-// static bypass, backward warps from both inputs weighted by t, occlusion via
-// forward-backward MV consistency. Operates on 2 channels (rg16Uint).
+// static bypass, backward warps from both inputs weighted by t, and the same
+// soft occlusion/dominant-side policy as luma. Operates on 2 channels (rg16Uint).
 // u.width/height are the CHROMA work dims; grid/blockSize stay the luma ones.
 kernel void warpBlendChroma2(
     texture2d<uint, access::read>  tex0   [[texture(0)]],
@@ -280,16 +280,16 @@ kernel void warpBlendChroma2(
     float2 flow1 = sampleMVBilinear(mv, float2(pp.x * 2.0 + 1.0, pp.y * 2.0 + 1.0),
                                     u.gridW, u.gridH, u.blockSize) * 0.5;
     float err = length(flow - flow1);
-    float occ = err > u.occThresh ? 1.0 : 0.0;
+    // Match luma exactly: a hard chroma-only cut caused color contours to
+    // stick to I0 while luma already transitioned to I1 near an occlusion.
+    float occHi = u.occThresh * 2.0 + 1e-3;
+    float occ = smoothstep(u.occThresh, occHi, err);
     float wF = (1.0 - u.t) * (1.0 - occ);
     float wB = u.t * (1.0 - occ);
-    float sum = wF + wB;
-    float2 out;
-    if (sum < 1e-4) {
-        out = aS;
-    } else {
-        out = (wF * v0 + wB * v1) / sum;
-    }
+    float wDom = occ;
+    float2 dom = (u.t < 0.5) ? v0 : v1;
+    float sum = wF + wB + wDom;
+    float2 out = (wF * v0 + wB * v1 + wDom * dom) / max(sum, 1e-4);
     if (occ > 0.5 && adS * 8.0 <= sm) {
         out = aS;
     }

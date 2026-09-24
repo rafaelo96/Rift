@@ -258,7 +258,6 @@ public final class MotionSearchEngine {
             let t = runSearch(level: i, inheritedBuffer: inherited)
             times[stageIndex(.searchL3, level: i)] = t
         }
-
         // L0 3x3 vector-median smoothing (when enabled).
         if let medianPSO = medianPSO, let smooth = mvBufferSmoothed {
             let start = DispatchTime.now().uptimeNanoseconds

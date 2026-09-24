@@ -154,7 +154,8 @@ print("\n--- decoding video packets (one at a time) ---")
 // This WEB-DL begins with a solid-black leader frame, so kick off near the
 // middle of the file where real content lives (proves real decode, and lets
 // the summary compare black vs. content).
-let startTime = info.duration / 3.0
+let startTime = ProcessInfo.processInfo.environment["RIFT_DECODE_SEEK_SECONDS"]
+    .flatMap(Double.init) ?? info.duration / 3.0
 do {
     try demuxer.seek(to: startTime)
     decoder.flush()
@@ -171,20 +172,21 @@ while decoded < 10 && readPackets < 500 {
     guard packet.streamIndex == video.streamIndex else { continue }
 
     let start = DispatchTime.now().uptimeNanoseconds
-    let buffer: CVPixelBuffer?
+    let decodedFrame: DecodedVideoFrame?
     do {
-        buffer = try decoder.decodeFrame(packet)
+        decodedFrame = try decoder.decodeFrame(packet)
     } catch {
         print("DECODE FAILED at packet \(readPackets): \(error)")
         break
     }
     let ms = elapsedMilliseconds(from: start)
 
-    guard let buffer else { continue }
+    guard let decodedFrame else { continue }
+    let buffer = decodedFrame.pixelBuffer
     decoded += 1
     totalMs += ms
-    print(String(format: "  video frame %2d decoded in %7.2f ms (keyframe=%@)",
-                 decoded, ms, packet.isKeyframe ? "yes" : "no"))
+    print(String(format: "  frame %2d decoded in %7.2f ms  packet PTS %.3f -> output PTS %.3f (keyframe=%@)",
+                 decoded, ms, packet.pts, decodedFrame.pts, packet.isKeyframe ? "yes" : "no"))
     if !video.codecExtradata.isEmpty && decoded == 1 {
         dumpBufferMetadata(buffer)
         dumpPlaneStats(buffer, label: "frame 1", sampleRegions: true)
@@ -213,4 +215,31 @@ if decoded > 0 {
 
 decoder.close()
 demuxer.close()
+
+let thumbnailExtractor = VideoThumbnailExtractor()
+let thumbnailTarget = ProcessInfo.processInfo.environment["RIFT_THUMBNAIL_SECONDS"]
+    .flatMap(Double.init) ?? info.duration / 2
+do {
+    let thumbnailStart = DispatchTime.now().uptimeNanoseconds
+    if let thumbnail = try await thumbnailExtractor.thumbnail(
+        for: URL(fileURLWithPath: path),
+        at: thumbnailTarget
+    ) {
+        let thumbnailTime = String(format: "%.3f", thumbnail.sourceTime)
+        print(String(
+            format: "timeline thumbnail: %dx%d at %@ s in %.1f ms",
+            thumbnail.image.width,
+            thumbnail.image.height,
+            thumbnailTime,
+            elapsedMilliseconds(from: thumbnailStart)
+        ))
+    } else {
+        print("FAIL: no timeline thumbnail produced")
+        exit(3)
+    }
+} catch {
+    print("FAIL: timeline thumbnail extraction failed: \(error)")
+    exit(3)
+}
+
 print("\nOK — DecodeProbe finished")

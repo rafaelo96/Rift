@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
 import AppKit
 import CoreMedia
 import CoreVideo
+@preconcurrency import AVKit
 
 actor AsyncSemaphore {
     private let capacity: Int
@@ -63,15 +64,108 @@ private struct InterpolatedBuffersBox: @unchecked Sendable {
     let buffers: [CVPixelBuffer]
 }
 
+struct RecentVideo: Codable, Identifiable {
+    let path: String
+    let lastOpened: Date
+    let playbackPosition: Double
+    let duration: Double
+
+    var id: String { path }
+    var url: URL { URL(fileURLWithPath: path) }
+    var title: String { url.lastPathComponent }
+
+    var resumePosition: Double {
+        guard duration > 0, playbackPosition < max(duration - 15, 0) else { return 0 }
+        return max(playbackPosition, 0)
+    }
+}
+
+struct PlaylistItem: Codable, Identifiable, Equatable {
+    let path: String
+
+    var id: String { path }
+    var url: URL { URL(fileURLWithPath: path) }
+    var title: String { url.deletingPathExtension().lastPathComponent }
+}
+
+struct PlaybackMarker: Codable, Identifiable, Equatable {
+    let id: UUID
+    let time: Double
+    let title: String
+}
+
+struct PlaybackTechnicalInfo: Equatable {
+    let title: String
+    let resolution: String
+    let videoCodec: String
+    let frameRate: String
+    let colorSpace: String
+    let audio: String
+    let duration: String
+}
+
+private struct PlaybackPreferences: Codable {
+    let volume: Double
+    let interpolationMode: String
+    let audioSyncOffset: Double?
+}
+
+@MainActor
+private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPictureInPictureSampleBufferPlaybackDelegate, @preconcurrency AVPictureInPictureControllerDelegate {
+    weak var state: RiftPlayerState?
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
+        guard let state, state.isPlaying != playing else { return }
+        state.togglePlay()
+    }
+
+    func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
+        guard let state, state.duration > 0 else { return .invalid }
+        return CMTimeRange(start: .zero, duration: CMTime(seconds: state.duration, preferredTimescale: 600))
+    }
+
+    func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
+        !(state?.isPlaying ?? false)
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {
+        state?.resizePictureInPictureSourceLayer()
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion: @escaping () -> Void) {
+        state?.seek(by: skipInterval.seconds)
+        completion()
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        state?.isPictureInPictureActive = true
+        state?.resizePictureInPictureSourceLayer()
+        state?.suppressBrokenPictureInPictureHostOverlay()
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        state?.restorePictureInPictureSourceLayer()
+        state?.isPictureInPictureActive = false
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        state?.statusMessage = "Picture in Picture unavailable: \(error.localizedDescription)"
+    }
+}
+
 @MainActor
 final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var isPlaying = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var volume: Double = 0.68
+    @Published private(set) var audioSyncOffset: Double = 0
     @Published var playbackRate: Float = 1.0
     @Published var hasVideo = false
     @Published var areControlsVisible = true
+    private var controlsHideTimer: Timer?
+    private var isPointerOverControls = false
+    private let controlsHideDelay: TimeInterval = 2.0
     @Published var fpsMode: FPSMode = .native
     @Published var interpolationMode: InterpolationMode = .disabled
     @Published var isFramePlusPreparing = false
@@ -86,6 +180,33 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var currentSubtitleText: String?
     @Published var conversionProgress: Double = 0
     @Published var statusMessage: String?
+    @Published private(set) var recentVideos: [RecentVideo] = []
+    @Published private(set) var playlist: [PlaylistItem] = []
+    @Published private(set) var activePlaylistItemID: String?
+    @Published private(set) var markers: [PlaybackMarker] = []
+    @Published private(set) var chapters: [ChapterInfo] = []
+    @Published private(set) var technicalInfo: PlaybackTechnicalInfo?
+    @Published private(set) var externalSubtitleName: String?
+    @Published private(set) var timelineThumbnail: VideoThumbnail?
+    @Published private(set) var isTimelineThumbnailLoading = false
+    @Published fileprivate(set) var isPictureInPictureAvailable = false
+    @Published fileprivate(set) var isPictureInPictureActive = false
+
+    private static let preferencesKey = "rift.playback.preferences.v1"
+    private static let recentVideosKey = "rift.playback.recents.v1"
+    private static let resumeSessionKey = "rift.playback.resume.v1"
+    private static let playlistKey = "rift.playback.playlist.v1"
+    private static let markersKey = "rift.playback.markers.v1"
+    private static let externalSubtitlesKey = "rift.playback.external-subtitles.v1"
+    private static let recentVideoLimit = 10
+    private var lastPersistedPlaybackPosition: Double = -1
+    private var markersByPath: [String: [PlaybackMarker]] = [:]
+    private var externalSubtitlePathByVideoPath: [String: String] = [:]
+    private var externalSubtitleURL: URL?
+    private var pictureInPictureController: AVPictureInPictureController?
+    private var pictureInPictureCoordinator: PictureInPictureCoordinator?
+    private var pictureInPictureSourceFrame: CGRect?
+    private var pictureInPictureResizeObserver: NSObjectProtocol?
 
     private var demuxer: FFmpegDemuxer?
     private var decoder: VTDecoder?
@@ -111,6 +232,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Fallback triggers only when the *moving average* exceeds budget,
     /// preventing a single outlier (GC, thermal blip) from killing Frame+.
     private var recentPairTimings: [Double] = []
+    /// El perfil HQ se prueba en vivo; si sus pares completos no caben en el
+    /// periodo fuente, se degrada a `.fluid` sin apagar la interpolación.
+    private var recentHighQualityPairTimings: [Double] = []
+    private var usesHighQualityFluidProfile = true
     /// If Frame+ was disabled by sustained fallback, allow re-attempt
     /// after a user-initiated seek or mode change.
     private var fallbackDisabled = false
@@ -186,10 +311,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Periodo del vídeo fuente en segundos (1/fps), usado para detectar pares
     /// con hueco (decode rezagado ≥2 frames) en la rama interpolada.
     private var sourcePeriod: Double { 1.0 / max(sourceFrameRate ?? 24.0, 24.0) }
-    private let coordinator = DecodeCoordinator(value: 4)
+    /// Margen acotado para reordenar B-frames antes de entregar pares al MCFI.
+    /// Ocho imágenes cubren GOPs con B-frames profundos sin convertir el pool
+    /// en una cola de reproducción sin límite.
+    private static let framePoolCapacity = 8
+    private let coordinator = DecodeCoordinator(value: RiftPlayerState.framePoolCapacity)
     /// Fijación B: presupuesto de decode por delante del reloj de presentación
     /// (segundos). El decode no produce frames cuyo pts supere `reloj + budget`;
-    /// sin esto el pool (ventana de 4 frames con eviction) corre por delante de la
+    /// sin esto el pool (ventana acotada con eviction) corre por delante de la
     /// presentación sin límite y los toggles de modo provocan ráfagas/saltos.
     /// El default es ~0.25s (unos pocos frames): lead suficiente para no
     /// starvation del pool pero sin saturar la cola del AVSampleBufferDisplayLayer
@@ -202,8 +331,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Tunable vía RIFT_INTERP_LEAD.
     private let interpLeadMargin: Double
     /// Margen "stale" de la rama interpolada (equivalente de Fijación C): un par
-    /// con `first.pts + margen < reloj` se descarta en vez de interpolarlo tarde.
-    private let interpBehindMargin = 0.020
+    /// cuyo primer sample visible queda detrás del reloj se descarta en vez de
+    /// interpolarlo tarde.
+    /// Tolerancia para picos aislados de GPU/Metal. Un sample con unos pocos
+    /// milisegundos de retraso se presenta de inmediato; descartarlo abriría un
+    /// hueco perceptible de 58ms en la cadencia de 60 Hz.
+    private let interpBehindMargin = 0.050
     /// EXPERIMENTO de cadencia 60fps: la 3:2 clásica usa duraciones desiguales
     /// (20.8ms/13.9ms → judder de telecine). La cadencia uniforme (default)
     /// saca cada frame a 16.67ms exactos con t=0.4/0.8 y 0.2/0.6 (fase que
@@ -250,6 +383,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var enqueuedFramesInWindow: Int = 0
     private var fpsWindowStart: DispatchTime = .now()
     private var sourceURL: URL?
+    private let timelineThumbnailExtractor = VideoThumbnailExtractor()
+    private var timelineThumbnailTask: Task<Void, Never>?
+    private var timelineThumbnailRequestID = 0
+    private var timelineThumbnailSecond: Int?
     private var subtitleTrack: TrackInfo?
     private var subtitleCues: [SubtitleCue] = []
     private var subtitleCueCache: [Int: [SubtitleCue]] = [:]
@@ -274,6 +411,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func resetInterpolationCounters() {
         interpolationPairCount = 0
         recentPairTimings = []
+        recentHighQualityPairTimings = []
         fallbackDisabled = false
         interpPairIndex = 0
         interpSinglePairCount = 0
@@ -317,6 +455,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         } else {
             os_log("Interpolation fallback: %{public}@", log: benchLog, type: .default, reason)
         }
+    }
+
+    /// Frame+ siempre intenta primero la cadencia uniforme de 60 fps. Si el
+    /// coste o la latencia sostenida no la sostienen, conservar la interpolación
+    /// a 48 fps es preferible a volver de golpe al vídeo nativo.
+    private func downgradeTo48OrDisable(reason: String) {
+        guard interpolationMode == .motion4x else {
+            disableInterpolation(reason: reason)
+            return
+        }
+        os_log("Frame+ baja de 60 a 48 fps: %{public}@", log: benchLog, type: .info, reason)
+        setInterpolationMode(.motion2x)
     }
 
     /// Tras un fallback, si el usuario vuelve a dar seek o cambia de archivo
@@ -376,8 +526,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         if weakThroughputWindows >= throughputRequiredWeakWindows {
             weakThroughputWindows = 0
-            disableInterpolation(reason: String(format: "bajo pacing: %d pares stale / lead %.3fs (estancado)",
-                                               staleDelta, lead))
+            downgradeTo48OrDisable(reason: String(format: "bajo pacing: %d pares stale / lead %.3fs (estancado)",
+                                                   staleDelta, lead))
         }
     }
 
@@ -398,6 +548,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 0.25
         interpLeadMargin = ProcessInfo.processInfo.environment["RIFT_INTERP_LEAD"].flatMap(Double.init) ?? 0.12
         uniformCadence = ProcessInfo.processInfo.environment["RIFT_CADENCE"] != "telecine"
+        restorePlaybackPreferences()
+        restoreRecentVideos()
+        restorePlaylist()
+        restoreMarkers()
+        restoreExternalSubtitleAssociations()
+
         let env = ProcessInfo.processInfo.environment
         guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
@@ -432,6 +588,189 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 self.loadVideo(reopenURL)
             }
         }
+    }
+
+    func restoreLastSessionIfAvailable() {
+        guard !hasVideo,
+              ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false,
+              let record = decode(RecentVideo.self, forKey: Self.resumeSessionKey),
+              FileManager.default.fileExists(atPath: record.path) else {
+            return
+        }
+
+        loadVideo(record.url, restoringAt: record.resumePosition)
+    }
+
+    private func restorePlaybackPreferences() {
+        guard let preferences = decode(PlaybackPreferences.self, forKey: Self.preferencesKey) else { return }
+        volume = min(max(preferences.volume, 0), 1)
+        interpolationMode = InterpolationMode(rawValue: preferences.interpolationMode) ?? .disabled
+        audioSyncOffset = min(max(preferences.audioSyncOffset ?? 0, -2), 2)
+    }
+
+    private func restoreRecentVideos() {
+        recentVideos = decode([RecentVideo].self, forKey: Self.recentVideosKey) ?? []
+    }
+
+    private func restorePlaylist() {
+        playlist = decode([PlaylistItem].self, forKey: Self.playlistKey) ?? []
+    }
+
+    private func restoreMarkers() {
+        markersByPath = decode([String: [PlaybackMarker]].self, forKey: Self.markersKey) ?? [:]
+    }
+
+    private func restoreExternalSubtitleAssociations() {
+        externalSubtitlePathByVideoPath = decode([String: String].self, forKey: Self.externalSubtitlesKey) ?? [:]
+    }
+
+    private func persistPlaybackPreferences() {
+        encode(
+            PlaybackPreferences(
+                volume: volume,
+                interpolationMode: interpolationMode.rawValue,
+                audioSyncOffset: audioSyncOffset
+            ),
+            forKey: Self.preferencesKey
+        )
+    }
+
+    private func persistCurrentSession(force: Bool = false) {
+        guard let sourceURL, duration > 0, currentTime.isFinite else { return }
+        guard force || abs(currentTime - lastPersistedPlaybackPosition) >= 5 else { return }
+
+        let record = RecentVideo(
+            path: sourceURL.path,
+            lastOpened: Date(),
+            playbackPosition: min(max(currentTime, 0), duration),
+            duration: duration
+        )
+        lastPersistedPlaybackPosition = record.playbackPosition
+        updateRecentVideos(with: record)
+        encode(record, forKey: Self.resumeSessionKey)
+    }
+
+    private func updateRecentVideos(with record: RecentVideo) {
+        recentVideos.removeAll { $0.path == record.path }
+        recentVideos.insert(record, at: 0)
+        recentVideos = Array(recentVideos.prefix(Self.recentVideoLimit))
+        encode(recentVideos, forKey: Self.recentVideosKey)
+    }
+
+    func clearRecentVideos() {
+        recentVideos = []
+        UserDefaults.standard.removeObject(forKey: Self.recentVideosKey)
+    }
+
+    func replacePlaylist(with urls: [URL]) {
+        let items = deduplicatedPlaylistItems(from: urls)
+        playlist = items
+        activePlaylistItemID = items.first?.id
+        encode(items, forKey: Self.playlistKey)
+        if let first = items.first {
+            loadVideo(first.url)
+        }
+    }
+
+    func appendToPlaylist(_ urls: [URL]) {
+        let additions = deduplicatedPlaylistItems(from: urls)
+        guard !additions.isEmpty else { return }
+        var paths = Set(playlist.map(\.path))
+        playlist.append(contentsOf: additions.filter { paths.insert($0.path).inserted })
+        encode(playlist, forKey: Self.playlistKey)
+        if !hasVideo, let first = playlist.first {
+            activePlaylistItemID = first.id
+            loadVideo(first.url)
+        }
+    }
+
+    func removeFromPlaylist(_ item: PlaylistItem) {
+        guard let index = playlist.firstIndex(of: item) else { return }
+        playlist.remove(at: index)
+        encode(playlist, forKey: Self.playlistKey)
+        if activePlaylistItemID == item.id {
+            activePlaylistItemID = playlist.indices.contains(index) ? playlist[index].id : playlist.last?.id
+        }
+    }
+
+    func playPlaylistItem(_ item: PlaylistItem) {
+        guard playlist.contains(item) else { return }
+        activePlaylistItemID = item.id
+        loadVideo(item.url)
+    }
+
+    func playNextPlaylistItem() {
+        guard let activePlaylistItemID,
+              let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }),
+              playlist.indices.contains(index + 1) else { return }
+        playPlaylistItem(playlist[index + 1])
+    }
+
+    func playPreviousPlaylistItem() {
+        guard let activePlaylistItemID,
+              let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }),
+              playlist.indices.contains(index - 1) else { return }
+        playPlaylistItem(playlist[index - 1])
+    }
+
+    func addMarker() {
+        guard let sourceURL, duration > 0 else { return }
+        let marker = PlaybackMarker(
+            id: UUID(),
+            time: min(max(currentTime, 0), duration),
+            title: String(format: NSLocalizedString("Marker %@", comment: ""), formattedTime(currentTime))
+        )
+        markers.append(marker)
+        markers.sort { $0.time < $1.time }
+        markersByPath[sourceURL.path] = markers
+        encode(markersByPath, forKey: Self.markersKey)
+    }
+
+    func removeMarker(_ marker: PlaybackMarker) {
+        guard let sourceURL else { return }
+        markers.removeAll { $0.id == marker.id }
+        markersByPath[sourceURL.path] = markers
+        encode(markersByPath, forKey: Self.markersKey)
+    }
+
+    private func deduplicatedPlaylistItems(from urls: [URL]) -> [PlaylistItem] {
+        var paths = Set<String>()
+        return urls.compactMap { url in
+            guard url.isFileURL, FileManager.default.fileExists(atPath: url.path), paths.insert(url.path).inserted else {
+                return nil
+            }
+            return PlaylistItem(path: url.path)
+        }
+    }
+
+    private func clearResumeSession() {
+        UserDefaults.standard.removeObject(forKey: Self.resumeSessionKey)
+    }
+
+    private func encode<T: Encodable>(_ value: T, forKey key: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private static func colorDescription(for transfer: Int?) -> String {
+        switch transfer {
+        case 16: "HDR10 (PQ)"
+        case 18: "HDR (HLG)"
+        case .some: "SDR / tagged"
+        case nil: "SDR"
+        }
+    }
+
+    private static func audioDescription(for track: TrackInfo?) -> String {
+        guard let track else { return "No audio track" }
+        let channels = track.channelCount.map { "\($0) ch" } ?? "unknown channels"
+        let sampleRate = track.sampleRate.map { "\($0 / 1_000) kHz" } ?? nil
+        return [track.codecName.uppercased(), channels, sampleRate].compactMap { $0 }.joined(separator: " · ")
     }
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
@@ -496,6 +835,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     guard let self, let sched = self.scheduler else { return }
                     self.currentTime = sched.synchronizer.currentTime().seconds
                     self.updateActiveSubtitle(at: self.currentTime)
+                    self.persistCurrentSession()
                 }
             }
             fpsTimer?.invalidate()
@@ -510,6 +850,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             fpsTimer?.invalidate(); fpsTimer = nil
             enqueuedFramesInWindow = 0
             fpsWindowStart = .now()
+            persistCurrentSession(force: true)
         }
     }
 
@@ -574,7 +915,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     private func performSeek(to time: Double) async {
         audioTask?.cancel()
-        currentTime = time
+        currentTime = min(max(time, 0), duration)
+        persistCurrentSession(force: true)
         // Actualizar el subtítulo de inmediato (los cues ya están todos en
         // memoria desde el inicio, no hace falta releer ni reiniciar ningún loop).
         updateActiveSubtitle(at: time)
@@ -625,11 +967,31 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
     func setVolume(_ v: Double) {
-        volume = v
-        audioRenderer?.volume = Float(v)
+        volume = min(max(v, 0), 1)
+        audioRenderer?.volume = Float(volume)
+        persistPlaybackPreferences()
+    }
+
+    func setAudioSyncOffset(_ offset: Double) {
+        audioSyncOffset = min(max(offset, -2), 2)
+        persistPlaybackPreferences()
+        guard let url = sourceURL, let track = audioTrack else { return }
+        audioRenderer?.flush()
+        startAudioLoop(
+            url: url,
+            trackStreamIndex: track.streamIndex,
+            codecName: track.codecName,
+            startTime: currentTime,
+            extradata: track.codecExtradata,
+            sampleRate: track.sampleRate ?? 0,
+            channels: track.channelCount ?? 0
+        )
     }
     func cyclePlaybackRate() {}
     func closeVideo() {
+        persistCurrentSession(force: true)
+        clearResumeSession()
+        clearTimelineThumbnail()
         decodeTask?.cancel(); decodeTask = nil
         audioTask?.cancel(); audioTask = nil
         displayTask?.cancel(); displayTask = nil
@@ -640,6 +1002,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let sched = scheduler {
             sched.synchronizer.setRate(0, time: .zero)
         }
+        if pictureInPictureController?.isPictureInPictureActive == true {
+            pictureInPictureController?.stopPictureInPicture()
+        }
+        restorePictureInPictureSourceLayer()
         renderer?.flush()
         audioRenderer?.flush()
         demuxer?.close(); decoder?.close()
@@ -652,14 +1018,50 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         audioDecoder = nil; audioRenderer = nil; audioTrack = nil
         audioTrackInfos = [:]
         sourceURL = nil
+        currentTime = 0; duration = 0
+        markers = []
+        chapters = []
+        technicalInfo = nil
+        externalSubtitleURL = nil
+        externalSubtitleName = nil
+        pictureInPictureController = nil
+        pictureInPictureCoordinator = nil
+        isPictureInPictureAvailable = false
+        isPictureInPictureActive = false
         hasVideo = false; isPlaying = false
+        controlsHideTimer?.invalidate()
+        controlsHideTimer = nil
     }
-    func startHideTimer() {}
-    func stopHideTimer() {}
-    func resetHideTimer() {}
+    func startHideTimer() {
+        isPointerOverControls = false
+        scheduleControlsHide()
+    }
+    func stopHideTimer() {
+        isPointerOverControls = true
+        controlsHideTimer?.invalidate()
+        controlsHideTimer = nil
+    }
+    func resetHideTimer() {
+        areControlsVisible = true
+        guard !isPointerOverControls else { return }
+        scheduleControlsHide()
+    }
+
+    private func scheduleControlsHide() {
+        controlsHideTimer?.invalidate()
+        guard hasVideo else { return }
+        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: controlsHideDelay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isPointerOverControls else { return }
+                self.areControlsVisible = false
+            }
+        }
+    }
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) {
         interpolationMode = m
+        persistPlaybackPreferences()
+        usesHighQualityFluidProfile = true
         compensator = nil
         lastShownFrames.removeAll()
         // Estados de UI por transiciones reales (no por-par): al activar un modo
@@ -686,6 +1088,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             scheduler?.setMode(.interpolated60)
         }
     }
+
+    /// El interruptor Frame+ usa estos dos niveles internamente: 60 fps primero
+    /// y 48 fps cuando la máquina no puede sostener 60. Ambos conservan la
+    /// máxima calidad disponible antes de reducir el plano de trabajo.
+    private var interpolationConfig: InterpolationConfig {
+        switch interpolationMode {
+        case .motion2x, .motion4x, .motion2Intense:
+            return usesHighQualityFluidProfile ? .fluidHighQuality : .fluid
+        case .disabled, .motionAdaptive:
+            return .default
+        }
+    }
     func selectAudioTrack(_ streamIndex: Int) {
         guard streamIndex != selectedAudioTrackIndex else { return }
         selectedAudioTrackIndex = streamIndex
@@ -697,6 +1111,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     func selectPipelineTrack(_ t: MediaTrack?) {
         selectedSubtitleTrack = t
+        externalSubtitleURL = nil
+        externalSubtitleName = nil
+        if let sourceURL {
+            externalSubtitlePathByVideoPath.removeValue(forKey: sourceURL.path)
+            encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
+        }
         guard let t, let url = sourceURL else {
             // "None": desactivar subtítulos.
             subtitleCues = []
@@ -713,14 +1133,240 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             self.updateActiveSubtitle(at: self.currentTime)
         }
     }
+
+    func openExternalSubtitles() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "srt") ?? .plainText,
+            UTType(filenameExtension: "vtt") ?? .plainText
+        ]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        loadExternalSubtitles(from: url, persistAssociation: true)
+    }
+
+    func removeExternalSubtitles() {
+        externalSubtitleURL = nil
+        externalSubtitleName = nil
+        if let sourceURL {
+            externalSubtitlePathByVideoPath.removeValue(forKey: sourceURL.path)
+            encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
+        }
+        if let selectedSubtitleTrack {
+            selectPipelineTrack(selectedSubtitleTrack)
+        } else if let fallbackTrack = availableTracks.first(where: { $0.kind == .subtitle }) {
+            selectPipelineTrack(fallbackTrack)
+        } else {
+            subtitleCues = []
+            currentSubtitleText = nil
+        }
+    }
+
+    private func restoreExternalSubtitles(for videoURL: URL) {
+        guard let path = externalSubtitlePathByVideoPath[videoURL.path] else { return }
+        let subtitleURL = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: subtitleURL.path) else {
+            externalSubtitlePathByVideoPath.removeValue(forKey: videoURL.path)
+            encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
+            return
+        }
+        loadExternalSubtitles(from: subtitleURL, persistAssociation: false)
+    }
+
+    private func loadExternalSubtitles(from url: URL, persistAssociation: Bool) {
+        let cues = Self.readExternalSubtitleCues(url: url)
+        guard !cues.isEmpty else {
+            statusMessage = "No readable subtitles in \(url.lastPathComponent)"
+            return
+        }
+        subtitleCues = cues
+        externalSubtitleURL = url
+        externalSubtitleName = url.lastPathComponent
+        selectedSubtitleTrack = nil
+        updateActiveSubtitle(at: currentTime)
+        if persistAssociation, let sourceURL {
+            externalSubtitlePathByVideoPath[sourceURL.path] = url.path
+            encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
+        }
+    }
+
+    func togglePictureInPicture() {
+        guard let controller = pictureInPictureController, controller.isPictureInPicturePossible else {
+            statusMessage = "Picture in Picture is not available for this video"
+            return
+        }
+        if controller.isPictureInPictureActive {
+            controller.stopPictureInPicture()
+        } else {
+            controller.startPictureInPicture()
+        }
+    }
+
+    private func configurePictureInPicture() {
+        guard #available(macOS 12.0, *),
+              AVPictureInPictureController.isPictureInPictureSupported(),
+              let displayLayer = renderer?.displayLayer else {
+            isPictureInPictureAvailable = false
+            return
+        }
+        let coordinator = PictureInPictureCoordinator()
+        coordinator.state = self
+        let contentSource = AVPictureInPictureController.ContentSource(
+            sampleBufferDisplayLayer: displayLayer,
+            playbackDelegate: coordinator
+        )
+        let controller = AVPictureInPictureController(contentSource: contentSource)
+        controller.delegate = coordinator
+        pictureInPictureCoordinator = coordinator
+        pictureInPictureController = controller
+        isPictureInPictureAvailable = controller.isPictureInPicturePossible
+    }
+
+    /// macOS Tahoe añade un host CALayer vacío encima del renderer de muestras
+    /// de PiP. Ese host negro tapa el contenido correcto que AVKit ya compuso.
+    /// No enlazamos símbolos privados: solo ocultamos la vista vacía si el
+    /// sistema la crea para este flujo concreto.
+    fileprivate func suppressBrokenPictureInPictureHostOverlay() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            let pipWindows = NSApplication.shared.windows.filter {
+                String(describing: type(of: $0)).contains("PIPPanel")
+            }
+            for window in pipWindows {
+                guard let rootView = window.contentView else { continue }
+                Self.hideBrokenPictureInPictureHost(in: rootView)
+            }
+        }
+    }
+
+    /// AVKit Tahoe refleja la capa de muestras a escala 1:1. Mantener la capa
+    /// fuente sincronizada con el panel PiP hace que esa copia coincida con el
+    /// destino también después de que el usuario lo redimensione.
+    fileprivate func resizePictureInPictureSourceLayer() {
+        DispatchQueue.main.async { [weak self] in
+            self?.synchronizePictureInPictureSourceLayer()
+        }
+    }
+
+    fileprivate func restorePictureInPictureSourceLayer() {
+        if let observer = pictureInPictureResizeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            pictureInPictureResizeObserver = nil
+        }
+        if let frame = pictureInPictureSourceFrame {
+            renderer?.displayLayer.frame = frame
+        }
+        pictureInPictureSourceFrame = nil
+    }
+
+    private func synchronizePictureInPictureSourceLayer() {
+        guard let layer = renderer?.displayLayer,
+              let panel = pictureInPicturePanel(),
+              let contentView = panel.contentView else {
+            return
+        }
+        observePictureInPicturePanelResize(panel)
+        let targetSize = contentView.bounds.size
+        guard targetSize.width > 0, targetSize.height > 0 else { return }
+        if pictureInPictureSourceFrame == nil {
+            pictureInPictureSourceFrame = layer.frame
+        }
+        layer.frame = CGRect(origin: .zero, size: targetSize)
+        suppressBrokenPictureInPictureHostOverlay()
+    }
+
+    private func pictureInPicturePanel() -> NSWindow? {
+        NSApplication.shared.windows.first {
+            String(describing: type(of: $0)).contains("PIPPanel")
+        }
+    }
+
+    private func observePictureInPicturePanelResize(_ panel: NSWindow) {
+        guard pictureInPictureResizeObserver == nil else { return }
+        pictureInPictureResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.synchronizePictureInPictureSourceLayer()
+            }
+        }
+    }
+
+    private static func hideBrokenPictureInPictureHost(in view: NSView) {
+        let className = String(describing: type(of: view))
+        if className == "AVPictureInPictureCALayerHostView" {
+            view.isHidden = true
+        }
+        for subview in view.subviews {
+            hideBrokenPictureInPictureHost(in: subview)
+        }
+    }
     func toggleVisualEnhancements() { visualEnhancementsEnabled.toggle() }
 
+    func requestTimelineThumbnail(at time: Double) {
+        guard let sourceURL, duration > 0 else { return }
+
+        let targetTime = min(max(time, 0), duration)
+        let targetSecond = Int(targetTime.rounded(.down))
+        guard timelineThumbnailSecond != targetSecond else { return }
+
+        timelineThumbnailSecond = targetSecond
+        timelineThumbnailRequestID &+= 1
+        let requestID = timelineThumbnailRequestID
+        isTimelineThumbnailLoading = true
+        timelineThumbnailTask?.cancel()
+
+        timelineThumbnailTask = Task { [weak self, timelineThumbnailExtractor] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+
+            let thumbnail = try? await timelineThumbnailExtractor.thumbnail(
+                for: sourceURL,
+                at: targetTime
+            )
+            guard !Task.isCancelled,
+                  let self,
+                  self.timelineThumbnailRequestID == requestID else {
+                return
+            }
+            self.timelineThumbnail = thumbnail
+            self.isTimelineThumbnailLoading = false
+        }
+    }
+
+    /// Stops work when the pointer leaves the timeline but preserves the last
+    /// decoded image. Re-entering the track can therefore show feedback
+    /// immediately instead of flashing a loading indicator on every hover.
+    func hideTimelineThumbnailPreview() {
+        timelineThumbnailTask?.cancel()
+        timelineThumbnailTask = nil
+        timelineThumbnailRequestID &+= 1
+        timelineThumbnailSecond = nil
+        isTimelineThumbnailLoading = false
+    }
+
+    func clearTimelineThumbnail() {
+        hideTimelineThumbnailPreview()
+        timelineThumbnail = nil
+    }
+
     func loadVideo(_ url: URL) {
+        let rememberedPosition = recentVideos.first(where: { $0.path == url.path })?.resumePosition ?? 0
+        loadVideo(url, restoringAt: rememberedPosition)
+    }
+
+    private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
+        persistCurrentSession(force: true)
+        clearTimelineThumbnail()
         audioTask?.cancel()
         // Un seek en vuelo del video anterior no debe ejecutarse sobre el nuevo
         // demuxer (seek a timestamp viejo en archivo nuevo).
         seekTask?.cancel(); seekTask = nil; pendingSeekTarget = nil
         sourceURL = url
+        currentTime = max(rememberedPosition, 0)
+        duration = 0
+        lastPersistedPlaybackPosition = -1
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
@@ -735,6 +1381,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             let d = FFmpegDemuxer()
             do {
                 let info = try d.open(url: url)
+                let startTime = min(max(rememberedPosition, 0), info.duration)
+                if startTime > 0 {
+                    try d.seek(to: startTime)
+                }
                 guard let v = info.tracks.first(where: { $0.kind == .video }) else {
                     await MainActor.run { self?.statusMessage = "No video track" }
                     return
@@ -755,7 +1405,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     return found
                 }()
                 if let self {
-                    await self.installNewPipeline(demuxer: d, decoder: dec, videoTrack: v, info: info, subTrack: subTrack, url: url)
+                    await self.installNewPipeline(
+                        demuxer: d,
+                        decoder: dec,
+                        videoTrack: v,
+                        info: info,
+                        subTrack: subTrack,
+                        url: url,
+                        startTime: startTime
+                    )
                 }
             } catch {
                 await MainActor.run {
@@ -773,7 +1431,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// (wait no maneja cancelación) y los frames del pool viejo jamás devolvían
     /// su permit, dejando al decode nuevo sin cupo y al pool sin llenarse.
     @MainActor
-    private func installNewPipeline(demuxer d: FFmpegDemuxer, decoder dec: VTDecoder, videoTrack v: TrackInfo, info: ContainerInfo, subTrack: TrackInfo?, url: URL) async {
+    private func installNewPipeline(demuxer d: FFmpegDemuxer, decoder dec: VTDecoder, videoTrack v: TrackInfo, info: ContainerInfo, subTrack: TrackInfo?, url: URL, startTime: Double) async {
         self.decodeTask?.cancel()
         await self.coordinator.reset()
         self.framePool?.flush()
@@ -782,13 +1440,28 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.decoder = dec
         self.videoTrack = v
         self.duration = info.duration
+        self.currentTime = min(max(startTime, 0), info.duration)
         self.sourceFrameRate = v.frameRate
-        self.framePool = SlidingFramePool(capacity: 4)
+        self.activePlaylistItemID = self.playlist.first(where: { $0.path == url.path })?.id
+        self.markers = self.markersByPath[url.path] ?? []
+        self.chapters = info.chapters
+        self.technicalInfo = PlaybackTechnicalInfo(
+            title: url.lastPathComponent,
+            resolution: [v.width, v.height].compactMap { $0 }.map(String.init).joined(separator: " x "),
+            videoCodec: v.codecName.uppercased(),
+            frameRate: v.frameRate.map { String(format: "%.3g fps", $0) } ?? "Unknown",
+            colorSpace: Self.colorDescription(for: v.colorTransfer),
+            audio: Self.audioDescription(for: info.tracks.first(where: { $0.kind == .audio })),
+            duration: formattedTime(info.duration)
+        )
+        self.framePool = SlidingFramePool(capacity: Self.framePoolCapacity)
         self.scheduler = FrameScheduler(mode: .native24)
         self.syncSchedulerMode()
         self.timingLogStart = DispatchTime.now().uptimeNanoseconds
         self.subtitleTrack = subTrack
         self.subtitleCues = []
+        self.externalSubtitleURL = nil
+        self.externalSubtitleName = nil
         // CLAVE: sin esto el synchronizer retrasa el arranque del
         // reloj hasta tener preroll suficiente en TODOS los renderers,
         // y con buffers de 32ms el audio se atasca (isReady=false
@@ -798,6 +1471,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // reproducirse en sync (el displayLayer y el audioRenderer
         // viven en el reloj del scheduler).
         self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
+        self.configurePictureInPicture()
         // Audio: guardar todas las pistas reales y arrancar la primera.
         let audioTracksAll = info.tracks.filter { $0.kind == .audio }
         self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
@@ -836,11 +1510,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.hasVideo = true
         self.statusMessage = "Ready"
         self.conversionProgress = 1.0
+        self.persistCurrentSession(force: true)
+        self.restoreExternalSubtitles(for: url)
         self.startDecodeLoop()
         // Subtítulos: cargar la primera pista en background (paralelo
         // al video) vía cache, sin bloquear el primer frame.
         if let subTrack {
             self.ensureSubtitleCues(url: url, streamIndex: subTrack.streamIndex) {
+                guard self.externalSubtitleURL == nil else { return }
                 self.subtitleCues = self.subtitleCueCache[subTrack.streamIndex] ?? []
                 self.updateActiveSubtitle(at: self.currentTime)
             }
@@ -851,7 +1528,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType.movie, UTType.video, UTType(filenameExtension: "mkv") ?? .data, UTType(filenameExtension: "mka") ?? .data]
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url { loadVideo(url) }
+        if panel.runModal() == .OK, let url = panel.url { replacePlaylist(with: [url]) }
+    }
+
+    func addVideosToPlaylist() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType.movie, UTType.video, UTType(filenameExtension: "mkv") ?? .data, UTType(filenameExtension: "mka") ?? .data]
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK {
+            appendToPlaylist(panel.urls)
+        }
     }
     func cleanup() { closeVideo() }
 
@@ -935,7 +1621,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                 }
                 let tDecodeStartNS = DispatchTime.now().uptimeNanoseconds
-                guard let pb = try? dec.decodeFrame(pkt) else {
+                guard let decodedFrame = try? dec.decodeFrame(pkt) else {
                     await self.coordinator.signal()
                     continue
                 }
@@ -943,11 +1629,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 decoded += 1
                 await MainActor.run {
                     self.totalDecoded = decoded
-                    pool.add(buffer: pb, pts: pkt.pts)
+                    pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
                     let tPoolAddNS = DispatchTime.now().uptimeNanoseconds
-                    let key = RiftPlayerState.timelineKey(pkt.pts)
+                    let key = RiftPlayerState.timelineKey(decodedFrame.pts)
                     self.frameTimelines[key] = FrameTimeline(
-                        pts: pkt.pts,
+                        pts: decodedFrame.pts,
                         decodeStartNS: tDecodeStartNS,
                         decodeEndNS: tDecodeEndNS,
                         poolAddNS: tPoolAddNS
@@ -991,6 +1677,46 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let text: String
     }
 
+    private static nonisolated func readExternalSubtitleCues(url: URL) -> [SubtitleCue] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let blocks = normalized.components(separatedBy: "\n\n")
+
+        return blocks.compactMap { block in
+            let lines = block
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map(String.init)
+            guard !lines.isEmpty else { return nil }
+            guard let timingIndex = lines.firstIndex(where: { $0.contains("-->") }) else { return nil }
+            let timing = lines[timingIndex]
+                .components(separatedBy: "-->")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            guard timing.count == 2,
+                  let start = subtitleTimestamp(timing[0]),
+                  let end = subtitleTimestamp(timing[1].components(separatedBy: " ").first ?? "") else {
+                return nil
+            }
+            let subtitleText = lines.dropFirst(timingIndex + 1)
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !subtitleText.isEmpty else { return nil }
+            return SubtitleCue(start: start, end: max(end, start + 0.1), text: subtitleText)
+        }
+    }
+
+    private static nonisolated func subtitleTimestamp(_ value: String) -> Double? {
+        let normalized = value.replacingOccurrences(of: ",", with: ".")
+        let components = normalized.split(separator: ":").map(String.init)
+        guard components.count == 2 || components.count == 3 else { return nil }
+        let seconds = Double(components.last ?? "") ?? -1
+        guard seconds >= 0 else { return nil }
+        let minutes = Double(components[components.count - 2]) ?? -1
+        guard minutes >= 0 else { return nil }
+        let hours = components.count == 3 ? (Double(components[0]) ?? -1) : 0
+        guard hours >= 0 else { return nil }
+        return hours * 3_600 + minutes * 60 + seconds
+    }
+
     private static nonisolated func readSubtitleCues(url: URL, trackStreamIndex: Int) -> [SubtitleCue] {
         let demuxer = FFmpegDemuxer()
         defer { demuxer.close() }
@@ -1030,6 +1756,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
 
         let startPTS = max(0, startTime)
+        let offset = audioSyncOffset
+        let sourceStartPTS = max(0, startPTS - offset)
         let maxAheadSeconds = 0.25
         audioTask = Task.detached(priority: .userInitiated) {
             let audioDemuxer = FFmpegDemuxer()
@@ -1037,8 +1765,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
             do {
                 _ = try audioDemuxer.open(url: url)
-                if startPTS > 0 {
-                    try? audioDemuxer.seek(to: startPTS)
+                if sourceStartPTS > 0 {
+                    try? audioDemuxer.seek(to: sourceStartPTS)
                 }
                 let decoder = try AudioDecoder(codecName: codecName, extradata: extradata, sampleRate: sampleRate, channels: channels)
                 var framesEnqueued = 0
@@ -1060,7 +1788,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
 
                         let frameDuration = Double(frame.sampleCount) / Double(frame.sampleRate)
-                        let presentationPTS = packet.pts + accumulatedSeconds
+                        let presentationPTS = packet.pts + accumulatedSeconds + offset
                         accumulatedSeconds += frameDuration
 
                         if presentationPTS + frameDuration < startPTS - 0.02 {
@@ -1381,8 +2109,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // decode↔clock en los toggles de modo. al await, el MainActor queda
             // libre durante la construcción.
             do {
+                let config = interpolationConfig
                 compensator = try await Task.detached(priority: .userInitiated) {
-                    try MotionCompensator(config: .default)
+                    try MotionCompensator(config: config)
                 }.value
             } catch {
                 os_log("interpolatePair: failed to init MotionCompensator: %{public}@",
@@ -1407,15 +2136,38 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isInterpolating = false
         interpolationPairCount += 1
 
-        // Presupuesto por-frame interpolado, independiente del tipo de par.
-        // Un par "doble" (2 interp) hace ~2× el trabajo de un par simple, así
-        // que normalizamos la muestra por nº de frames interpolados: esto le da
-        // a los pares dobles un presupuesto efectivo ~2× sin contaminar la media
-        // móvil (si mezcláramos costes totales de pares simples y dobles en la
-        // misma serie, la media falsearía el gate).
+        if comp.config.workWidth > InterpolationConfig.default.workWidth {
+            recentHighQualityPairTimings.append(measured.totalMS)
+            if recentHighQualityPairTimings.count > 6 {
+                recentHighQualityPairTimings.removeFirst()
+            }
+            // El MCFI se procesa por cada intervalo de la fuente: el par entero
+            // debe caber holgadamente en ese periodo, no solo cada frame de salida.
+            if interpolationPairCount > interpolationWarmupPairs,
+               recentHighQualityPairTimings.count == 6 {
+                let average = recentHighQualityPairTimings.reduce(0, +)
+                    / Double(recentHighQualityPairTimings.count)
+                let pairBudgetMS = sourcePeriod * 1_000.0 * 0.90
+                if average > pairBudgetMS {
+                    usesHighQualityFluidProfile = false
+                    compensator = nil
+                    recentHighQualityPairTimings.removeAll()
+                    recentPairTimings.removeAll()
+                    os_log("Frame+ HQ degradado: %.1fms/par > presupuesto %.1fms; se mantiene perfil fluido",
+                           log: benchLog, type: .info, average, pairBudgetMS)
+                }
+            }
+        }
+
+        // A 60 fps se sintetizan dos imágenes por intervalo fuente, así que la
+        // medida debe ser el coste del PAR completo. A 48 sólo hay una síntesis
+        // por par y el coste por imagen coincide con ese mismo presupuesto.
         let frameBudgetMS = 1_000.0 / max(sourceFrameRate ?? 24.0, 24.0)
         let budgetThreshold = frameBudgetMS * 0.90
         let perFrameCost = measured.totalMS / Double(max(tValues.count, 1))
+        let is60FPS = scheduler?.mode == .interpolated60
+        let budgetCost = is60FPS ? measured.totalMS : perFrameCost
+        let budgetUnit = is60FPS ? "par" : "frame"
 
         if interpolationPairCount <= interpolationWarmupPairs {
             os_log("interpolatePair [warm-up %d/%d, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
@@ -1423,14 +2175,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                    interpolationPairCount, interpolationWarmupPairs, tValues.count,
                    measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
         } else {
-            recentPairTimings.append(perFrameCost)
+            recentPairTimings.append(budgetCost)
             if recentPairTimings.count > interpolationTimingWindow {
                 recentPairTimings.removeFirst()
             }
             let avg = recentPairTimings.reduce(0, +) / Double(recentPairTimings.count)
-            os_log("interpolatePair [%d/%d avg %.1fms/frame, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
+            os_log("interpolatePair [%d/%d avg %.1fms/%{public}@, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
                    log: benchLog, type: .info,
-                   recentPairTimings.count, interpolationTimingWindow, avg, tValues.count,
+                   recentPairTimings.count, interpolationTimingWindow, avg, budgetUnit, tValues.count,
                    measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
             // Falso positivo de arranque (medido en BLEACH 1080p y Avatar 4K):
             // el decoder/GPU en frío + warm-up dejan muestras de 45-100ms en los
@@ -1446,7 +2198,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     ? 0
                     : Double(DispatchTime.now().uptimeNanoseconds - firstPairCompletedAt) / 1e9
                 if startupElapsed >= throughputSkipStartupSeconds {
-                    disableInterpolation(reason: String(format: "coste medio %.1fms/frame > presupuesto %.1fms", avg, budgetThreshold))
+                    downgradeTo48OrDisable(reason: String(format: "coste medio %.1fms/%@ > presupuesto %.1fms", avg, budgetUnit, budgetThreshold))
                     return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
                 }
             }
@@ -1581,6 +2333,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let first = pair.0
                     let second = pair.1
                     let delta = max(second.pts - first.pts, 1.0 / 24.0)
+                    let pairIsEven = interpPairIndex % 2 == 0
+                    let uniform60 = uniformCadence && sched.mode == .interpolated60
+                    // The first source image of a uniform-60 pair is often not
+                    // emitted at all: the earliest visible sample is t=0.4 or
+                    // t=0.2. Staleness must therefore use that sample's PTS,
+                    // not I0's PTS, otherwise a still-viable pair is discarded
+                    // and creates a 58ms presentation hole.
+                    let firstOutputT: Double
+                    if uniform60 {
+                        firstOutputT = pairIsEven ? 0.4 : 0.2
+                    } else if !hasPresentedInterpolatedStart {
+                        firstOutputT = 0
+                    } else if sched.mode == .interpolated60 {
+                        firstOutputT = pairIsEven ? 0.5 : (1.0 / 3.0)
+                    } else {
+                        firstOutputT = 0.5
+                    }
+                    let firstOutputPTS = first.pts + delta * firstOutputT
                     // ── Timeline log: display reserve ──────────────────────────────
                     do {
                         let isConsecutive = abs(delta - sourcePeriod) < 1e-4
@@ -1619,16 +2389,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let tAfterPace = DispatchTime.now().uptimeNanoseconds
                     let stagePaceMS = Double(tAfterPace - tAfterReserve) / 1_000_000.0
                     if Task.isCancelled { break }
-                    // Equivalente de Fijación C en la rama interpolada: si el par
-                    // quedó obsoleto (first.pts + margen < reloj) descartarlo en vez
-                    // de interpolar y presentarlo tarde.
+                    // Equivalente de Fijación C en la rama interpolada: si el
+                    // primer sample visible del par quedó obsoleto, descartarlo en
+                    // vez de interpolar y presentarlo tarde.
                     let clkPace = sched.synchronizer.currentTime().seconds
-                    if first.pts + self.interpBehindMargin < clkPace {
+                    if firstOutputPTS + self.interpBehindMargin < clkPace {
                         self.interpolationStaleDrops += 1
-                        let staleDeltaMS = (clkPace - (first.pts + self.interpBehindMargin)) * 1000.0
-                        RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-STALE] id=%d pair=(%.3f,%.3f) clock=%.3f behindMargin=%.3f staleDelta=%.1fms poolN=%d prevPTS=%.3f",
+                        let staleDeltaMS = (clkPace - (firstOutputPTS + self.interpBehindMargin)) * 1000.0
+                        RiftPlayerState.writeNegPTSLog(String(format: "[RIFT-STALE] id=%d pair=(%.3f,%.3f) firstOut=%.3f clock=%.3f behindMargin=%.3f staleDelta=%.1fms poolN=%d prevPTS=%.3f",
                             interpInvocationID, first.pts, second.pts,
-                            clkPace, self.interpBehindMargin, staleDeltaMS,
+                            firstOutputPTS, clkPace, self.interpBehindMargin, staleDeltaMS,
                             pool.count, lastEmittedPTS))
                         pool.consumePair()
                         await self.coordinator.signal()
@@ -1647,6 +2417,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // lugar se presenta `first` nativo y se avanza; el siguiente
                     // par contiguo retoma la interpolación sin duplicar contenido.
                     if second.pts - first.pts > 1.5 * sourcePeriod {
+                        // HEVC puede entregar primero los frames de referencia
+                        // futuros y después sus B-frames. Mientras el pool tenga
+                        // cupo, esperar su pequeña ventana de reordenamiento evita
+                        // publicar ese futuro y volver obsoletos los frames que
+                        // llegan a continuación. Un hueco que persiste con el pool
+                        // lleno sí usa el fallback de abajo.
+                        if pool.count < pool.capacity {
+                            try? await Task.sleep(nanoseconds: 1_000_000)
+                            continue
+                        }
                         // If previous iteration already emitted `second` as
                         // SOURCE (via interpOutputs), then `first` here is
                         // the same frame — skip to avoid duplicate PTS.
@@ -1676,6 +2456,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             hasNPlusOne ? 1 : 0, nPlusOnePTS,
                             hasNPlusTwo ? 1 : 0, nPlusTwoPTS,
                             previousEnqueuedPTS, first.pts, pool.count))
+                        if first.pts <= previousEnqueuedPTS + 0.000_001 {
+                            RiftPlayerState.writeNegPTSLog(String(format:
+                                "[RIFT-STALE-GAP] id=%d first=%.3f prevPTS=%.3f",
+                                interpInvocationID, first.pts, previousEnqueuedPTS))
+                            pool.consumePair()
+                            await self.coordinator.signal()
+                            prevPairEmittedSecondSource = false
+                            continue
+                        }
                         let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
                         let gridStep = uniformCadence ? (sourcePeriod * 0.4) : (second.pts - first.pts)
                         let dur = CMTime(seconds: gridStep, preferredTimescale: 1200)
@@ -1714,7 +2503,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // par par, 0.2/0.6 en el impar — en vez de las duraciones
                     // 20.8/13.9 alternantes de la 3:2 (judder de telecine).
                     // Revertir a 3:2 para A/B: RIFT_CADENCE=telecine.
-                    let pairIsEven = interpPairIndex % 2 == 0
                     interpPairIndex += 1
                     let tValues: [Float]
                     switch sched.mode {
@@ -1738,7 +2526,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
                     // Construir la secuencia ordenada de salida del par.
                     var outputs: [(pts: Double, isInterp: Bool, pb: CVPixelBuffer)] = []
-                    let uniform60 = uniformCadence && sched.mode == .interpolated60
                     if uniform60 {
                         // Cadencia uniforme 60Hz: cada salida cae en el grid de
                         // 16.67ms. El frame real central (B) de cada par par NO
@@ -1791,6 +2578,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     invEnqueueCalls = 0
                     invEnqueueNotReady = 0
 
+                    // AVSampleBufferDisplayLayer cannot repair samples that
+                    // arrive behind its active timeline. A repeated/gapped pair
+                    // can otherwise make an old synthetic buffer visible after
+                    // a newer source frame. Keep the presentation queue strictly
+                    // monotonic; the next valid pair fills the cadence.
+                    if previousEnqueuedPTS >= 0 {
+                        let beforeCount = outputs.count
+                        outputs.removeAll { $0.pts <= previousEnqueuedPTS + 0.000_001 }
+                        if outputs.count != beforeCount {
+                            RiftPlayerState.writeNegPTSLog(String(format:
+                                "[RIFT-STALE-OUTPUT] id=%d removed=%d prevPTS=%.3f",
+                                interpInvocationID, beforeCount - outputs.count, previousEnqueuedPTS))
+                        }
+                    }
+
                     // Encolar con duración = intervalo hasta el siguiente pts.
                     for i in 0..<outputs.count {
                         let o = outputs[i]
@@ -1808,7 +2610,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 1200)
                         rend.pendingOrigin = "interpOutputs"; rend.pendingType = o.isInterp ? "INTERP" : "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
-                            if Self.forceDisplayImmediateOnInterpolated {
+                            let clockAtEnqueue = sched.synchronizer.currentTime().seconds
+                            if Self.forceDisplayImmediateOnInterpolated || o.pts <= clockAtEnqueue {
                                 self.markDisplayImmediately(sbuf)
                             }
                             self.framesRequestedForEnqueue += 1

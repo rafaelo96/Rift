@@ -81,10 +81,26 @@ public struct TrackInfo: Equatable {
 public struct ContainerInfo: Equatable {
     public let duration: Double
     public let tracks: [TrackInfo]
+    public let chapters: [ChapterInfo]
 
-    public init(duration: Double, tracks: [TrackInfo]) {
+    public init(duration: Double, tracks: [TrackInfo], chapters: [ChapterInfo] = []) {
         self.duration = duration
         self.tracks = tracks
+        self.chapters = chapters
+    }
+}
+
+/// A chapter entry already indexed by the container. Reading this metadata
+/// never decodes or scans video packets.
+public struct ChapterInfo: Equatable {
+    public let start: Double
+    public let end: Double
+    public let title: String
+
+    public init(start: Double, end: Double, title: String) {
+        self.start = start
+        self.end = end
+        self.title = title
     }
 }
 

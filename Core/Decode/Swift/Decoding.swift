@@ -51,7 +51,20 @@ public enum DecodeError: Error, CustomStringConvertible {
     }
 }
 
-/// Decoder for one video track. One packet in → (at most) one pixel buffer out.
+/// A decoded image and its presentation timestamp as reported by VideoToolbox.
+/// The timestamp belongs to the output image, which may differ from the packet
+/// currently being fed while codecs reorder B-frames.
+public struct DecodedVideoFrame {
+    public let pixelBuffer: CVPixelBuffer
+    public let pts: Double
+
+    public init(pixelBuffer: CVPixelBuffer, pts: Double) {
+        self.pixelBuffer = pixelBuffer
+        self.pts = pts
+    }
+}
+
+/// Decoder for one video track. One packet in → (at most) one decoded frame out.
 /// Implementations decode with hardware (VTDecompressionSession) and never
 /// transcode nor write anything to disk.
 public protocol VideoDecoding: AnyObject {
@@ -59,11 +72,11 @@ public protocol VideoDecoding: AnyObject {
     /// Must be called before decoding; may be called again to switch tracks.
     func prepare(track: TrackInfo) throws
 
-    /// Decodes one compressed video packet into a CVPixelBuffer.
+    /// Decodes one compressed packet into a frame with its output PTS.
     /// - Returns: the decoded frame, or `nil` if the packet produced no output
     ///   (e.g. a non-reference NAL). Output buffers carry the HDR color
     ///   CVBufferAttachments (color_trc/color_primaries from Demux).
-    func decodeFrame(_ packet: CompressedPacket) throws -> CVPixelBuffer?
+    func decodeFrame(_ packet: CompressedPacket) throws -> DecodedVideoFrame?
 
     /// Flushes delayed/in-flight frames of the decoder (call after a seek).
     func flush()

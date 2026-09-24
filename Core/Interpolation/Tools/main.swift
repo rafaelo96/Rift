@@ -25,6 +25,11 @@
 //               the worst MAD in the decoded window)
 //    MV_ARTIFACT_MAX  pairs scanned when auto-selecting (default 16)
 //    MV_ARTIFACT_DIR  output directory (default <dumpDir>/artifact)
+//    MV_CONTACT  1 dumps a compact contact sheet of production MotionCompensator
+//               outputs for consecutive pairs around the seek point (default 0)
+//    MV_CONTACT_MAX  pairs to render into the contact sheet (default MV_PAIRS)
+//    MV_CONTACT_T    interpolation position to render (default 0.5)
+//    MV_CONTACT_DIR  output directory (default <dumpDir>/contact)
 //
 // Success criterion: real measured time per stage on ≥100 real pairs from an
 // MKV, reported as mean/p50/p95 on the M4, and a visually verifiable MV field.
@@ -980,6 +985,130 @@ private func artifactChromaU8(_ pb: CVPixelBuffer) -> [UInt8]? {
     return out
 }
 
+private func resizeGrayNearest(_ src: [UInt8], width: Int, height: Int, outW: Int, outH: Int) -> [UInt8] {
+    guard width > 0, height > 0, outW > 0, outH > 0 else { return [] }
+    var out = [UInt8](repeating: 0, count: outW * outH)
+    for y in 0..<outH {
+        let sy = min(height - 1, y * height / outH)
+        for x in 0..<outW {
+            let sx = min(width - 1, x * width / outW)
+            out[y * outW + x] = src[sy * width + sx]
+        }
+    }
+    return out
+}
+
+private func writeProductionContactSheet(
+    frameBuffers: [CVPixelBuffer],
+    frameTimes: [Double],
+    pairCount: Int,
+    directory: String
+) {
+    let maxPairs = min(envInt("MV_CONTACT_MAX", pairCount), frameBuffers.count - 1)
+    let contactT = Float(min(max(envDouble("MV_CONTACT_T") ?? 0.5, 0.0), 1.0))
+    let pairTValues: [Float]? = ProcessInfo.processInfo.environment["MV_CONTACT_PAIR60"] == "1"
+        ? [0.4, 0.8]
+        : nil
+    guard maxPairs > 0 else {
+        print("MV_CONTACT: no hay pares suficientes")
+        return
+    }
+    try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+
+    let mc: MotionCompensator
+    do {
+        let config: InterpolationConfig
+        switch ProcessInfo.processInfo.environment["MV_CONTACT_PROFILE"] {
+        case "fluid":
+            config = .fluid
+        case "fluid-cat":
+            config = InterpolationConfig(
+                usesBidirectionalSafetyCheck: false,
+                usesCatastrophicSafetyCheck: true
+            )
+        case "fluid-bidi":
+            config = InterpolationConfig(
+                usesBidirectionalSafetyCheck: true,
+                usesCatastrophicSafetyCheck: false
+            )
+        case "fluid-hq":
+            config = InterpolationConfig(
+                workWidth: 1536,
+                workHeight: 640,
+                usesBidirectionalSafetyCheck: false,
+                usesCatastrophicSafetyCheck: false
+            )
+        default:
+            config = .default
+        }
+        mc = try MotionCompensator(config: config)
+    } catch {
+        print("MV_CONTACT: MotionCompensator falló — \(error)")
+        return
+    }
+
+    let firstW = CVPixelBufferGetWidthOfPlane(frameBuffers[0], 0)
+    let firstH = CVPixelBufferGetHeightOfPlane(frameBuffers[0], 0)
+    let thumbW = max(96, envInt("MV_CONTACT_W", 384))
+    let thumbH = max(1, Int((Double(thumbW) * Double(firstH) / Double(max(firstW, 1))).rounded()))
+    let gap = 6
+    let cols = max(1, envInt("MV_CONTACT_COLS", 4))
+    let rows = (maxPairs + cols - 1) / cols
+    let sheetW = cols * thumbW + (cols + 1) * gap
+    let sheetH = rows * thumbH + (rows + 1) * gap
+    var sheet = [UInt8](repeating: 18, count: sheetW * sheetH)
+
+    let modeDescription = pairTValues == nil
+        ? "t=\(String(format: "%.2f", contactT))"
+        : "t=[0.40,0.80]"
+    let firstTime = frameTimes.first ?? 0
+    print("\n--- MV_CONTACT producción (\(modeDescription), \(maxPairs) pares desde ≈\(String(format: "%.2f", firstTime)) s) ---")
+    for i in 0..<maxPairs {
+        let pb: CVPixelBuffer?
+        let meMS: Double
+        let warpMS: Double
+        let upscaleMS: Double
+        if let pairTValues {
+            let result = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: pairTValues)
+            pb = result.pixelBuffers.first
+            meMS = result.meMS
+            warpMS = result.warpMS
+            upscaleMS = result.upscaleMS
+        } else {
+            let result = mc.interpolateWithTimings(I0: frameBuffers[i], I1: frameBuffers[i + 1], t: contactT)
+            pb = result.pixelBuffer
+            meMS = result.meMS
+            warpMS = result.warpMS
+            upscaleMS = result.upscaleMS
+        }
+        guard let pb,
+              let full = artifactFullLumaU8(pb) else {
+            print("  contact \(i): output NIL")
+            continue
+        }
+        let w = CVPixelBufferGetWidthOfPlane(pb, 0)
+        let h = CVPixelBufferGetHeightOfPlane(pb, 0)
+        let thumb = resizeGrayNearest(full, width: w, height: h, outW: thumbW, outH: thumbH)
+        let row = i / cols
+        let col = i % cols
+        let ox = gap + col * (thumbW + gap)
+        let oy = gap + row * (thumbH + gap)
+        for y in 0..<thumbH {
+            let dst = (oy + y) * sheetW + ox
+            let src = y * thumbW
+            sheet.replaceSubrange(dst..<(dst + thumbW), with: thumb[src..<(src + thumbW)])
+        }
+        _ = writeGrayPNG(thumb, width: thumbW, height: thumbH, to: "\(directory)/pair_\(String(format: "%02d", i))_interp.png")
+        let mode = (warpMS == 0 && upscaleMS == 0) ? "fallback" : "warp"
+        print(String(format: "  contact %02d @ %.2fs: %@ ME %.3f Warp %.3f Upscale %.3f",
+                     i, frameTimes.indices.contains(i) ? frameTimes[i] : firstTime, mode, meMS, warpMS, upscaleMS))
+    }
+
+    let sheetPath = "\(directory)/contact_sheet.png"
+    _ = writeGrayPNG(sheet, width: sheetW, height: sheetH, to: sheetPath)
+    print("MV_CONTACT dumps: \(sheetPath) y \(directory)/pair_##_interp.png")
+}
+
 private func runArtifactDiagnosis(
     I0: CVPixelBuffer, I1: CVPixelBuffer, pairIndex: Int, approxTime: Double,
     warpEngine: WarpEngine, config: InterpolationConfig, dumpDir: String
@@ -1181,6 +1310,10 @@ private func runArtifactDiagnosis(
     csv.append("fullres_artifact_frac_th10,\(String(format: "%.6f", fullFrac))")
     csv.append("fullres_overlap_with_ghost_mask,\(String(format: "%.4f", overlapFrac))")
 
+    // El directorio debe existir antes de los CSV de diagnóstico por bloque.
+    try? FileManager.default.createDirectory(atPath: dumpDir, withIntermediateDirectories: true)
+    writeMVCSV(mv, gridW: g.w, gridH: g.h, path: "\(prefix)_mv.csv")
+
     // --- Análisis por bloque (preguntas A/B/C/D): un CSV con una fila por
     // bloque 8x8 del work plane: MV, textura local (sigma de I0), distancia a
     // inputs, far-from-both en t=0.5, y errores en los endpoints t=0/t=1.
@@ -1281,7 +1414,6 @@ private func runArtifactDiagnosis(
                  Double(cntLowTex) / nBlocks * 100, cntLowTex > 0 ? sumFarInLowTex / Double(cntLowTex) : 0, prefix))
 
     // Dumps del par
-    try? FileManager.default.createDirectory(atPath: dumpDir, withIntermediateDirectories: true)
     _ = writeGrayPNG(c0, width: ww, height: wh, to: "\(prefix)_cur.png")
     _ = writeGrayPNG(c1, width: ww, height: wh, to: "\(prefix)_ref.png")
     _ = writeGrayPNG(uT0, width: ww, height: wh, to: "\(prefix)_t0.png")
@@ -1359,15 +1491,21 @@ print(String(format: "decoding from %.2f s (≈%.0f%%) until %d luma planes are 
 
 var frames: [Data] = []
 var frameBuffers: [CVPixelBuffer] = []
+var frameTimes: [Double] = []
 var readPackets = 0
 while frames.count < pairCount + 1 && readPackets < 100_000 {
     guard let packet = try? demuxer.nextPacket() else { break }
     readPackets += 1
     guard packet.streamIndex == video.streamIndex else { continue }
-    guard let buf = try? decoder.decodeFrame(packet) else { continue }
+    guard let decodedFrame = try? decoder.decodeFrame(packet) else { continue }
+    // FFmpeg seek lands on the preceding keyframe. Ignore its decoded lead-in
+    // so the contact sheet and artifact report use the requested PTS.
+    guard decodedFrame.pts + 0.001 >= seekTime else { continue }
+    let buf = decodedFrame.pixelBuffer
     guard let luma = scaledLuma(buf) else { continue }
     frames.append(luma)
     frameBuffers.append(buf)
+    frameTimes.append(decodedFrame.pts)
 }
 decoder.close()
 demuxer.close()
@@ -1759,9 +1897,10 @@ if envInt("MV_ARTIFACT", 0) == 1 && frameBuffers.count >= 2 {
     if artifactIdx < 0 || artifactIdx >= frameBuffers.count - 1 {
         print("MV_ARTIFACT: par inválido (\(artifactIdx)); MVs/crops no exportados")
     } else {
-        let fps = video.frameRate ?? 24.0
-        let approxTime = seekTime + Double(artifactIdx) / fps
-        let cfg = InterpolationConfig()
+        let approxTime = frameTimes.indices.contains(artifactIdx) ? frameTimes[artifactIdx] : seekTime
+        let cfg: InterpolationConfig = ProcessInfo.processInfo.environment["MV_PROFILE"] == "fluid"
+            ? .fluid
+            : .default
         try? runArtifactDiagnosis(
             I0: frameBuffers[artifactIdx], I1: frameBuffers[artifactIdx + 1],
             pairIndex: artifactIdx, approxTime: approxTime,
@@ -1769,6 +1908,16 @@ if envInt("MV_ARTIFACT", 0) == 1 && frameBuffers.count >= 2 {
         )
     }
     window = max(window, 0)
+}
+
+if envInt("MV_CONTACT", 0) == 1 && frameBuffers.count >= 2 {
+    let contactDir = ProcessInfo.processInfo.environment["MV_CONTACT_DIR"] ?? "\(dumpDir)/contact"
+    writeProductionContactSheet(
+        frameBuffers: frameBuffers,
+        frameTimes: frameTimes,
+        pairCount: min(pairCount, frameBuffers.count - 1),
+        directory: contactDir
+    )
 }
 
 if tjitOn && tjFields.count >= 2 {

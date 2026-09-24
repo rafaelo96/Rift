@@ -35,7 +35,7 @@ public final class WarpEngine {
     private var loggedChromaStride = false
     private var loggedNoChromaWarp = false
     private let noChromaWarp: Bool
-    private let outPoolCapacity: Int = 8
+    private let outPoolCapacity: Int = 32
 
     public init(msl: String) throws {
         guard let device = MTLCreateSystemDefaultDevice(),

@@ -1,29 +1,69 @@
 import AppKit
 import SwiftUI
 
+enum RiftPalette {
+    static let cyan = Color(red: 0.22, green: 0.78, blue: 0.96)
+    static let blue = Color(red: 0.043, green: 0.55, blue: 0.965)
+    static let deepBlue = Color(red: 0.027, green: 0.35, blue: 0.96)
+    static let midnight = Color(red: 0.008, green: 0.034, blue: 0.075)
+    static let luminousGradient = LinearGradient(
+        colors: [cyan, blue, deepBlue],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+}
+
 // MARK: - Glass Background
 
 struct GlassBackground: View {
     var cornerRadius: CGFloat = 16
-    var blendsWithWindow: Bool = false
+    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
+    var effectOpacity: Double = 0.16
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(.black.opacity(0.18))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0.06),
-                                .white.opacity(0.015),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
+        ZStack {
+            NativeVisualEffectView(
+                material: .underWindowBackground,
+                blendingMode: blendingMode
+            )
+            .opacity(effectOpacity)
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.black.opacity(0.006))
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.white.opacity(0.010))
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(RiftPalette.blue.opacity(0.010))
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.095), .white.opacity(0.018), .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
-            }
+                )
+                .mask(alignment: .top) {
+                    Rectangle()
+                        .frame(height: cornerRadius * 1.7)
+                        .blur(radius: 8)
+                }
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(.white.opacity(0.24), lineWidth: 0.5)
+                .padding(1)
+                .mask(alignment: .top) {
+                    Rectangle()
+                        .frame(height: cornerRadius * 1.45)
+                        .blur(radius: 5)
+                }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -31,13 +71,13 @@ struct GlassBackground: View {
 
 struct LiquidGlassPanel<Content: View>: View {
     var cornerRadius: CGFloat = 16
-    var blendsWithWindow: Bool = false
     @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .background(GlassBackground(cornerRadius: cornerRadius, blendsWithWindow: blendsWithWindow))
-            .shadow(color: .black.opacity(0.20), radius: 16, x: 0, y: 8)
+            .background(GlassBackground(cornerRadius: cornerRadius))
+            .shadow(color: .black.opacity(0.16), radius: 20, x: 0, y: 10)
+            .shadow(color: .white.opacity(0.035), radius: 1, x: 0, y: -1)
     }
 }
 
@@ -52,7 +92,7 @@ struct GlassButtonStyle: ViewModifier {
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(isHovered
-                        ? Color(red: 0.40, green: 0.65, blue: 1.0).opacity(0.08)
+                        ? RiftPalette.cyan.opacity(0.10)
                         : .clear)
                     .animation(.easeOut(duration: 0.12), value: isHovered)
             }

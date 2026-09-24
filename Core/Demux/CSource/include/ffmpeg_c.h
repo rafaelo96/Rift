@@ -55,6 +55,14 @@ typedef struct {
     const uint8_t *extradata;     /* owned by the context; valid while it is open */
 } RiftTrackInfoC;
 
+/* One chapter as exposed by the container index. Title points into FFmpeg
+ * metadata and remains valid while the context is open. */
+typedef struct {
+    double      start_seconds;
+    double      end_seconds;
+    const char *title;
+} RiftChapterInfoC;
+
 /* Returns NULL on failure; error_buffer receives a human-readable message. */
 RiftDemuxCtx *rift_demux_open(const char *path,
                               char *error_buffer, size_t error_buffer_size);
@@ -67,6 +75,10 @@ int rift_demux_track_count(RiftDemuxCtx *ctx);
 
 /* Fills `out` for track `index`. Returns 0 on success, nonzero on error. */
 int rift_demux_track_info(RiftDemuxCtx *ctx, int index, RiftTrackInfoC *out);
+
+/* Container chapter metadata only. These functions never read packets. */
+int rift_demux_chapter_count(RiftDemuxCtx *ctx);
+int rift_demux_chapter_info(RiftDemuxCtx *ctx, int index, RiftChapterInfoC *out);
 
 /* Reads the next compressed packet into `out`.
  * Returns 1 on success, 0 on end-of-stream, negative on error. */

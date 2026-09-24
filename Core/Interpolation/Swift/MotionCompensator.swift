@@ -54,6 +54,13 @@ public struct InterpolationPairResult {
 
 public final class MotionCompensator {
 
+    private struct RenderMotionField {
+        let vectors: [SIMD2<Int32>]
+        let gridW: Int
+        let gridH: Int
+        let blockSize: Int
+    }
+
     public enum Error: Swift.Error, CustomStringConvertible {
         case metalDeviceUnavailable
         case engineInitFailed(String)
@@ -75,7 +82,13 @@ public final class MotionCompensator {
     private let device: MTLDevice
     private let queue: MTLCommandQueue
     private let me: MotionSearchEngine
+    /// Backward flow on a coarse block grid. It is a confidence check,
+    /// not a second production field: forward/backward disagreement identifies
+    /// occlusions that one-way block matching cannot synthesize safely.
+    private let backValidationME: MotionSearchEngine
     private let warp: WarpEngine
+    private let validationWidth: Int
+    private let validationHeight: Int
 
     // Texturas L0 reusables: una por slot (I0, I1). Las redimensionamos si el
     // tamaño del par cambia (no debería — siempre llega del mismo video).
@@ -99,6 +112,8 @@ public final class MotionCompensator {
         self.device = device
         self.queue = queue
         self.config = config
+        self.validationWidth = config.workWidth / 2
+        self.validationHeight = config.workHeight / 2
         let n = config.workWidth * config.workHeight
         vdspA = [Float](repeating: 0, count: n)
         vdspB = [Float](repeating: 0, count: n)
@@ -129,6 +144,23 @@ public final class MotionCompensator {
                 gateL0: true,
                 temporalGatePx: config.temporalGatePx
             )
+
+            // A 16px block in this half-size plane spans 32x32 pixels of the
+            // normal work plane. This keeps the validation pass inexpensive
+            // while still resolving foreground/background disagreement.
+            let validationSpec = [
+                LevelSpec(width: validationWidth, height: validationHeight,
+                          blockSize: 16, searchHalfPel: 16,
+                          halfPelRefine: false, inheritFactor: 1),
+            ]
+            self.backValidationME = try MotionSearchEngine(
+                msl: motionShadersMSL,
+                spec: validationSpec,
+                lambdaPx: config.lambdaPx,
+                smoothL0: true,
+                gateL0: true,
+                temporalGatePx: 0
+            )
         } catch {
             throw Error.engineInitFailed("\(error)")
         }
@@ -145,6 +177,7 @@ public final class MotionCompensator {
     /// arrastrar historia de jitter a través de una discontinuidad temporal.
     public func resetTemporalState() {
         me.resetTemporalState()
+        backValidationME.resetTemporalState()
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).
@@ -193,21 +226,49 @@ public final class MotionCompensator {
 
         let meStart = DispatchTime.now().uptimeNanoseconds
         let pairTimes = me.runPair(cur: luma0, ref: luma1)
-        let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
 
         let mvField = me.downloadMV(level: 0, smoothed: true)
         guard !mvField.isEmpty else {
+            let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
             return InterpolationPairResult(pixelBuffers: [], meMS: meMS, warpMS: 0)
         }
 
         let g = me.grids[0]
+        let hasCatastrophicField = config.usesCatastrophicSafetyCheck
+            && isCatastrophicMVField(mvField, gridW: g.w, gridH: g.h)
+        let needsSourceFallback = (hasCatastrophicField
+                                   && !config.usesAttenuatedCatastrophicSafetyBlend)
+            || (config.usesBidirectionalSafetyCheck
+                && isBidirectionallyInconsistent(forward: mvField, gridW: g.w, gridH: g.h,
+                                                  luma0: luma0, luma1: luma1))
+        let needsMotionlessBlend = config.usesUnmatchableEffectSafetyCheck
+            && hasUnmatchableEffect(luma0: luma0, luma1: luma1, mv: mvField,
+                                    gridW: g.w, gridH: g.h)
+        let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
+        if needsSourceFallback {
+            return InterpolationPairResult(pixelBuffers: sourceFallbackBuffers(I0: I0, I1: I1, tValues: tValues),
+                                           meMS: meMS, warpMS: 0, upscaleMS: 0)
+        }
+
+        let renderField = RenderMotionField(
+            vectors: needsMotionlessBlend
+                ? [SIMD2<Int32>](repeating: .zero, count: mvField.count)
+                : (hasCatastrophicField && config.usesAttenuatedCatastrophicSafetyBlend
+                    ? confidenceFilteredSafetyMotionField(
+                        luma0: luma0, luma1: luma1, mv: mvField, gridW: g.w, gridH: g.h
+                    )
+                    : mvField),
+            gridW: g.w,
+            gridH: g.h,
+            blockSize: config.blockSize
+        )
         let (buffers, warpTotal, upscaleTotal) = warp.interpolatePixelBufferPair(
             I0: I0, I1: I1,
             luma0: luma0, luma1: luma1,
             workWidth: config.workWidth, workHeight: config.workHeight,
-            mv: mvField,
-            gridW: g.w, gridH: g.h,
-            blockSize: config.blockSize,
+            mv: renderField.vectors,
+            gridW: renderField.gridW, gridH: renderField.gridH,
+            blockSize: renderField.blockSize,
             tValues: tValues,
             occThresh: 1.0
         )
@@ -231,21 +292,49 @@ public final class MotionCompensator {
         // ME: pyramidal block matching, half-pel MVs al nivel L0.
         let meStart = DispatchTime.now().uptimeNanoseconds
         let pairTimes = me.runPair(cur: luma0, ref: luma1)
-        let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
 
         let mvField = me.downloadMV(level: 0, smoothed: true)
         guard !mvField.isEmpty else {
+            let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
             return InterpolationResult(pixelBuffer: nil, meMS: meMS, warpMS: 0)
         }
 
         let g = me.grids[0]
+        let hasCatastrophicField = config.usesCatastrophicSafetyCheck
+            && isCatastrophicMVField(mvField, gridW: g.w, gridH: g.h)
+        let needsSourceFallback = (hasCatastrophicField
+                                   && !config.usesAttenuatedCatastrophicSafetyBlend)
+            || (config.usesBidirectionalSafetyCheck
+                && isBidirectionallyInconsistent(forward: mvField, gridW: g.w, gridH: g.h,
+                                                  luma0: luma0, luma1: luma1))
+        let needsMotionlessBlend = config.usesUnmatchableEffectSafetyCheck
+            && hasUnmatchableEffect(luma0: luma0, luma1: luma1, mv: mvField,
+                                    gridW: g.w, gridH: g.h)
+        let meMS = Double(DispatchTime.now().uptimeNanoseconds - meStart) / 1_000_000.0
+        if needsSourceFallback {
+            return InterpolationResult(pixelBuffer: sourceFallbackBuffer(I0: I0, I1: I1, t: t),
+                                       meMS: meMS, warpMS: 0, upscaleMS: 0)
+        }
+
+        let renderField = RenderMotionField(
+            vectors: needsMotionlessBlend
+                ? [SIMD2<Int32>](repeating: .zero, count: mvField.count)
+                : (hasCatastrophicField && config.usesAttenuatedCatastrophicSafetyBlend
+                    ? confidenceFilteredSafetyMotionField(
+                        luma0: luma0, luma1: luma1, mv: mvField, gridW: g.w, gridH: g.h
+                    )
+                    : mvField),
+            gridW: g.w,
+            gridH: g.h,
+            blockSize: config.blockSize
+        )
         let (pb, gpuWarpMS, upscaleMS) = warp.interpolatePixelBuffer(
             I0: I0, I1: I1,
             luma0: luma0, luma1: luma1,
             workWidth: config.workWidth, workHeight: config.workHeight,
-            mv: mvField,
-            gridW: g.w, gridH: g.h,
-            blockSize: config.blockSize,
+            mv: renderField.vectors,
+            gridW: renderField.gridW, gridH: renderField.gridH,
+            blockSize: renderField.blockSize,
             t: t,
             occThresh: 1.0
         )
@@ -363,6 +452,336 @@ public final class MotionCompensator {
     private func isStaticPair(_ luma0: Data, _ luma1: Data) -> Bool {
         guard workMAD(luma0, luma1) < 6.0 else { return false }
         return texturedFraction(luma0, width: config.workWidth, height: config.workHeight, threshold: 24) < 0.06
+    }
+
+    // Runtime guard for unsafe MV fields. A coherent pan can carry many large
+    // vectors and still be usable; the frames we must suppress combine sizable
+    // local motion with discontinuities between neighboring blocks.
+    private func isCatastrophicMVField(_ mv: [SIMD2<Int32>], gridW: Int, gridH: Int) -> Bool {
+        guard gridW > 1, gridH > 1, mv.count == gridW * gridH else { return false }
+
+        var gt8Count = 0
+        var gt16Count = 0
+        var gt24Count = 0
+        var maxMagPx = 0.0
+
+        for v in mv {
+            let mag = hypot(Double(v.x), Double(v.y)) * 0.5
+            maxMagPx = max(maxMagPx, mag)
+            if mag > 8.0 { gt8Count += 1 }
+            if mag > 16.0 { gt16Count += 1 }
+            if mag > 24.0 { gt24Count += 1 }
+        }
+
+        var edgeCount = 0
+        var jump24Count = 0
+
+        func addJump(_ a: SIMD2<Int32>, _ b: SIMD2<Int32>) {
+            edgeCount += 1
+            let jump = hypot(Double(a.x - b.x), Double(a.y - b.y)) * 0.5
+            if jump >= 24.0 { jump24Count += 1 }
+        }
+
+        for y in 0..<gridH {
+            for x in 0..<gridW {
+                let idx = y * gridW + x
+                if x + 1 < gridW { addJump(mv[idx], mv[idx + 1]) }
+                if y + 1 < gridH { addJump(mv[idx], mv[idx + gridW]) }
+            }
+        }
+
+        guard edgeCount > 0 else { return false }
+        let blocks = Double(mv.count)
+        let gt8Fraction = Double(gt8Count) / blocks
+        let gt16Fraction = Double(gt16Count) / blocks
+        let gt24Fraction = Double(gt24Count) / blocks
+        let jump24Fraction = Double(jump24Count) / Double(edgeCount)
+
+        // These thresholds deliberately target only fields that are far beyond
+        // ordinary fast camera/object motion. Earlier broad conditions marked
+        // legitimate action as unsafe and visibly reduced Frame+'s fluidity.
+        let widespreadExtremeField = gt24Fraction >= 0.15 && jump24Fraction >= 0.04
+        let discontinuousHighMotion = gt8Fraction >= 0.65
+            && gt16Fraction >= 0.15
+            && gt24Fraction >= 0.04
+            && jump24Fraction >= 0.02
+        let sparseExplosiveField = gt8Fraction <= 0.10
+            && gt16Fraction >= 0.025
+            && gt24Fraction >= 0.02
+            && jump24Fraction >= 0.01
+            && maxMagPx >= 96.0
+        return widespreadExtremeField || discontinuousHighMotion || sparseExplosiveField
+    }
+
+    /// A translational field should bring corresponding luma samples together
+    /// at t=0.5. Animated light, particles and morphs violate that assumption:
+    /// their inputs remain far apart even after applying the predicted motion.
+    /// A single block-center sample keeps this below the real-time budget. When
+    /// the failure covers a substantial part of the frame, the caller uses a
+    /// motionless temporal blend rather than applying an incoherent field.
+    private func hasUnmatchableEffect(
+        luma0: Data,
+        luma1: Data,
+        mv: [SIMD2<Int32>],
+        gridW: Int,
+        gridH: Int
+    ) -> Bool {
+        let width = config.workWidth
+        let height = config.workHeight
+        let blockSize = config.blockSize
+        guard width > 1, height > 1,
+              gridW * gridH == mv.count,
+              luma0.count == width * height * MemoryLayout<UInt16>.stride,
+              luma1.count == luma0.count else {
+            return false
+        }
+
+        return luma0.withUnsafeBytes { raw0 -> Bool in
+            luma1.withUnsafeBytes { raw1 -> Bool in
+                guard let source0 = raw0.bindMemory(to: UInt16.self).baseAddress,
+                      let source1 = raw1.bindMemory(to: UInt16.self).baseAddress else {
+                    return false
+                }
+
+                @inline(__always)
+                func sample(_ source: UnsafePointer<UInt16>, _ x: Float, _ y: Float) -> Float {
+                    let cx = min(max(x, 0), Float(width - 1))
+                    let cy = min(max(y, 0), Float(height - 1))
+                    let ix = min(Int(cx.rounded(.down)), width - 2)
+                    let iy = min(Int(cy.rounded(.down)), height - 2)
+                    let fx = cx - Float(ix)
+                    let fy = cy - Float(iy)
+                    let i = iy * width + ix
+                    let top = Float(source[i]) + (Float(source[i + 1]) - Float(source[i])) * fx
+                    let bottom = Float(source[i + width]) + (Float(source[i + width + 1]) - Float(source[i + width])) * fx
+                    return top + (bottom - top) * fy
+                }
+
+                var unmatchableBlocks = 0
+                var changingBlocks = 0
+                var improvedBlocks = 0
+                let totalBlocks = gridW * gridH
+                let centerOffset = blockSize / 2
+
+                for by in 0..<gridH {
+                    for bx in 0..<gridW {
+                        let flow = mv[by * gridW + bx]
+                        let flowX = Float(flow.x) * 0.5
+                        let flowY = Float(flow.y) * 0.5
+                        let x = Float(min(bx * blockSize + centerOffset, width - 1))
+                        let y = Float(min(by * blockSize + centerOffset, height - 1))
+                        let rawDifference = abs(sample(source0, x, y) - sample(source1, x, y))
+                        let warpedDifference = abs(
+                            sample(source0, x - 0.5 * flowX, y - 0.5 * flowY)
+                                - sample(source1, x + 0.5 * flowX, y + 0.5 * flowY)
+                        )
+                        if rawDifference >= 64 {
+                            changingBlocks += 1
+                            if warpedDifference + 32 < rawDifference {
+                                improvedBlocks += 1
+                            }
+                        }
+                        // 16/255 residual plus 8/255 worse than not moving
+                        // is the same conservative threshold used by MVProbe.
+                        if warpedDifference >= 64 && warpedDifference >= rawDifference + 32 {
+                            unmatchableBlocks += 1
+                        }
+                    }
+                }
+
+                let extensiveResidual = unmatchableBlocks * 100 >= totalBlocks * 20
+                // The predicted field is also unsafe when it cannot improve
+                // even one third of materially changing blocks. This catches
+                // high-contrast drawn transformations where every local vector
+                // looks plausible but the complete field has no temporal use.
+                let poorFieldUtility = changingBlocks * 100 >= totalBlocks * 20
+                    && improvedBlocks * 100 < changingBlocks * 30
+                return extensiveResidual || poorFieldUtility
+            }
+        }
+    }
+
+    /// Returns true when a cheap reverse match cannot explain the forward field.
+    /// A forward-only field can look coherent inside a moving person while being
+    /// incompatible with the background it uncovers. The check operates on 32px
+    /// work-plane cells (36x15 at the default resolution), so it is intentionally
+    /// a pair-level safety decision rather than a costly second warp field.
+    private func isBidirectionallyInconsistent(
+        forward: [SIMD2<Int32>], gridW: Int, gridH: Int,
+        luma0: Data, luma1: Data
+    ) -> Bool {
+        guard let coarse0 = downscaleForValidation(luma0),
+              let coarse1 = downscaleForValidation(luma1) else { return false }
+
+        _ = backValidationME.runPair(cur: coarse1, ref: coarse0)
+        let backward = backValidationME.downloadMV(level: 0, smoothed: true)
+        let backGrid = backValidationME.grids[0]
+        guard backGrid.w > 0, backGrid.h > 0,
+              backward.count == backGrid.w * backGrid.h,
+              gridW % backGrid.w == 0, gridH % backGrid.h == 0 else { return false }
+
+        let spanX = gridW / backGrid.w
+        let spanY = gridH / backGrid.h
+        let validationScale = config.workWidth / validationWidth
+        let cellWidth = Double(config.workWidth) / Double(backGrid.w)
+        let cellHeight = Double(config.workHeight) / Double(backGrid.h)
+        var moving = 0
+        var inconsistent = 0
+        var severe = 0
+
+        for y in 0..<backGrid.h {
+            for x in 0..<backGrid.w {
+                var sumX: Int64 = 0
+                var sumY: Int64 = 0
+                for fy in (y * spanY)..<((y + 1) * spanY) {
+                    for fx in (x * spanX)..<((x + 1) * spanX) {
+                        let f = forward[fy * gridW + fx]
+                        sumX += Int64(f.x)
+                        sumY += Int64(f.y)
+                    }
+                }
+
+                let samples = Int64(spanX * spanY)
+                let fx = Int32(sumX / samples)
+                let fy = Int32(sumY / samples)
+                let forwardMagnitude = hypot(Double(fx), Double(fy)) * 0.5
+                guard forwardMagnitude >= 1.5 else { continue }
+
+                // Forward vectors use half-pel units at full work resolution.
+                // Map the destination to a coarse cell, then convert the reverse
+                // half-pel vector back to the full-resolution unit system.
+                let targetX = min(max(Int((Double(x) + Double(fx) * 0.5 / cellWidth).rounded()), 0), backGrid.w - 1)
+                let targetY = min(max(Int((Double(y) + Double(fy) * 0.5 / cellHeight).rounded()), 0), backGrid.h - 1)
+                let back = backward[targetY * backGrid.w + targetX]
+                let errorX = Double(fx + Int32(validationScale) * back.x) * 0.5
+                let errorY = Double(fy + Int32(validationScale) * back.y) * 0.5
+                let closureError = hypot(errorX, errorY)
+
+                moving += 1
+                if closureError >= 4.0 { inconsistent += 1 }
+                if closureError >= 8.0 { severe += 1 }
+            }
+        }
+
+        guard moving >= 4 else { return false }
+        let inconsistentFraction = Double(inconsistent) / Double(moving)
+        let severeFraction = Double(severe) / Double(moving)
+        let movingFraction = Double(moving) / Double(backGrid.w * backGrid.h)
+        return (movingFraction >= 0.04 && inconsistentFraction >= 0.22)
+            || (movingFraction >= 0.02 && severeFraction >= 0.08)
+    }
+
+    private func downscaleForValidation(_ luma: Data) -> Data? {
+        let sourceWidth = config.workWidth
+        let sourceHeight = config.workHeight
+        guard sourceWidth > 0, sourceHeight > 0,
+              luma.count == sourceWidth * sourceHeight * MemoryLayout<UInt16>.stride else { return nil }
+
+        var output = Data(count: validationWidth * validationHeight * MemoryLayout<UInt16>.stride)
+        let error: vImage_Error = luma.withUnsafeBytes { sourceRaw in
+            output.withUnsafeMutableBytes { outputRaw in
+                guard let source = sourceRaw.bindMemory(to: UInt16.self).baseAddress,
+                      let destination = outputRaw.bindMemory(to: UInt16.self).baseAddress else {
+                    return vImage_Error(kvImageInvalidParameter)
+                }
+                var sourceBuffer = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: source),
+                                                 height: vImagePixelCount(sourceHeight),
+                                                 width: vImagePixelCount(sourceWidth),
+                                                 rowBytes: sourceWidth * MemoryLayout<UInt16>.stride)
+                var destinationBuffer = vImage_Buffer(data: destination,
+                                                      height: vImagePixelCount(validationHeight),
+                                                      width: vImagePixelCount(validationWidth),
+                                                      rowBytes: validationWidth * MemoryLayout<UInt16>.stride)
+                // This is a confidence pass only; a fast resize is sufficient
+                // and avoids spending quality-resampling time off the render path.
+                return vImageScale_Planar16U(&sourceBuffer, &destinationBuffer, nil,
+                                              vImage_Flags(kvImageNoFlags))
+            }
+        }
+        return error == kvImageNoError ? output : nil
+    }
+
+    /// Preserves motion only in blocks where it reduces the local temporal
+    /// residual. A drawn morph can yield a spatially smooth but false field;
+    /// spatial filtering alone therefore cannot prevent its contours tearing.
+    /// Invalid blocks fall back to a temporal blend while valid blocks retain
+    /// their full displacement and the resulting output remains 48/60 fps.
+    private func confidenceFilteredSafetyMotionField(
+        luma0: Data,
+        luma1: Data,
+        mv: [SIMD2<Int32>],
+        gridW: Int,
+        gridH: Int
+    ) -> [SIMD2<Int32>] {
+        let width = config.workWidth
+        let height = config.workHeight
+        let blockSize = config.blockSize
+        guard width > 1, height > 1,
+              mv.count == gridW * gridH,
+              luma0.count == width * height * MemoryLayout<UInt16>.stride,
+              luma1.count == luma0.count else {
+            return mv
+        }
+
+        return luma0.withUnsafeBytes { raw0 in
+            luma1.withUnsafeBytes { raw1 in
+                guard let source0 = raw0.bindMemory(to: UInt16.self).baseAddress,
+                      let source1 = raw1.bindMemory(to: UInt16.self).baseAddress else {
+                    return mv
+                }
+
+                @inline(__always)
+                func sample(_ source: UnsafePointer<UInt16>, _ x: Float, _ y: Float) -> Float {
+                    let cx = min(max(x, 0), Float(width - 1))
+                    let cy = min(max(y, 0), Float(height - 1))
+                    let ix = min(Int(cx.rounded(.down)), width - 2)
+                    let iy = min(Int(cy.rounded(.down)), height - 2)
+                    let fx = cx - Float(ix)
+                    let fy = cy - Float(iy)
+                    let index = iy * width + ix
+                    let top = Float(source[index]) + (Float(source[index + 1]) - Float(source[index])) * fx
+                    let bottom = Float(source[index + width]) + (Float(source[index + width + 1]) - Float(source[index + width])) * fx
+                    return top + (bottom - top) * fy
+                }
+
+                var filtered = mv
+                let centerOffset = blockSize / 2
+                for by in 0..<gridH {
+                    for bx in 0..<gridW {
+                        let index = by * gridW + bx
+                        let flow = mv[index]
+                        let flowX = Float(flow.x) * 0.5
+                        let flowY = Float(flow.y) * 0.5
+                        let x = Float(min(bx * blockSize + centerOffset, width - 1))
+                        let y = Float(min(by * blockSize + centerOffset, height - 1))
+                        let rawDifference = abs(sample(source0, x, y) - sample(source1, x, y))
+                        let warpedDifference = abs(
+                            sample(source0, x - 0.5 * flowX, y - 0.5 * flowY)
+                                - sample(source1, x + 0.5 * flowX, y + 0.5 * flowY)
+                        )
+
+                        // Do not discard real movement because of luma noise;
+                        // remove a vector only when it materially worsens an
+                        // already changing block. The warp bilinearly samples
+                        // the field, naturally feathering this local fallback.
+                        if rawDifference >= 64,
+                           warpedDifference >= 64,
+                           warpedDifference >= rawDifference + 32 {
+                            filtered[index] = .zero
+                        }
+                    }
+                }
+                return filtered
+            }
+        }
+    }
+
+    private func sourceFallbackBuffers(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float]) -> [CVPixelBuffer] {
+        tValues.map { sourceFallbackBuffer(I0: I0, I1: I1, t: $0) }
+    }
+
+    private func sourceFallbackBuffer(I0: CVPixelBuffer, I1: CVPixelBuffer, t: Float) -> CVPixelBuffer {
+        t <= 0.5 ? I0 : I1
     }
 
     // MARK: - Luma extraction + downscale (host)

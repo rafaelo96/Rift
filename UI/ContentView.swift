@@ -14,28 +14,31 @@ extension FocusedValues {
     }
 }
 
-// MARK: - App icon from SVG
+// MARK: - Rift brand mark
 
-private struct RiftLogo: View {
+private struct RiftBrandMark: View {
+    var size: CGFloat = 96
+
     var body: some View {
-        if let url = Bundle.main.url(forResource: "rift-logo", withExtension: "svg")
-            ?? Bundle.main.url(forResource: "rift-logo", withExtension: "png"),
+        if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 160, height: 160)
+                .frame(width: size, height: size)
         }
     }
 }
 
 private struct PlayerView: NSViewRepresentable {
     var player: AVPlayer?
+    var videoGravity: AVLayerVideoGravity
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         view.wantsLayer = true
         let layer = AVPlayerLayer(player: player)
-        layer.videoGravity = .resizeAspect
+        layer.videoGravity = videoGravity
         layer.needsDisplayOnBoundsChange = true
         view.layer = layer
         return view
@@ -43,12 +46,18 @@ private struct PlayerView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         if let layer = nsView.layer as? AVPlayerLayer {
             if layer.player !== player { layer.player = player }
-            layer.videoGravity = .resizeAspect
+            layer.videoGravity = videoGravity
         }
     }
 }
 
 private class HDRDisplayNSView: NSView {
+    var videoGravity: AVLayerVideoGravity = .resizeAspect {
+        didSet {
+            displayLayer?.videoGravity = videoGravity
+        }
+    }
+
     var displayLayer: AVSampleBufferDisplayLayer? {
         didSet {
             if let old = oldValue, old.superlayer === self.layer {
@@ -56,7 +65,7 @@ private class HDRDisplayNSView: NSView {
             }
             if let l = displayLayer {
                 self.layer?.addSublayer(l)
-                l.videoGravity = .resizeAspect
+                l.videoGravity = videoGravity
                 l.needsDisplayOnBoundsChange = true
                 l.isOpaque = true
                 needsLayout = true
@@ -84,15 +93,87 @@ private class HDRDisplayNSView: NSView {
 
 private struct HDRDisplayView: NSViewRepresentable {
     var displayLayer: AVSampleBufferDisplayLayer?
+    var videoGravity: AVLayerVideoGravity
+
     func makeNSView(context: Context) -> NSView {
         let view = HDRDisplayNSView(frame: .zero)
+        view.videoGravity = videoGravity
         view.displayLayer = displayLayer
         return view
     }
     func updateNSView(_ nsView: NSView, context: Context) {
         guard let view = nsView as? HDRDisplayNSView else { return }
+        view.videoGravity = videoGravity
         view.displayLayer = displayLayer
         view.needsLayout = true
+    }
+}
+
+private enum VideoPresentationMode: CaseIterable, Identifiable {
+    case fit
+    case fill
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .fit: NSLocalizedString("Fit", comment: "Video presentation mode")
+        case .fill: NSLocalizedString("Fill", comment: "Video presentation mode")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .fit: "rectangle.inset.filled"
+        case .fill: "rectangle.fill"
+        }
+    }
+
+    var videoGravity: AVLayerVideoGravity {
+        switch self {
+        case .fit: .resizeAspect
+        case .fill: .resizeAspectFill
+        }
+    }
+}
+
+private struct TopChromeGlyph: View {
+    let systemName: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white.opacity(isHovered ? 0.98 : 0.76))
+            .frame(width: 30, height: 30)
+            .contentShape(Circle())
+            .background {
+                Circle()
+                    .fill(.white.opacity(isHovered ? 0.16 : 0.001))
+            }
+            .overlay {
+                Circle()
+                    .strokeBorder(.white.opacity(isHovered ? 0.24 : 0.001), lineWidth: 0.5)
+            }
+            .scaleEffect(reduceMotion || !isHovered ? 1 : 1.04)
+            .animation(reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.16), value: isHovered)
+            .onHover { isHovered = $0 }
+    }
+}
+
+private struct TopChromeButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            TopChromeGlyph(systemName: systemName)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .help(accessibilityLabel)
     }
 }
 
@@ -110,6 +191,7 @@ private struct AmbientParticle: Identifiable {
 
 struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     @ObservedObject var state: PlayerStateType
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isDropTargeted = false
 
@@ -126,6 +208,9 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     @State private var controlsSize: CGSize = .zero
     @State private var isPositionInitialized = false
     @State private var isDraggingControls = false
+    @State private var presentationMode: VideoPresentationMode = .fit
+    @State private var showTechnicalInfo = false
+    @State private var showPlaybackOptions = false
 
     init(state: PlayerStateType) {
         self.state = state
@@ -135,17 +220,30 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         ZStack {
             appBackdrop
 
-            if !state.hasVideo {
-                ambientParticles
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-            }
-
             if state.hasVideo {
                 videoContentView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
-                    .overlay(videoVignette)
+                    .overlay(alignment: .topTrailing) {
+                        if interactiveReady {
+                            topPlayerControls
+                                .zIndex(1)
+                                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                                .opacity(state.areControlsVisible ? 1.0 : 0.0)
+                                .scaleEffect(reduceMotion ? 1 : (state.areControlsVisible ? 1 : 0.985))
+                                .offset(y: reduceMotion || state.areControlsVisible ? 0 : 10)
+                                .blur(radius: reduceMotion || state.areControlsVisible ? 0 : 3)
+                                .allowsHitTesting(state.areControlsVisible)
+                                .animation(controlVisibilityAnimation, value: state.areControlsVisible)
+                                .onHover { isHovering in
+                                    if isHovering {
+                                        state.stopHideTimer()
+                                    } else {
+                                        state.startHideTimer()
+                                    }
+                                }
+                        }
+                    }
                     .transition(.opacity.combined(with: .scale(scale: 1.01)))
             }
 
@@ -159,19 +257,16 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
 
-            if !state.hasVideo {
-                filmGrainOverlay
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-            }
-
-            if interactiveReady {
+            if interactiveReady, state.hasVideo {
                 GeometryReader { geometry in
                     ZStack {
                         PlayerControlsView(state: state)
                     }
                     .opacity(state.areControlsVisible ? 1.0 : 0.0)
-                    .scaleEffect(state.areControlsVisible ? 1 : 0.96)
+                    .scaleEffect(reduceMotion ? 1 : (state.areControlsVisible ? 1 : 0.985))
+                    .offset(y: reduceMotion || state.areControlsVisible ? 0 : 10)
+                    .blur(radius: reduceMotion || state.areControlsVisible ? 0 : 3)
+                    .allowsHitTesting(state.areControlsVisible)
                     .background {
                         GeometryReader { proxy in
                             Color.clear.onAppear { controlsSize = proxy.size }
@@ -182,7 +277,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                         y: controlsPosition.y + controlsDrag.height
                     )
                     .scaleEffect(isDraggingControls ? 0.98 : 1)
-                    .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isDraggingControls)
+                    .animation(controlVisibilityAnimation, value: state.areControlsVisible)
+                    .animation(controlDragAnimation, value: isDraggingControls)
                     .onAppear {
                         guard !isPositionInitialized else { return }
                         controlsPosition = CGPoint(x: geometry.size.width / 2, y: geometry.size.height - 82)
@@ -220,11 +316,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .simultaneousGesture(
                         TapGesture(count: 2)
                             .onEnded {
-                                let w = geometry.size.width
-                                let h = geometry.size.height
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                    controlsPosition = CGPoint(x: w / 2, y: h - 82)
-                                    controlsDrag = .zero
+                            let w = geometry.size.width
+                            let h = geometry.size.height
+                            withAnimation(controlVisibilityAnimation) {
+                                controlsPosition = CGPoint(x: w / 2, y: h - 82)
+                                controlsDrag = .zero
                                 }
                             }
                     )
@@ -233,19 +329,19 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         }
         .background(appBackdrop)
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: handleDrop)
-        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.hasVideo)
-        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: isDropTargeted)
+        .animation(controlVisibilityAnimation, value: state.hasVideo)
+        .animation(controlDragAnimation, value: isDropTargeted)
         .onAppear {
             state.startHideTimer()
             setupKeyboardMonitor()
-            for url in AppDelegate.takePendingOpenURLs() {
+            let pendingURLs = AppDelegate.takePendingOpenURLs()
+            for url in pendingURLs {
                 (state as? RiftPlayerState)?.loadVideo(url)
             }
-            generateParticles()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 interactiveReady = true
             }
-            if !state.hasVideo {
+            if !state.hasVideo, !reduceMotion {
                 withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                     promptPulse = 1.0
                 }
@@ -263,7 +359,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         }
         .onChange(of: state.hasVideo) { _, hasVideo in
             if hasVideo {
-                withAnimation(.interactiveSpring) {
+                withAnimation(controlVisibilityAnimation) {
                     promptPulse = 0
                 }
                 state.resetHideTimer()
@@ -285,11 +381,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private var videoPlaceholder: some View {
         ZStack {
-            Color.black.opacity(0.85)
+            RiftPalette.midnight
             VStack(spacing: 12) {
                 Image(systemName: "play.tv")
                     .font(.system(size: 40, weight: .light))
-                    .foregroundStyle(Color(red: 0.45, green: 0.70, blue: 1.0))
+                    .foregroundStyle(RiftPalette.luminousGradient)
                 Text(NSLocalizedString("Video pipeline not connected", comment: ""))
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.6))
@@ -301,12 +397,242 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     @ViewBuilder
     private var videoContentView: some View {
         if let rift = state as? RiftPlayerState, let dl = rift.displayLayer {
-            HDRDisplayView(displayLayer: dl)
+            HDRDisplayView(displayLayer: dl, videoGravity: presentationMode.videoGravity)
         } else if let rift = state as? RiftPlayerState, let p = rift.player {
-            PlayerView(player: p)
+            PlayerView(player: p, videoGravity: presentationMode.videoGravity)
         } else {
             videoPlaceholder
         }
+    }
+
+    private var topPlayerControls: some View {
+        HStack(spacing: 2) {
+            TopChromeButton(
+                systemName: presentationMode.icon,
+                accessibilityLabel: NSLocalizedString("Toggle video presentation", comment: "")
+            ) {
+                withAnimation(controlDragAnimation) {
+                    presentationMode = presentationMode == .fit ? .fill : .fit
+                }
+            }
+
+            TopChromeButton(
+                systemName: "ellipsis",
+                accessibilityLabel: NSLocalizedString("More playback options", comment: "")
+            ) {
+                showPlaybackOptions.toggle()
+            }
+            .popover(isPresented: $showPlaybackOptions, arrowEdge: .top) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    (state as? RiftPlayerState)?.openVideo()
+                } label: {
+                    Label(NSLocalizedString("Open Video...", comment: ""), systemImage: "folder")
+                }
+
+                Button {
+                    (state as? RiftPlayerState)?.addVideosToPlaylist()
+                } label: {
+                    Label(NSLocalizedString("Add to Playlist...", comment: ""), systemImage: "text.badge.plus")
+                }
+
+                if let rift = state as? RiftPlayerState, !rift.recentVideos.isEmpty {
+                    Menu(NSLocalizedString("Recent", comment: "")) {
+                        ForEach(rift.recentVideos) { video in
+                            Button(video.title) {
+                                rift.loadVideo(video.url)
+                            }
+                        }
+
+                        Divider()
+
+                        Button(NSLocalizedString("Clear Recent Videos", comment: ""), role: .destructive) {
+                            rift.clearRecentVideos()
+                        }
+                    }
+                }
+
+                if let rift = state as? RiftPlayerState, !rift.playlist.isEmpty {
+                    Menu(NSLocalizedString("Playlist", comment: "")) {
+                        ForEach(rift.playlist) { item in
+                            Button {
+                                rift.playPlaylistItem(item)
+                            } label: {
+                                Label(item.title, systemImage: item.id == rift.activePlaylistItemID ? "play.fill" : "play")
+                            }
+                        }
+
+                        Divider()
+
+                        Button(NSLocalizedString("Previous Video", comment: "")) {
+                            rift.playPreviousPlaylistItem()
+                        }
+                        .disabled(rift.playlist.first?.id == rift.activePlaylistItemID)
+
+                        Button(NSLocalizedString("Next Video", comment: "")) {
+                            rift.playNextPlaylistItem()
+                        }
+                        .disabled(rift.playlist.last?.id == rift.activePlaylistItemID)
+                    }
+                }
+
+                Divider()
+
+                if let rift = state as? RiftPlayerState {
+                    Button {
+                        rift.addMarker()
+                    } label: {
+                        Label(NSLocalizedString("Add Marker", comment: ""), systemImage: "bookmark.badge.plus")
+                    }
+
+                    if !rift.markers.isEmpty {
+                        Menu(NSLocalizedString("Markers", comment: "")) {
+                            ForEach(rift.markers) { marker in
+                                Button {
+                                    rift.seek(to: marker.time)
+                                } label: {
+                                    Text(marker.title)
+                                }
+                            }
+                        }
+                    }
+
+                    if !rift.chapters.isEmpty {
+                        Menu(NSLocalizedString("Chapters", comment: "")) {
+                            ForEach(Array(rift.chapters.enumerated()), id: \.offset) { index, chapter in
+                                Button {
+                                    rift.seek(to: chapter.start)
+                                } label: {
+                                    Text("\(index + 1). \(chapter.title)  \(rift.formattedTime(chapter.start))")
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        showTechnicalInfo = true
+                    } label: {
+                        Label(NSLocalizedString("Technical Info", comment: ""), systemImage: "info.circle")
+                    }
+                    .disabled(rift.technicalInfo == nil)
+
+                    Menu(NSLocalizedString("Audio Sync", comment: "")) {
+                        ForEach([-0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5], id: \.self) { offset in
+                            Button {
+                                rift.setAudioSyncOffset(offset)
+                            } label: {
+                                Label(
+                                    audioSyncTitle(for: offset),
+                                    systemImage: abs(rift.audioSyncOffset - offset) < 0.001 ? "checkmark" : "circle"
+                                )
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    Button {
+                        rift.openExternalSubtitles()
+                    } label: {
+                        Label(NSLocalizedString("Load Subtitle File...", comment: ""), systemImage: "captions.bubble")
+                    }
+
+                    if let subtitleName = rift.externalSubtitleName {
+                        Button(role: .destructive) {
+                            rift.removeExternalSubtitles()
+                        } label: {
+                            Label("\(NSLocalizedString("Remove External Subtitles", comment: "")) (\(subtitleName))", systemImage: "captions.bubble.fill")
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    state.closeVideo()
+                } label: {
+                    Label(NSLocalizedString("Close Video", comment: ""), systemImage: "xmark")
+                }
+                    }
+                    .padding(10)
+                }
+                .frame(width: 290, height: 360)
+                }
+
+            if let rift = state as? RiftPlayerState, rift.isPictureInPictureAvailable {
+                TopChromeButton(
+                    systemName: rift.isPictureInPictureActive ? "pip.exit" : "pip.enter",
+                    accessibilityLabel: NSLocalizedString("Picture in Picture", comment: "")
+                ) {
+                    rift.togglePictureInPicture()
+                }
+            }
+
+            TopChromeButton(
+                systemName: "arrow.up.left.and.arrow.down.right",
+                accessibilityLabel: NSLocalizedString("Toggle full screen", comment: "")
+            ) {
+                NSApp.keyWindow?.toggleFullScreen(nil)
+            }
+        }
+        .fixedSize()
+        .padding(4)
+        .background {
+            GlassBackground(cornerRadius: 19, effectOpacity: 0.34)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        .padding(.top, 12)
+        .padding(.trailing, 14)
+        .popover(isPresented: $showTechnicalInfo, arrowEdge: .top) {
+            technicalInfoPanel
+        }
+    }
+
+    @ViewBuilder
+    private var technicalInfoPanel: some View {
+        if let rift = state as? RiftPlayerState, let info = rift.technicalInfo {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(info.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
+                    technicalInfoRow(NSLocalizedString("Resolution", comment: ""), info.resolution)
+                    technicalInfoRow(NSLocalizedString("Video", comment: ""), info.videoCodec)
+                    technicalInfoRow(NSLocalizedString("Frame Rate", comment: ""), info.frameRate)
+                    technicalInfoRow(NSLocalizedString("Color", comment: ""), info.colorSpace)
+                    technicalInfoRow(NSLocalizedString("Audio", comment: ""), info.audio)
+                    technicalInfoRow(NSLocalizedString("Duration", comment: ""), info.duration)
+                }
+            }
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(18)
+            .frame(width: 320, alignment: .leading)
+            .background {
+                GlassBackground(cornerRadius: 16, effectOpacity: 0.28)
+            }
+        }
+    }
+
+    private func technicalInfoRow(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.white.opacity(0.48))
+            Text(value)
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+        }
+        .font(.system(size: 12, weight: .medium))
+    }
+
+    private func audioSyncTitle(for offset: Double) -> String {
+        guard offset != 0 else { return NSLocalizedString("In Sync", comment: "") }
+        return String(format: "%@ %.0f ms", offset > 0 ? "+" : "-", abs(offset) * 1_000)
     }
 
     // MARK: - Keyboard & mouse monitoring
@@ -350,7 +676,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 state.setVolume(state.volume > 0 ? 0 : 0.72)
                 return nil
             case 4: // H - toggle controls
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.85)) {
+                withAnimation(controlVisibilityAnimation) {
                     state.areControlsVisible.toggle()
                 }
                 return nil
@@ -417,7 +743,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     dotContext.opacity = particleOpacity
                     dotContext.fill(
                         Path(ellipseIn: CGRect(x: xPos, y: yPos, width: p.size, height: p.size)),
-                        with: .color(Color(red: 0.55, green: 0.78, blue: 1.0))
+                        with: .color(.white.opacity(0.62))
                     )
                 }
             }
@@ -427,30 +753,31 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private var appBackdrop: some View {
         ZStack {
-            Color(red: 0.010, green: 0.035, blue: 0.095)
-                .ignoresSafeArea()
+            if state.hasVideo {
+                Color.black
+            } else {
+                GlassBackground(
+                    cornerRadius: 0,
+                    blendingMode: .behindWindow,
+                    effectOpacity: 0.58
+                )
 
-            RadialGradient(
-                colors: [
-                    Color(red: 0.22, green: 0.42, blue: 0.88).opacity(0.12),
-                    .clear
-                ],
-                center: .topTrailing,
-                startRadius: 60,
-                endRadius: 680
-            )
-
-            RadialGradient(
-                colors: [
-                    Color(red: 0.03, green: 0.14, blue: 0.42).opacity(0.18),
-                    .clear
-                ],
-                center: .center,
-                startRadius: 100,
-                endRadius: 720
-            )
+                Color.black.opacity(isDropTargeted ? 0.12 : 0.20)
+            }
         }
         .ignoresSafeArea()
+    }
+
+    private var controlVisibilityAnimation: Animation {
+        reduceMotion
+            ? .linear(duration: 0.01)
+            : .timingCurve(0.16, 1, 0.3, 1, duration: 0.26)
+    }
+
+    private var controlDragAnimation: Animation {
+        reduceMotion
+            ? .linear(duration: 0.01)
+            : .timingCurve(0.25, 1, 0.5, 1, duration: 0.16)
     }
 
     private var filmGrainOverlay: some View {
@@ -482,80 +809,19 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         Button {
             (state as? RiftPlayerState)?.openVideo()
         } label: {
-            VStack(spacing: 40) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color(red: 0.25, green: 0.50, blue: 1.0).opacity(0.20 + promptPulse * 0.15),
-                                    Color(red: 0.10, green: 0.22, blue: 0.70).opacity(0.06 + promptPulse * 0.06),
-                                    .clear
-                                ],
-                                center: .center,
-                                startRadius: 10 + promptPulse * 20,
-                                endRadius: 110 + promptPulse * 30
-                            )
-                        )
-                        .frame(width: 220 + promptPulse * 30, height: 220 + promptPulse * 30)
-                        .blur(radius: 6)
-                        .scaleEffect(isDropTargeted ? 1.35 : 1)
-
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.50, green: 0.75, blue: 1.0).opacity(0.30 + promptPulse * 0.20),
-                                    Color(red: 0.20, green: 0.44, blue: 0.90).opacity(0.06 + promptPulse * 0.06),
-                                    Color(red: 0.50, green: 0.75, blue: 1.0).opacity(0.15 + promptPulse * 0.15)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.2 + promptPulse * 1.0
-                        )
-                        .frame(width: 180 + promptPulse * 16, height: 180 + promptPulse * 16)
-
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.40, green: 0.65, blue: 1.0).opacity(0.08 + promptPulse * 0.10),
-                                    .clear,
-                                    Color(red: 0.40, green: 0.65, blue: 1.0).opacity(0.04 + promptPulse * 0.06)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.5 + promptPulse * 0.6
-                        )
-                        .frame(width: 240 + promptPulse * 20, height: 240 + promptPulse * 20)
-
-                    RiftLogo()
-
-                    RoundedRectangle(cornerRadius: 60, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.50, green: 0.75, blue: 1.0).opacity(isDropTargeted ? 0.30 : 0.06),
-                                    Color(red: 0.20, green: 0.44, blue: 0.90).opacity(isDropTargeted ? 0.15 : 0.02),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: isDropTargeted ? 2 : 1
-                        )
-                        .frame(width: 112, height: 76)
-                        .offset(y: 78)
-                        .opacity(isDropTargeted ? 1 : 0.5)
-                }
-                .frame(width: 280, height: 280)
-                .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.95).opacity(0.15), radius: 50, x: 0, y: 20)
+            VStack(spacing: 22) {
+                RiftBrandMark(size: 100)
+                    .scaleEffect(isDropTargeted ? 1.06 : 1 + promptPulse * 0.018)
+                    .shadow(color: RiftPalette.blue.opacity(0.35 + promptPulse * 0.12), radius: 24, x: 0, y: 12)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .strokeBorder(.white.opacity(isDropTargeted ? 0.48 : 0.22), lineWidth: 0.5)
+                    }
 
                 VStack(spacing: 10) {
                     Text(NSLocalizedString("Open Video", comment: ""))
                         .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(.white.opacity(0.96))
 
                     Text(NSLocalizedString("Drop a file here or click to browse", comment: ""))
                         .font(.system(size: 15, weight: .regular))
@@ -568,24 +834,9 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     // transcodificación). Sin Core/ esos estados no existen.
                 }
             }
-            .scaleEffect(isDropTargeted ? 1.03 : 1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.bottom, 80)
-    }
-
-    private var videoVignette: some View {
-        LinearGradient(
-            colors: [
-                .black.opacity(0.18),
-                .clear,
-                .black.opacity(0.55)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
     }
 
     private func subtitleOverlay(_ text: String) -> some View {
@@ -599,17 +850,20 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.95), radius: 4, x: 0, y: 1)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 9)
                 .background {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(.black.opacity(0.48))
+                    GlassBackground(cornerRadius: 12)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(RiftPalette.cyan.opacity(0.24), lineWidth: 0.5)
+                        }
                 }
                 .frame(maxWidth: 920)
                 .padding(.horizontal, 34)
                 .padding(.bottom, state.areControlsVisible ? 154 : 58)
         }
         .allowsHitTesting(false)
-        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: state.areControlsVisible)
+        .animation(controlVisibilityAnimation, value: state.areControlsVisible)
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {

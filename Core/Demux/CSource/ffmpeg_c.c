@@ -137,6 +137,26 @@ int rift_demux_track_info(RiftDemuxCtx *ctx, int index, RiftTrackInfoC *out) {
     return 0;
 }
 
+int rift_demux_chapter_count(RiftDemuxCtx *ctx) {
+    return ctx && ctx->fmt ? (int)ctx->fmt->nb_chapters : 0;
+}
+
+int rift_demux_chapter_info(RiftDemuxCtx *ctx, int index, RiftChapterInfoC *out) {
+    if (!ctx || !ctx->fmt || !out || index < 0 || index >= (int)ctx->fmt->nb_chapters) {
+        return -1;
+    }
+
+    AVChapter *chapter = ctx->fmt->chapters[index];
+    memset(out, 0, sizeof(*out));
+    out->start_seconds = ts_to_seconds(chapter->start, chapter->time_base);
+    out->end_seconds = ts_to_seconds(chapter->end, chapter->time_base);
+    {
+        AVDictionaryEntry *tag = av_dict_get(chapter->metadata, "title", NULL, 0);
+        out->title = tag ? tag->value : NULL;
+    }
+    return 0;
+}
+
 int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
     if (!ctx || !ctx->fmt || !out) {
         return -1;

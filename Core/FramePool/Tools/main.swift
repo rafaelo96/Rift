@@ -99,11 +99,11 @@ while decodedCount < maxVideoFrames && packetsRead < 200_000 {
     if demuxOnlyMode {
         decodedCount += 1
     } else {
-        guard let buffer = try decoder.decodeFrame(packet) else { continue }
+        guard let decodedFrame = try decoder.decodeFrame(packet) else { continue }
         if dropMode {
             // buffer goes out of scope here → released immediately
         } else {
-            pool.add(buffer: buffer, pts: packet.pts)
+            pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
         }
         decodedCount += 1
     }
@@ -153,9 +153,9 @@ var postSeekPts: [Double] = []
 for _ in 0..<6 {
     guard let packet = try demuxer.nextPacket() else { break }
     guard packet.streamIndex == video.streamIndex else { continue }
-    guard let buffer = try decoder.decodeFrame(packet) else { continue }
-    pool.add(buffer: buffer, pts: packet.pts)
-    postSeekPts.append(packet.pts)
+    guard let decodedFrame = try decoder.decodeFrame(packet) else { continue }
+    pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
+    postSeekPts.append(decodedFrame.pts)
 }
 
 let oldest = pool.oldest()

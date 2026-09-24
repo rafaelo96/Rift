@@ -73,7 +73,8 @@ let package = Package(
         .executableTarget(
             name: "Rift",
             dependencies: ["Contracts", "Demux", "Decode", "DecodeAudio", "FramePool", "Scheduler", "Rendering", "Interpolation"],
-            path: "UI"
+            path: "UI",
+            resources: [.process("Assets")]
         ),
         // Core/Demux — split into a pure C target (shim over libavformat) and
         // a Swift target that wraps it. Container access only; never decodes.

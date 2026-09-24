@@ -50,9 +50,25 @@ public final class FFmpegDemuxer: Demuxing {
             ))
         }
 
+        let chapterCount = Int(rift_demux_chapter_count(handle))
+        var chapters: [ChapterInfo] = []
+        chapters.reserveCapacity(chapterCount)
+        for index in 0..<chapterCount {
+            var raw = RiftChapterInfoC()
+            guard rift_demux_chapter_info(handle, Int32(index), &raw) == 0 else { continue }
+            let title = raw.title.map { String(cString: $0) }
+                ?? "Chapter \(index + 1)"
+            chapters.append(ChapterInfo(
+                start: raw.start_seconds,
+                end: raw.end_seconds,
+                title: title
+            ))
+        }
+
         return ContainerInfo(
             duration: rift_demux_duration_seconds(handle),
-            tracks: tracks
+            tracks: tracks,
+            chapters: chapters
         )
     }
 

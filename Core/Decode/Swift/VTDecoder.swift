@@ -32,6 +32,7 @@ public final class VTDecoder: VideoDecoding {
     /// decodeFrame returns. The module decodes one frame at a time from a
     /// single thread, which keeps this race-free as currently used.
     private var pendingBuffer: CVPixelBuffer?
+    private var pendingPresentationTime: CMTime?
     private var pendingStatus: OSStatus?
 
     public init() {}
@@ -73,7 +74,7 @@ public final class VTDecoder: VideoDecoding {
         self.session = session
     }
 
-    public func decodeFrame(_ packet: CompressedPacket) throws -> CVPixelBuffer? {
+    public func decodeFrame(_ packet: CompressedPacket) throws -> DecodedVideoFrame? {
         guard let session, let track, let formatDescription else {
             throw DecodeError.notPrepared
         }
@@ -85,6 +86,7 @@ public final class VTDecoder: VideoDecoding {
         let sampleBuffer = try makeSampleBuffer(from: packet, formatDescription: formatDescription)
 
         pendingBuffer = nil
+        pendingPresentationTime = nil
         pendingStatus = nil
         let status = VTDecompressionSessionDecodeFrame(
             session,
@@ -99,11 +101,15 @@ public final class VTDecoder: VideoDecoding {
         }
 
         let buffer = pendingBuffer
+        let presentationTime = pendingPresentationTime
         pendingBuffer = nil
+        pendingPresentationTime = nil
         if let buffer {
             attachColorMetadata(to: buffer)
+            let pts = presentationTime?.isValid == true ? presentationTime!.seconds : packet.pts
+            return DecodedVideoFrame(pixelBuffer: buffer, pts: pts)
         }
-        return buffer
+        return nil
     }
 
     public func flush() {
@@ -111,6 +117,7 @@ public final class VTDecoder: VideoDecoding {
         VTDecompressionSessionFinishDelayedFrames(session)
         VTDecompressionSessionWaitForAsynchronousFrames(session)
         pendingBuffer = nil
+        pendingPresentationTime = nil
         pendingStatus = nil
     }
 
@@ -123,6 +130,7 @@ public final class VTDecoder: VideoDecoding {
         config = nil
         track = nil
         pendingBuffer = nil
+        pendingPresentationTime = nil
         pendingStatus = nil
     }
 
@@ -395,7 +403,7 @@ public final class VTDecoder: VideoDecoding {
     /// marks CVBufferRef as ARC-managed, so the callback hands the buffer to the
     /// decoder via an Unmanaged-managed reference; `decodeFrame` takes ownership.
     private static let outputCallback: VTDecompressionOutputCallback = {
-        refCon, _, status, _, imageBuffer, _, _ in
+        refCon, _, status, _, imageBuffer, presentationTimeStamp, _ in
         guard let refCon else { return }
         let decoder = Unmanaged<VTDecoder>.fromOpaque(refCon).takeUnretainedValue()
         guard status == noErr else {
@@ -407,6 +415,7 @@ public final class VTDecoder: VideoDecoding {
             // is CFTypeRef-backed; bridging via Unmanaged transfers ownership.
             let managed = Unmanaged<CVPixelBuffer>.passRetained(imageBuffer)
             decoder.pendingBuffer = managed.takeRetainedValue()
+            decoder.pendingPresentationTime = presentationTimeStamp
         }
     }
 }
