@@ -390,6 +390,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var subtitleTrack: TrackInfo?
     private var subtitleCues: [SubtitleCue] = []
     private var subtitleCueCache: [Int: [SubtitleCue]] = [:]
+    /// Invalidates asynchronous subtitle reads when the current video changes.
+    private var subtitleSessionID = UUID()
 
     // MARK: - Interpolation benchmark (baseline del display loop)
     private var benchSamples: [Double] = []
@@ -992,6 +994,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         persistCurrentSession(force: true)
         clearResumeSession()
         clearTimelineThumbnail()
+        resetSubtitleSession()
         decodeTask?.cancel(); decodeTask = nil
         audioTask?.cancel(); audioTask = nil
         displayTask?.cancel(); displayTask = nil
@@ -1022,8 +1025,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         markers = []
         chapters = []
         technicalInfo = nil
-        externalSubtitleURL = nil
-        externalSubtitleName = nil
         pictureInPictureController = nil
         pictureInPictureCoordinator = nil
         isPictureInPictureAvailable = false
@@ -1359,6 +1360,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
         persistCurrentSession(force: true)
         clearTimelineThumbnail()
+        resetSubtitleSession()
         audioTask?.cancel()
         // Un seek en vuelo del video anterior no debe ejecutarse sobre el nuevo
         // demuxer (seek a timestamp viejo en archivo nuevo).
@@ -1734,6 +1736,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func ensureSubtitleCues(url: URL, streamIndex: Int, done: @escaping () -> Void) {
+        let sessionID = subtitleSessionID
         let cached = subtitleCueCache[streamIndex]
         if cached != nil {
             done()
@@ -1742,10 +1745,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         Task.detached(priority: .utility) { [weak self] in
             let cues = Self.readSubtitleCues(url: url, trackStreamIndex: streamIndex)
             await MainActor.run {
-                self?.subtitleCueCache[streamIndex] = cues
+                guard let self,
+                      self.subtitleSessionID == sessionID,
+                      self.sourceURL == url else { return }
+                self.subtitleCueCache[streamIndex] = cues
                 done()
             }
         }
+    }
+
+    private func resetSubtitleSession() {
+        subtitleSessionID = UUID()
+        subtitleTrack = nil
+        subtitleCues.removeAll()
+        subtitleCueCache.removeAll()
+        selectedSubtitleTrack = nil
+        currentSubtitleText = nil
+        externalSubtitleURL = nil
+        externalSubtitleName = nil
     }
 
     private func startAudioLoop(url: URL, trackStreamIndex: Int, codecName: String, startTime: Double, extradata: [UInt8] = [], sampleRate: Int = 0, channels: Int = 0) {
