@@ -236,9 +236,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// periodo fuente, se degrada a `.fluid` sin apagar la interpolación.
     private var recentHighQualityPairTimings: [Double] = []
     private var usesHighQualityFluidProfile = true
-    /// If Frame+ was disabled by sustained fallback, allow re-attempt
-    /// after a user-initiated seek or mode change.
-    private var fallbackDisabled = false
+    /// Preferencia del usuario, separada del tier activo. Una degradación
+    /// automática a 48/24 no debe convertirse en su nueva configuración.
+    private var requestedInterpolationMode: InterpolationMode = .disabled
     /// Number of interpolated pairs to skip before the budget gate activates.
     private let interpolationWarmupPairs = 5
     /// Moving-average window for the budget gate (post-warmup).
@@ -282,11 +282,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var weakThroughputWindows = 0
     /// Last evaluation wall-clock (uptimeNanoseconds).
     private var lastThroughputEval: UInt64 = 0
-    /// Mode the user requested before a fallback disabled interpolation;
-    /// non-nil only while fallbackDisabled is true. Used for re-attempt
-    /// after seek/load (reintento automático).
-    private var fallbackFailedMode: InterpolationMode?
-
     /// Paridad del par actual para el patrón 3:2 de 60fps (pares → 1 interp,
     /// impares → 2 interps). Se resetea en seek/load para empezar el patrón limpio.
     private var interpPairIndex = 0
@@ -420,7 +415,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpolationPairCount = 0
         recentPairTimings = []
         recentHighQualityPairTimings = []
-        fallbackDisabled = false
         interpPairIndex = 0
         interpSinglePairCount = 0
         interpDoublePairCount = 0
@@ -444,9 +438,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // MARK: - Fallback shared helpers
 
     /// Desactiva la interpolación por una razón dada (coste o throughput),
-    /// guardando el modo solicitado para reintento tras seek/load.
+    /// guardando la preferencia para calibrarla de nuevo con otro video.
     private func disableInterpolation(reason: String) {
-        let was = interpolationMode
         interpolationMode = .disabled
         scheduler?.setMode(.native24)
         // Al degradar a nativo hay que salir de "60fps ready": framePlusStateTitle
@@ -455,11 +448,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isArtificialInterpolationActive = false
         isFramePlusPreRendered = false
         isFramePlusPreparing = false
-        fallbackDisabled = true
-        if was != .disabled {
-            fallbackFailedMode = was
-            os_log("Interpolation fallback: %{public}@ (modo %{public}@ guardado para reintento tras seek/load)",
-                   log: benchLog, type: .default, reason, was.rawValue)
+        if requestedInterpolationMode != .disabled {
+            os_log("Frame+ baja a 24 fps: %{public}@ (preferencia %{public}@ se conserva)",
+                   log: benchLog, type: .default, reason, requestedInterpolationMode.rawValue)
         } else {
             os_log("Interpolation fallback: %{public}@", log: benchLog, type: .default, reason)
         }
@@ -469,20 +460,22 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// coste o la latencia sostenida no la sostienen, conservar la interpolación
     /// a 48 fps es preferible a volver de golpe al vídeo nativo.
     private func downgradeTo48OrDisable(reason: String) {
-        guard interpolationMode == .motion4x else {
+        guard scheduler?.mode == .interpolated60 else {
             disableInterpolation(reason: reason)
             return
         }
         os_log("Frame+ baja de 60 a 48 fps: %{public}@", log: benchLog, type: .info, reason)
-        setInterpolationMode(.motion2x)
+        applyInterpolationMode(.motion2x, persistRequest: false)
     }
 
-    /// Tras un fallback, si el usuario vuelve a dar seek o cambia de archivo
-    /// se reintenta automáticamente el modo que estaba activo antes del fallback.
-    private func rearmFallbackInterpolation() {
-        guard fallbackDisabled, let m = fallbackFailedMode, m != .disabled else { return }
-        os_log("Reintento Frame+ tras degradación: modo %{public}@", log: benchLog, type: .default, m.rawValue)
-        setInterpolationMode(m)
+    /// Cada vídeo puede tener resolución, codec y complejidad de movimiento
+    /// distintos. Se empieza de nuevo desde la preferencia solicitada y las
+    /// mediciones de esta sesión deciden si se queda en 60, baja a 48 o a 24.
+    private func startFramePlusCalibrationForNewVideo() {
+        guard requestedInterpolationMode != .disabled else { return }
+        os_log("Nueva calibración Frame+ para video nuevo: modo solicitado %{public}@",
+               log: benchLog, type: .default, requestedInterpolationMode.rawValue)
+        applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
     }
 
     // MARK: - Throughput measurement (pairs/s)
@@ -543,9 +536,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // RIFT_AUTO_OPEN=<file> opens a video at launch; RIFT_AUTO_MODE=<mode>
     // force-activates an interpolation mode. Inert without the env vars.
     // RIFT_AUTO_SEEK_AT=<secs> + RIFT_AUTO_SEEK_TO=<secs> schedule a seek()
-    // that many seconds after launch (used to validate rearmFallbackInterpolation
-    // after a fallback). RIFT_AUTO_REOPEN=<file> + RIFT_AUTO_REOPEN_AT=<secs>
-    // schedule a loadVideo() to validate the same rearm on file change.
+    // that many seconds after launch. RIFT_AUTO_REOPEN=<file> +
+    // RIFT_AUTO_REOPEN_AT=<secs> schedule a loadVideo(), which starts a fresh
+    // Frame+ calibration for the new content.
     // RIFT_AUTO_MODE_AT=<secs> activates an interpolation mode mid-playback
     // (same path as the menu toggle: setInterpolationMode) to reproduce the
     // "toggle mode then seek" flow without GUI interaction. RIFT_AUTO_MODE still
@@ -634,6 +627,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         guard let preferences = decode(PlaybackPreferences.self, forKey: Self.preferencesKey) else { return }
         volume = min(max(preferences.volume, 0), 1)
         interpolationMode = InterpolationMode(rawValue: preferences.interpolationMode) ?? .disabled
+        requestedInterpolationMode = interpolationMode
         audioSyncOffset = min(max(preferences.audioSyncOffset ?? 0, -2), 2)
     }
 
@@ -657,7 +651,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         encode(
             PlaybackPreferences(
                 volume: volume,
-                interpolationMode: interpolationMode.rawValue,
+                interpolationMode: requestedInterpolationMode.rawValue,
                 audioSyncOffset: audioSyncOffset
             ),
             forKey: Self.preferencesKey
@@ -997,9 +991,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // EMA temporal: el seek crea una discontinuidad; el primer par tras el
         // reset se emite sin blending (ver MotionCompensator.resetTemporalState).
         compensator?.resetTemporalState()
-        // Reintento: si Frame+ había caído por fallback y el usuario hace seek,
-        // volver a armarlo (el seek libera el pipeline; si sigue lento, caerá de nuevo).
-        rearmFallbackInterpolation()
+        // Un seek no cambia la capacidad de la GPU ni el coste del stream. Se
+        // conservan 60/48/24 ya calibrados para no oscilar durante la película.
         resetInterpolationCounters()
         if let url = sourceURL, let aTrack = audioTrack {
             startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: target, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
@@ -1104,8 +1097,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) {
+        applyInterpolationMode(m, persistRequest: true)
+    }
+
+    /// Cambia el tier activo. Los fallbacks automáticos usan
+    /// `persistRequest: false`, con lo que el interruptor Frame+ sigue
+    /// representando la intención del usuario aunque la máquina esté en 48/24.
+    private func applyInterpolationMode(_ m: InterpolationMode, persistRequest: Bool) {
         interpolationMode = m
-        persistPlaybackPreferences()
+        if persistRequest {
+            requestedInterpolationMode = m
+            persistPlaybackPreferences()
+        }
         usesHighQualityFluidProfile = true
         compensator = nil
         lastShownFrames.removeAll()
@@ -1115,7 +1118,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isArtificialInterpolationActive = false
         isFramePlusPreRendered = false
         isFramePlusPreparing = m != .disabled
-        fallbackFailedMode = nil          // fresh user choice clears any pending re-arm
         resetInterpolationCounters()
         syncSchedulerMode()
     }
@@ -1420,7 +1422,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
-        rearmFallbackInterpolation()
+        startFramePlusCalibrationForNewVideo()
         resetInterpolationCounters()
         // EMA temporal: nuevo contenido → descartar la historia de vectores de
         // la sesión anterior (el compensator sobrevive entre videos).
