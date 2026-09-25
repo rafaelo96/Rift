@@ -376,6 +376,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// el target y una única tarea drenadora los ejecuta en orden.
     private var pendingSeekTarget: Double?
     private var seekTask: Task<Void, Never>?
+    /// Cada seek invalida tanto el decode como la presentación que pertenecían
+    /// al segmento anterior. Sin esta generación, un display task cancelado
+    /// puede volver de Metal y descartar/consumir frames del seek nuevo usando
+    /// su PTS anterior, dejando audio activo pero video a 0 FPS.
+    private var playbackGeneration: UInt64 = 0
+    private var pendingSeekActivation: (generation: UInt64, target: Double, shouldResume: Bool)?
     private var audioTask: Task<Void, Never>?
     private var consumerTimer: Timer?
     private var currentTimeTimer: Timer?
@@ -561,6 +567,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let url = URL(fileURLWithPath: path)
         let seekAt = env["RIFT_AUTO_SEEK_AT"].flatMap(Double.init)
         let seekTo = env["RIFT_AUTO_SEEK_TO"].flatMap(Double.init)
+        // Secuencia absoluta desde el lanzamiento para pruebas de rearmado:
+        // RIFT_AUTO_SEEK_SEQUENCE="8:900,10:120,12:1500".
+        let seekSequence: [(at: Double, target: Double)] = (env["RIFT_AUTO_SEEK_SEQUENCE"] ?? "")
+            .split(separator: ",")
+            .compactMap { item in
+                let parts = item.split(separator: ":", maxSplits: 1)
+                guard parts.count == 2,
+                      let at = Double(parts[0]),
+                      let target = Double(parts[1]) else { return nil }
+                return (at, target)
+            }
+            .sorted { $0.at < $1.at }
         let reopenAt = env["RIFT_AUTO_REOPEN_AT"].flatMap(Double.init)
         let reopenURL = env["RIFT_AUTO_REOPEN"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
         let modeAt = env["RIFT_AUTO_MODE_AT"].flatMap(Double.init)
@@ -577,7 +595,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                        log: benchLog, type: .info, modeAt, delayedMode.rawValue)
                 self.setInterpolationMode(delayedMode)
             }
-            if let seekAt, let seekTo {
+            if !seekSequence.isEmpty {
+                var previousAt = 0.0
+                for seek in seekSequence {
+                    try? await Task.sleep(nanoseconds: UInt64(max(seek.at - previousAt, 0) * 1e9))
+                    guard !Task.isCancelled else { return }
+                    os_log("RIFT_AUTO_SEEK_SEQUENCE → seek(to: %.0f)", log: benchLog, type: .info, seek.target)
+                    self.seek(to: seek.target)
+                    previousAt = seek.at
+                }
+            } else if let seekAt, let seekTo {
                 try? await Task.sleep(nanoseconds: UInt64(seekAt * 1e9))
                 guard !Task.isCancelled else { return }
                 os_log("RIFT_AUTO_SEEK_AT → seek(to: %.0f)", log: benchLog, type: .info, seekTo)
@@ -916,8 +943,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         return t
     }
     private func performSeek(to time: Double) async {
+        let target = min(max(time, 0), duration)
+        let shouldResume = isPlaying
+        playbackGeneration &+= 1
+        let generation = playbackGeneration
+        pendingSeekActivation = (generation, target, shouldResume)
+
+        // Detener el reloj compartido antes de vaciar las colas. Así el audio
+        // no puede avanzar mientras el video obtiene su nuevo preroll.
+        if let sched = scheduler {
+            sched.synchronizer.setRate(0, time: sched.synchronizer.currentTime())
+        }
+        displayTask?.cancel()
+        displayTask = nil
         audioTask?.cancel()
-        currentTime = min(max(time, 0), duration)
+        currentTime = target
         persistCurrentSession(force: true)
         // Actualizar el subtítulo de inmediato (los cues ya están todos en
         // memoria desde el inicio, no hace falta releer ni reiniciar ningún loop).
@@ -935,7 +975,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // Seek serializado vía actor (cinturón + tirantes tras el teardown).
         if demuxer != nil {
             do {
-                try await coordinator.withDemuxAccess { try demuxer?.seek(to: time) }
+                try await coordinator.withDemuxAccess { try demuxer?.seek(to: target) }
             } catch {
                 os_log("seek: demuxer.seek falló: %{public}@", log: benchLog, type: .error, String(describing: error))
             }
@@ -946,7 +986,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let rend = renderer { rend.displayLayer.flush() }
         audioRenderer?.flush()
         if let sched = scheduler {
-            sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: CMTime(seconds: time, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+            // FFmpeg vuelve al keyframe anterior. Mantenemos el reloj detenido
+            // en el destino hasta que el decode haya entregado frames validos
+            // posteriores a este punto.
+            sched.synchronizer.setRate(0, time: CMTime(seconds: target, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
         lastShownFrames.removeAll()
         isArtificialInterpolationActive = false
@@ -959,13 +1002,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         rearmFallbackInterpolation()
         resetInterpolationCounters()
         if let url = sourceURL, let aTrack = audioTrack {
-            startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: time, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
+            startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: target, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
         }
         // Reiniciar el decode loop (nuevo task; el viejo terminó arriba).
         // reset() ya restauró el cupo a capacidad — el +4 manual anterior
         // inflaba el conteo sin cota con seeks repetidos y se elimina.
-        // Sin poke al display loop: ya corre (solo se re-pokea en loadVideo).
-        startDecodeLoop(callDisplayLoopOnFirstFrame: false)
+        // El display loop se crea de nuevo al recibir el preroll valido; nunca
+        // conserva PTS ni buffers del segmento anterior.
+        startDecodeLoop(minimumVideoPTS: target)
     }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
     func setVolume(_ v: Double) {
@@ -1362,6 +1406,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         clearTimelineThumbnail()
         resetSubtitleSession()
         audioTask?.cancel()
+        playbackGeneration &+= 1
+        pendingSeekActivation = nil
+        displayTask?.cancel()
+        displayTask = nil
         // Un seek en vuelo del video anterior no debe ejecutarse sobre el nuevo
         // demuxer (seek a timestamp viejo en archivo nuevo).
         seekTask?.cancel(); seekTask = nil; pendingSeekTarget = nil
@@ -1548,12 +1596,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var firstPts: Double?
 
     // MARK: - 3a/3b: Decode + FramePool con backpressure real
-    // `callDisplayLoopOnFirstFrame` = false en reinicios por seek (el display
-    // loop ya corre; re-pokearlo cancelaría y recrearía su Task a mitad de
-    // reproducción). loadVideo lo deja en true (arranque inicial).
-    private func startDecodeLoop(callDisplayLoopOnFirstFrame: Bool = true) {
+    /// `minimumVideoPTS` descarta el preroll que FFmpeg entrega desde el
+    /// keyframe anterior al destino de un seek. El reloj solo se rearma cuando
+    /// el pool contiene material perteneciente al nuevo segmento.
+    private func startDecodeLoop(callDisplayLoopOnFirstFrame: Bool = true,
+                                 minimumVideoPTS: Double? = nil) {
         guard let d = demuxer, let dec = decoder, let pool = framePool else { return }
         let targetIndex = videoTrack?.streamIndex ?? -1
+        let generation = playbackGeneration
         decodeTask?.cancel()
         decodeTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
@@ -1629,7 +1679,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let tDecodeEndNS = DispatchTime.now().uptimeNanoseconds
                 decoded += 1
-                await MainActor.run {
+                let admitted = await MainActor.run { () -> Bool in
+                    guard self.playbackGeneration == generation else { return false }
+                    // av_seek_frame(...BACKWARD) devuelve paquetes desde el
+                    // keyframe precedente. Nunca deben mezclarse con el nuevo
+                    // timeline ni arrancar Frame+ antes del destino elegido.
+                    if let minimumVideoPTS, decodedFrame.pts + 0.001 < minimumVideoPTS {
+                        return false
+                    }
                     self.totalDecoded = decoded
                     pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
                     let tPoolAddNS = DispatchTime.now().uptimeNanoseconds
@@ -1640,9 +1697,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         decodeEndNS: tDecodeEndNS,
                         poolAddNS: tPoolAddNS
                     )
-                    if decoded == 1 && callDisplayLoopOnFirstFrame {
+                    if let activation = self.pendingSeekActivation,
+                       activation.generation == generation {
+                        let requiredFrames = self.interpolationMode == .disabled ? 1 : 2
+                        if pool.count >= requiredFrames {
+                            self.pendingSeekActivation = nil
+                            if activation.shouldResume {
+                                self.startDisplayLoop(resumeAt: activation.target)
+                            }
+                        }
+                    } else if pool.count == 1 && callDisplayLoopOnFirstFrame {
                         self.startDisplayLoop()
                     }
+                    return true
+                }
+                if !admitted {
+                    await self.coordinator.signal()
+                    continue
                 }
                 if Task.isCancelled {
                     // Devolver el permit del frame ya añadido (su pool será
@@ -2241,7 +2312,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         return measured
     }
 
-    private func startDisplayLoop() {
+    private func startDisplayLoop(resumeAt: Double? = nil) {
         if !isPlaying { isPlaying = true }
         updateTimePolling()
         // Test harness: arrancar con un modo de interpolación forzado (inert sin env var).
@@ -2255,8 +2326,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             self.setInterpolationMode(m)
         }
         if let sched = scheduler, sched.synchronizer.rate == 0 {
-            sched.synchronizer.setRate(1.0, time: CMTime(seconds: currentTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+            let startTime = resumeAt ?? currentTime
+            sched.synchronizer.setRate(1.0, time: CMTime(seconds: startTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
+        let generation = playbackGeneration
         displayTask?.cancel()
         displayTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -2279,7 +2352,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             var invEnqueueCalls: Int = 0
             var invEnqueueNotReady: Int = 0
             while true {
-                if Task.isCancelled { break }
+                if Task.isCancelled || self.playbackGeneration != generation { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     continue
@@ -2311,7 +2384,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         continue
                     }
                     await self.waitUntilDisplayClock(atLeast: f.pts)
-                    if Task.isCancelled { break }
+                    if Task.isCancelled || self.playbackGeneration != generation { break }
                     let clkN = sched.synchronizer.currentTime().seconds
                     // Consumir el frame del pool y devolver el permit pase lo que
                     // pase (presentado o descartado) para no frenar la cadena.
@@ -2405,7 +2478,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     await self.paceInterpPair(firstPTS: first.pts, lead: self.interpLeadMargin)
                     let tAfterPace = DispatchTime.now().uptimeNanoseconds
                     let stagePaceMS = Double(tAfterPace - tAfterReserve) / 1_000_000.0
-                    if Task.isCancelled { break }
+                    if Task.isCancelled || self.playbackGeneration != generation { break }
                     // Equivalente de Fijación C en la rama interpolada: si el
                     // primer sample visible del par quedó obsoleto, descartarlo en
                     // vez de interpolar y presentarlo tarde.
@@ -2537,6 +2610,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
 
                     let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues)
+                    // La interpolacion puede terminar despues de que un seek la
+                    // cancelara. No permitir que ese resultado consuma o encole
+                    // sobre el pool y la cola de la generacion nueva.
+                    if Task.isCancelled || self.playbackGeneration != generation { break }
                     let tAfterInterp = DispatchTime.now().uptimeNanoseconds
                     let stageInterpMS = Double(tAfterInterp - tAfterPace) / 1_000_000.0
                     let interpBuffers = result.buffers.buffers
@@ -2612,6 +2689,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
                     // Encolar con duración = intervalo hasta el siguiente pts.
                     for i in 0..<outputs.count {
+                        if Task.isCancelled || self.playbackGeneration != generation { break }
                         let o = outputs[i]
                         let pts = CMTime(seconds: o.pts, preferredTimescale: 1200)
                         let endPTS: Double
@@ -2635,6 +2713,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             let wasReadyBefore = rend.displayLayer.isReadyForMoreMediaData
                             let tBeforeEnq = DispatchTime.now().uptimeNanoseconds
                             await self.enqueuePaced(rend, sbuf)
+                            if Task.isCancelled || self.playbackGeneration != generation { break }
                             let tAfterEnq = DispatchTime.now().uptimeNanoseconds
                             invEnqueueWaitNS += (tAfterEnq - tBeforeEnq)
                             invEnqueueCalls += 1
@@ -2660,6 +2739,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             lastEnqueuedInvocationID = interpInvocationID
                         }
                     }
+                    if Task.isCancelled || self.playbackGeneration != generation { break }
                     // --- GAP CORRELATION: detect gaps >50ms ---
                     if !outputs.isEmpty {
                         let firstOutPTS = outputs[0].pts
