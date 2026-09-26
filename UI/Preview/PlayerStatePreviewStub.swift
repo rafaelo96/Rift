@@ -40,6 +40,9 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
     var availableTracks: [MediaTrack] = []
     var selectedSubtitleTrack: MediaTrack?
     var visualEnhancementsEnabled: Bool = false
+    var visualBrightness: Double = 0
+    var visualContrast: Double = 1
+    var visualSaturation: Double = 1
     var currentSubtitleText: String? = nil
 
     // MARK: PlaybackControlling methods
@@ -75,4 +78,28 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
     func selectAudioTrack(_ index: Int) { selectedAudioTrackIndex = index }
     func selectPipelineTrack(_ track: MediaTrack?) { selectedSubtitleTrack = track }
     func toggleVisualEnhancements() { visualEnhancementsEnabled.toggle() }
+    func setVisualBrightness(_ value: Double) {
+        visualBrightness = value
+        updateVisualEnhancementsEnabled()
+    }
+    func setVisualContrast(_ value: Double) {
+        visualContrast = value
+        updateVisualEnhancementsEnabled()
+    }
+    func setVisualSaturation(_ value: Double) {
+        visualSaturation = value
+        updateVisualEnhancementsEnabled()
+    }
+    func resetVisualEnhancements() {
+        visualBrightness = 0
+        visualContrast = 1
+        visualSaturation = 1
+        visualEnhancementsEnabled = false
+    }
+
+    private func updateVisualEnhancementsEnabled() {
+        visualEnhancementsEnabled = abs(visualBrightness) > 0.0001
+            || abs(visualContrast - 1) > 0.0001
+            || abs(visualSaturation - 1) > 0.0001
+    }
 }

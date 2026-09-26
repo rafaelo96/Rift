@@ -51,11 +51,18 @@ public protocol TrackSelectionProviding: ObservableObject {
     var availableTracks: [MediaTrack] { get }
     var selectedSubtitleTrack: MediaTrack? { get }
     var visualEnhancementsEnabled: Bool { get }
+    var visualBrightness: Double { get }
+    var visualContrast: Double { get }
+    var visualSaturation: Double { get }
     var currentSubtitleText: String? { get }
 
     func selectAudioTrack(_ index: Int)
     func selectPipelineTrack(_ track: MediaTrack?)
     func toggleVisualEnhancements()
+    func setVisualBrightness(_ value: Double)
+    func setVisualContrast(_ value: Double)
+    func setVisualSaturation(_ value: Double)
+    func resetVisualEnhancements()
 }
 
 /// Estado completo que la capa UI necesita. Core/ implementará esta combinación

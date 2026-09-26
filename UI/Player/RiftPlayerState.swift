@@ -182,6 +182,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var availableTracks: [MediaTrack] = []
     @Published var selectedSubtitleTrack: MediaTrack?
     @Published var visualEnhancementsEnabled = false
+    @Published var visualBrightness: Double = 0
+    @Published var visualContrast: Double = 1
+    @Published var visualSaturation: Double = 1
     @Published var currentSubtitleText: String?
     @Published var conversionProgress: Double = 0
     @Published var statusMessage: String?
@@ -1364,7 +1367,51 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             hideBrokenPictureInPictureHost(in: subview)
         }
     }
-    func toggleVisualEnhancements() { visualEnhancementsEnabled.toggle() }
+    func toggleVisualEnhancements() {
+        visualEnhancementsEnabled.toggle()
+        applyVisualAdjustments()
+    }
+
+    func setVisualBrightness(_ value: Double) {
+        visualBrightness = min(max(value, -0.25), 0.25)
+        updateVisualEnhancements()
+    }
+
+    func setVisualContrast(_ value: Double) {
+        visualContrast = min(max(value, 0.5), 1.5)
+        updateVisualEnhancements()
+    }
+
+    func setVisualSaturation(_ value: Double) {
+        visualSaturation = min(max(value, 0), 2)
+        updateVisualEnhancements()
+    }
+
+    func resetVisualEnhancements() {
+        visualBrightness = 0
+        visualContrast = 1
+        visualSaturation = 1
+        visualEnhancementsEnabled = false
+        applyVisualAdjustments()
+    }
+
+    private func updateVisualEnhancements() {
+        visualEnhancementsEnabled = abs(visualBrightness) > 0.0001
+            || abs(visualContrast - 1) > 0.0001
+            || abs(visualSaturation - 1) > 0.0001
+        applyVisualAdjustments()
+    }
+
+    private func applyVisualAdjustments() {
+        renderer?.applyVisualAdjustments(
+            VisualAdjustments(
+                brightness: Float(visualBrightness),
+                contrast: Float(visualContrast),
+                saturation: Float(visualSaturation)
+            ),
+            enabled: visualEnhancementsEnabled
+        )
+    }
 
     func requestTimelineThumbnail(at time: Double) {
         guard let sourceURL, duration > 0 else { return }
@@ -1538,6 +1585,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // reproducirse en sync (el displayLayer y el audioRenderer
         // viven en el reloj del scheduler).
         self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
+        applyVisualAdjustments()
         self.configurePictureInPicture()
         // Audio: guardar todas las pistas reales y arrancar la primera.
         let audioTracksAll = info.tracks.filter { $0.kind == .audio }

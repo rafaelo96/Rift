@@ -10,6 +10,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     @State private var dragSliderValue: Double = 0
     @State private var showAudioMenu = false
     @State private var showSubsMenu = false
+    @State private var showVisualPanel = false
 
     var body: some View {
         LiquidGlassPanel(cornerRadius: 28) {
@@ -251,9 +252,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var visualButton: some View {
         Button {
-            withAnimation(surfaceAnimation) {
-                state.toggleVisualEnhancements()
-            }
+            showVisualPanel = true
         } label: {
             glassPill(
                 title: NSLocalizedString("Visual", comment: ""),
@@ -263,7 +262,105 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(NSLocalizedString("Visual Enhancements", comment: "")), \(state.visualEnhancementsEnabled ? NSLocalizedString("Visual on", comment: "") : NSLocalizedString("Visual off", comment: ""))")
+        .accessibilityLabel(NSLocalizedString("Open Visual Controls", comment: ""))
+        .popover(isPresented: $showVisualPanel, arrowEdge: .bottom) {
+            visualControlsPanel
+        }
+    }
+
+    private var visualControlsPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(state.visualEnhancementsEnabled ? RiftPalette.cyan : .white.opacity(0.55))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(NSLocalizedString("Visual Controls", comment: ""))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text(state.visualEnhancementsEnabled
+                         ? NSLocalizedString("Custom image adjustments", comment: "")
+                         : NSLocalizedString("Neutral image", comment: ""))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.52))
+                }
+
+                Spacer(minLength: 12)
+
+                Button(NSLocalizedString("Reset", comment: "")) {
+                    withAnimation(surfaceAnimation) {
+                        state.resetVisualEnhancements()
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(state.visualEnhancementsEnabled ? RiftPalette.cyan : .white.opacity(0.35))
+                .disabled(!state.visualEnhancementsEnabled)
+            }
+
+            visualAdjustmentRow(
+                title: NSLocalizedString("Brightness", comment: ""),
+                value: state.visualBrightness,
+                range: -0.25...0.25,
+                step: 0.01,
+                valueText: String(format: "%+.0f%%", state.visualBrightness * 100),
+                onChange: state.setVisualBrightness
+            )
+
+            visualAdjustmentRow(
+                title: NSLocalizedString("Contrast", comment: ""),
+                value: state.visualContrast,
+                range: 0.5...1.5,
+                step: 0.01,
+                valueText: String(format: "%.0f%%", state.visualContrast * 100),
+                onChange: state.setVisualContrast
+            )
+
+            visualAdjustmentRow(
+                title: NSLocalizedString("Saturation", comment: ""),
+                value: state.visualSaturation,
+                range: 0...2,
+                step: 0.01,
+                valueText: String(format: "%.0f%%", state.visualSaturation * 100),
+                onChange: state.setVisualSaturation
+            )
+        }
+        .padding(16)
+        .frame(width: 280)
+        .background(GlassBackground(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(RiftPalette.cyan.opacity(0.22), lineWidth: 0.5)
+        }
+    }
+
+    private func visualAdjustmentRow(
+        title: String,
+        value: Double,
+        range: ClosedRange<Double>,
+        step: Double,
+        valueText: String,
+        onChange: @escaping (Double) -> Void
+    ) -> some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(valueText)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundStyle(.white.opacity(0.82))
+
+            Slider(
+                value: Binding(get: { value }, set: onChange),
+                in: range,
+                step: step
+            )
+            .tint(RiftPalette.cyan)
+            .accessibilityLabel(title)
+            .accessibilityValue(valueText)
+        }
     }
 
     private var audioTrackButton: some View {
