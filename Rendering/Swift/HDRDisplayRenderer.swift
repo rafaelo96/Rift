@@ -1,10 +1,29 @@
 import AVFoundation
 import CoreMedia
 import CoreVideo
+import CoreImage
 import QuartzCore
 import AppKit
 
 // MARK: - HDRDisplayRenderer (SDR/HDR, sin tone-mapping propio)
+
+public struct VisualAdjustments: Equatable, Sendable {
+    public var brightness: Float
+    public var contrast: Float
+    public var saturation: Float
+
+    public static let neutral = VisualAdjustments(
+        brightness: 0,
+        contrast: 1,
+        saturation: 1
+    )
+
+    public init(brightness: Float, contrast: Float, saturation: Float) {
+        self.brightness = min(max(brightness, -1), 1)
+        self.contrast = min(max(contrast, 0), 2)
+        self.saturation = min(max(saturation, 0), 2)
+    }
+}
 
 public final class HDRDisplayRenderer {
     public let displayLayer: AVSampleBufferDisplayLayer
@@ -32,6 +51,27 @@ public final class HDRDisplayRenderer {
         viewLayer.addSublayer(displayLayer)
         displayLayer.frame = viewLayer.bounds
         displayLayer.needsDisplayOnBoundsChange = true
+    }
+
+    /// Aplica ajustes no destructivos en la capa de presentación. El pipeline
+    /// conserva sus CVPixelBuffer originales y la metadata HDR; valores neutros
+    /// retiran el filtro por completo para mantener el camino de render original.
+    @MainActor
+    public func applyVisualAdjustments(_ adjustments: VisualAdjustments, enabled: Bool) {
+        guard enabled, adjustments != .neutral else {
+            displayLayer.filters = []
+            return
+        }
+
+        guard let colorControls = CIFilter(name: "CIColorControls") else {
+            displayLayer.filters = []
+            return
+        }
+        colorControls.name = "rift.visual.color-controls"
+        colorControls.setValue(adjustments.brightness, forKey: kCIInputBrightnessKey)
+        colorControls.setValue(adjustments.contrast, forKey: kCIInputContrastKey)
+        colorControls.setValue(adjustments.saturation, forKey: kCIInputSaturationKey)
+        displayLayer.filters = [colorControls]
     }
 
     // Wrapping CVPixelBuffer -> CMSampleBuffer con timing, preservando HDR attachments
