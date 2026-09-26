@@ -160,7 +160,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var duration: Double = 0
     @Published var volume: Double = 0.68
     @Published private(set) var audioSyncOffset: Double = 0
-    @Published var playbackRate: Float = 1.0
+    @Published var playbackRate: Float = 1.0 {
+        didSet {
+            guard playbackRate != oldValue else { return }
+            applyPlaybackRateToSynchronizer()
+        }
+    }
     @Published var hasVideo = false
     @Published var areControlsVisible = true
     private var controlsHideTimer: Timer?
@@ -843,7 +848,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         if let sched = scheduler {
             let t = CMTime(seconds: currentTime, preferredTimescale: 600)
-            sched.synchronizer.setRate(isPlaying ? 1.0 : 0, time: t)
+            sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: t)
         }
         // Start display loop on first play
         if isPlaying { startDisplayLoop() }
@@ -1026,7 +1031,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             channels: track.channelCount ?? 0
         )
     }
-    func cyclePlaybackRate() {}
+    func cyclePlaybackRate() {
+        let rates: [Float] = [1.0, 1.5, 2.0, 0.5]
+        let currentIndex = rates.firstIndex { abs($0 - playbackRate) < 0.001 } ?? 0
+        playbackRate = rates[(currentIndex + 1) % rates.count]
+    }
+
+    private func applyPlaybackRateToSynchronizer() {
+        guard let sched = scheduler else { return }
+        let time = sched.synchronizer.currentTime()
+        sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: time)
+    }
     func closeVideo() {
         persistCurrentSession(force: true)
         clearResumeSession()
@@ -2329,7 +2344,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         if let sched = scheduler, sched.synchronizer.rate == 0 {
             let startTime = resumeAt ?? currentTime
-            sched.synchronizer.setRate(1.0, time: CMTime(seconds: startTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+            sched.synchronizer.setRate(playbackRate, time: CMTime(seconds: startTime, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
         }
         let generation = playbackGeneration
         displayTask?.cancel()
