@@ -236,10 +236,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// skipped during the first `interpolationWarmupPairs` to let Metal JIT
     /// and first-time buffer allocations settle.
     private var interpolationPairCount = 0
-    /// Wall-clock ms of each post-warmup pair (capped window of last 10).
-    /// Fallback triggers only when the *moving average* exceeds budget,
-    /// preventing a single outlier (GC, thermal blip) from killing Frame+.
+    /// Short moving average for diagnostics; fallback uses independent sustained
+    /// windows in interpolationCostMonitor, not this ten-pair snapshot.
     private var recentPairTimings: [Double] = []
+    private var interpolationCostMonitor = InterpolationCostMonitor()
     /// El perfil HQ se prueba en vivo; si sus pares completos no caben en el
     /// periodo fuente, se degrada a `.fluid` sin apagar la interpolación.
     private var recentHighQualityPairTimings: [Double] = []
@@ -420,6 +420,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Reset warm-up counter + timing window. Called on mode change, seek, or
     /// file open — gives Frame+ a fresh chance to measure sustained cost.
     private func resetInterpolationCounters() {
+        interpolationCostMonitor.reset()
         interpolationPairCount = 0
         recentPairTimings = []
         recentHighQualityPairTimings = []
@@ -489,6 +490,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // MARK: - Throughput measurement (pairs/s)
 
     private func resetThroughputWindow() {
+        interpolationCostMonitor.reset()
         pairCompletionTimes = []
         weakThroughputWindows = 0
         lastThroughputEval = 0
@@ -2308,6 +2310,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     recentPairTimings.removeAll()
                     os_log("Frame+ HQ degradado: %.1fms/par > presupuesto %.1fms; se mantiene perfil fluido",
                            log: benchLog, type: .info, average, pairBudgetMS)
+                    // Nueva época de medición, sin alterar la fase de salida.
+                    // El par actual pertenece todavía al perfil HQ.
+                    interpolationPairCount = 0
+                    resetThroughputWindow()
+                    lastStaleDropSnapshot = interpolationStaleDrops
+                    return measured
                 }
             }
         }
@@ -2316,7 +2324,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // medida debe ser el coste del PAR completo. A 48 sólo hay una síntesis
         // por par y el coste por imagen coincide con ese mismo presupuesto.
         let frameBudgetMS = 1_000.0 / max(sourceFrameRate ?? 24.0, 24.0)
-        let budgetThreshold = frameBudgetMS * 0.90
+        // A 60 conservamos holgura para bajar a 48. En el último nivel,
+        // perder ese margen no equivale a perder tiempo real.
+        let budgetThreshold = frameBudgetMS * (scheduler?.mode == .interpolated60 ? 0.90 : 1.0)
         let perFrameCost = measured.totalMS / Double(max(tValues.count, 1))
         let is60FPS = scheduler?.mode == .interpolated60
         let budgetCost = is60FPS ? measured.totalMS : perFrameCost
@@ -2337,21 +2347,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                    log: benchLog, type: .info,
                    recentPairTimings.count, interpolationTimingWindow, avg, budgetUnit, tValues.count,
                    measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
-            // Falso positivo de arranque (medido en BLEACH 1080p y Avatar 4K):
-            // el decoder/GPU en frío + warm-up dejan muestras de 45-100ms en los
-            // primeros pares, y una media de 1-2 muestras dispara el gate antes
-            // de que el pipeline alcance régimen. Dos condiciones extra:
-            //  1) promedio estable: exigir la ventana llena (10 pares), no 1;
-            //  2) skip de arranque: no evaluar durante la misma rampa que el gate
-            //     de latencia (throughputSkipStartupSeconds). El déficit real
-            //     sostenido lo sigue capturando ese gate, ya calibrado.
-            if avg > budgetThreshold,
-               recentPairTimings.count >= interpolationTimingWindow {
+            // Excluir el arranque antes de acumular dos ventanas independientes
+            // de coste. Diez pares (~0.4s) sólo sirven como diagnóstico: un pico
+            // tan breve no justifica apagar Frame+. El gate de latencia conserva
+            // además la protección contra retrasos reales del pipeline completo.
+            if recentPairTimings.count >= interpolationTimingWindow {
                 let startupElapsed = firstPairCompletedAt == 0
                     ? 0
                     : Double(DispatchTime.now().uptimeNanoseconds - firstPairCompletedAt) / 1e9
-                if startupElapsed >= throughputSkipStartupSeconds {
-                    downgradeTo48OrDisable(reason: String(format: "coste medio %.1fms/%@ > presupuesto %.1fms", avg, budgetUnit, budgetThreshold))
+                if startupElapsed >= throughputSkipStartupSeconds,
+                   let sustainedAverage = interpolationCostMonitor.record(
+                       costMS: budgetCost,
+                       budgetMS: budgetThreshold,
+                       now: Double(DispatchTime.now().uptimeNanoseconds) / 1e9
+                   ) {
+                    downgradeTo48OrDisable(reason: String(format: "coste sostenido %.1fms/%@ > presupuesto %.1fms durante dos ventanas de 3s", sustainedAverage, budgetUnit, budgetThreshold))
                     return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
                 }
             }
