@@ -132,7 +132,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .shadow(color: state.fpsMode.isActive ? accentColor.opacity(0.55) : .clear, radius: 3)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(String(format: NSLocalizedString("%.0f FPS", comment: ""), state.displayRenderingFPS))
+                Text(String(format: "%.0f fps ↗", state.displayRenderingFPS))
+                    .help("Frames entregados al sistema por segundo; no mide la presentación física de la pantalla.")
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
 
@@ -516,9 +517,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     private var framePlusStateTitle: String {
         if state.isFramePlusPreparing { return NSLocalizedString("Preparing HQ", comment: "") }
         if state.isFramePlusPreRendered {
-            return state.displayRenderingFPS >= 52
-                ? NSLocalizedString("60fps ready", comment: "")
-                : NSLocalizedString("48fps ready", comment: "")
+            let target = (state as? RiftPlayerState)?.targetRenderingFPS ?? 60
+            return String(format: "Objetivo %.0f fps", target)
         }
         if state.interpolationMode == .disabled { return NSLocalizedString("Disabled", comment: "") }
         return state.isArtificialInterpolationActive ? NSLocalizedString("Interpolating", comment: "") : NSLocalizedString("Waiting", comment: "")

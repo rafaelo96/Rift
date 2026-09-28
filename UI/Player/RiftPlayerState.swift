@@ -233,25 +233,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Bloqueo para asegurar que solo haya 1 frame interpolándose a la vez.
     /// Evita saturar la GPU y sobreescribir los recursos Metal del compensator.
     private var isInterpolating = false
+    private var interpolationJobID: UUID?
     /// Pairs interpolated since the last mode change / seek. Budget check is
     /// skipped during the first `interpolationWarmupPairs` to let Metal JIT
     /// and first-time buffer allocations settle.
     private var interpolationPairCount = 0
-    /// Short moving average for diagnostics; fallback uses independent sustained
-    /// windows in interpolationCostMonitor, not this ten-pair snapshot.
-    private var recentPairTimings: [Double] = []
-    private var interpolationCostMonitor = InterpolationCostMonitor()
-    /// El perfil HQ se prueba en vivo; si sus pares completos no caben en el
-    /// periodo fuente, se degrada a `.fluid` sin apagar la interpolación.
-    private var recentHighQualityPairTimings: [Double] = []
-    private var usesHighQualityFluidProfile = true
+    /// Whole-pair load policy lives in Scheduler, independent of rendering.
+    private var interpolationCostMonitor = AdaptiveLoadMonitor()
+    /// Start at balanced quality; sustained measured headroom permits HQ.
+    private var interpolationQuality = 1
+    private var pendingLoadAction: AdaptiveLoadMonitor.Action?
+    private var automaticRetryAt: Double?
+    private var measuredPlaybackRate: Float = 1
     /// Preferencia del usuario, separada del tier activo. Una degradación
     /// automática a 48/24 no debe convertirse en su nueva configuración.
     private var requestedInterpolationMode: InterpolationMode = .disabled
     /// Number of interpolated pairs to skip before the budget gate activates.
     private let interpolationWarmupPairs = 5
-    /// Moving-average window for the budget gate (post-warmup).
-    private let interpolationTimingWindow = 10
 
     // MARK: - Throughput deficit gate (latencia bajo pacing)
     /// Seconds between consecutive gate evaluations.
@@ -276,8 +274,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var frameTimelines: [Int64: FrameTimeline] = [:]
     private static func timelineKey(_ pts: Double) -> Int64 { Int64(pts * 1_000) }
     private static let timelineLogPath = "/tmp/rift_timeline.log"
-    private static func writeTimelineLog(_ s: String) {
-        let line = s + "\n"
+    private nonisolated static let detailedDiagnostics = ProcessInfo.processInfo.environment["RIFT_DIAGNOSTICS"] == "1"
+    private static func writeTimelineLog(_ s: @autoclosure () -> String) {
+        guard detailedDiagnostics else { return }
+        let line = s() + "\n"
         if let h = FileHandle(forWritingAtPath: timelineLogPath) {
             h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
         } else {
@@ -314,7 +314,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var sourceFrameRate: Double?
     /// Periodo del vídeo fuente en segundos (1/fps), usado para detectar pares
     /// con hueco (decode rezagado ≥2 frames) en la rama interpolada.
-    private var sourcePeriod: Double { 1.0 / max(sourceFrameRate ?? 24.0, 24.0) }
+    private var sourcePeriod: Double {
+        let fps = sourceFrameRate ?? 24
+        return 1 / (fps.isFinite && fps > 0 ? fps : 24)
+    }
+    var targetRenderingFPS: Double {
+        let displayFPS = Double(max(1, NSScreen.main?.maximumFramesPerSecond ?? 60))
+        switch scheduler?.mode {
+        case .interpolated60: return min(60, displayFPS)
+        case .interpolated48: return min(2 / sourcePeriod * Double(playbackRate), displayFPS)
+        default: return Double(playbackRate) / sourcePeriod
+        }
+    }
+    private var cadenceFramesPerSecond: Double {
+        targetRenderingFPS / Double(max(playbackRate, 0.25))
+    }
     /// Margen acotado para reordenar B-frames antes de entregar pares al MCFI.
     /// Ocho imágenes cubren GOPs con B-frames profundos sin convertir el pool
     /// en una cola de reproducción sin límite.
@@ -423,8 +437,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func resetInterpolationCounters() {
         interpolationCostMonitor.reset()
         interpolationPairCount = 0
-        recentPairTimings = []
-        recentHighQualityPairTimings = []
+        pendingLoadAction = nil
         interpPairIndex = 0
         interpSinglePairCount = 0
         interpDoublePairCount = 0
@@ -450,6 +463,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Desactiva la interpolación por una razón dada (coste o throughput),
     /// guardando la preferencia para calibrarla de nuevo con otro video.
     private func disableInterpolation(reason: String) {
+        automaticRetryAt = ProcessInfo.processInfo.systemUptime + 60
         interpolationMode = .disabled
         scheduler?.setMode(.native24)
         // Al degradar a nativo hay que salir de "60fps ready": framePlusStateTitle
@@ -470,6 +484,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// coste o la latencia sostenida no la sostienen, conservar la interpolación
     /// a 48 fps es preferible a volver de golpe al vídeo nativo.
     private func downgradeTo48OrDisable(reason: String) {
+        if interpolationQuality > 0 {
+            changeInterpolationQuality(to: interpolationQuality - 1)
+            return
+        }
         guard scheduler?.mode == .interpolated60 else {
             disableInterpolation(reason: reason)
             return
@@ -483,6 +501,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// mediciones de esta sesión deciden si se queda en 60, baja a 48 o a 24.
     private func startFramePlusCalibrationForNewVideo() {
         guard requestedInterpolationMode != .disabled else { return }
+        interpolationQuality = 1
         os_log("Nueva calibración Frame+ para video nuevo: modo solicitado %{public}@",
                log: benchLog, type: .default, requestedInterpolationMode.rawValue)
         applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
@@ -492,6 +511,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     private func resetThroughputWindow() {
         interpolationCostMonitor.reset()
+        pendingLoadAction = nil
         pairCompletionTimes = []
         weakThroughputWindows = 0
         lastThroughputEval = 0
@@ -587,6 +607,46 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let reopenURL = env["RIFT_AUTO_REOPEN"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
         let modeAt = env["RIFT_AUTO_MODE_AT"].flatMap(Double.init)
         let delayedMode = env["RIFT_AUTO_MODE"].flatMap(InterpolationMode.init(rawValue:))
+        // Opt-in integration probe. Bounded duration, inert in normal launches.
+        if let rawDuration = env["RIFT_FLUENCY_PROBE_SECONDS"],
+           let probeDuration = Int(rawDuration), (10...1800).contains(probeDuration) {
+            let exerciseControls = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "1"
+            Task { @MainActor [weak self] in
+                for second in 1...probeDuration {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard let self, !Task.isCancelled else { return }
+                    if exerciseControls {
+                        switch second {
+                        case 8, 18: self.togglePictureInPicture()
+                        case 25, 27: self.togglePlay()
+                        case 35: self.playbackRate = 1.25
+                        case 40: self.playbackRate = 1
+                        case 45: self.seek(to: self.currentTime + 10)
+                        case 55: self.seek(to: max(0, self.currentTime - 10))
+                        default: break
+                        }
+                    }
+                    let line = String(format:
+                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ playing=%d pip=%d caption=%d compositionFailures=%d\n",
+                        second, self.currentTime, self.displayRenderingFPS, self.targetRenderingFPS,
+                        self.interpolationQuality, self.interpolationMode.rawValue,
+                        self.isPlaying ? 1 : 0, self.isPictureInPictureActive ? 1 : 0,
+                        self.currentSubtitleText == nil ? 0 : 1,
+                        self.renderer?.subtitleCompositionFailures ?? 0)
+                    FileHandle.standardOutput.write(Data(line.utf8))
+                    if #available(macOS 14.4, *), second % 5 == 0,
+                       let videoRenderer = self.renderer?.displayLayer.sampleBufferRenderer {
+                        videoRenderer.loadVideoPerformanceMetrics { metrics in
+                            guard let metrics else { return }
+                            let line = "PRESENTATION second=\(second) total=\(metrics.totalNumberOfFrames) dropped=\(metrics.numberOfDroppedFrames) corrupted=\(metrics.numberOfCorruptedFrames) delay=\(metrics.totalAccumulatedFrameDelay)\n"
+                            FileHandle.standardOutput.write(Data(line.utf8))
+                        }
+                    }
+                }
+                self?.closeVideo()
+                NSApplication.shared.terminate(nil)
+            }
+        }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard let self else { return }
@@ -850,7 +910,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if wasPaused {
             // Pausa: la próxima reanudación parte de un estado limpio — sin
             // historia temporal de MVs del segmento anterior.
-            compensator?.resetTemporalState()
+            if isInterpolating {
+                // The detached job owns its engine until it completes.
+                compensator = nil
+            } else {
+                compensator?.resetTemporalState()
+            }
+            interpolationCostMonitor.reset()
+            pendingLoadAction = nil
         }
         if let sched = scheduler {
             let t = CMTime(seconds: currentTime, preferredTimescale: 600)
@@ -888,26 +955,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    /// Contador de FPS de presentación (readout estable).
-    /// Antes displayRenderingFPS era una constante fija en 24 que jamás reflejaba
-    /// el modo real. Ahora el valor nominal depende del modo del scheduler
-    /// (24 nativo / 48 / 60 interpolado) y solo se reemplaza por el throughput
-    /// medido si la ventana de 1s no sostiene al menos la mitad del nominal
-    /// (pipeline trabado/degradado): así el readout es estable mientras reproduce
-    /// normal y revela el fallo si ya no alcanza. Con rate==0 (pausa) no se
-    /// computa ni se pisa el valor mostrado.
+    /// Admission throughput over actual elapsed time; physical presentation
+    /// must be measured separately. Pause preserves the last completed window.
     private func updateRenderingFPS() {
         guard scheduler?.synchronizer.rate != 0 else { return }
-        let nominal: Double
-        switch scheduler?.mode {
-        case .interpolated48: nominal = 48.0
-        case .interpolated60: nominal = 60.0
-        default: nominal = sourceFrameRate ?? 24.0
-        }
         let elapsed = DispatchTime.now().uptimeNanoseconds - fpsWindowStart.uptimeNanoseconds
         guard elapsed >= UInt64(1.0 * 1e9) else { return }
-        let measured = Double(enqueuedFramesInWindow) / 1.0
-        let shown = measured >= nominal * 0.5 ? nominal : measured
+        let shown = Double(enqueuedFramesInWindow) / (Double(elapsed) / 1e9)
         if abs(shown - displayRenderingFPS) >= 0.5 || shown == 0 {
             displayRenderingFPS = shown
         }
@@ -1007,7 +1061,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isFramePlusPreparing = false
         // EMA temporal: el seek crea una discontinuidad; el primer par tras el
         // reset se emite sin blending (ver MotionCompensator.resetTemporalState).
-        compensator?.resetTemporalState()
+        if isInterpolating { compensator = nil } else { compensator?.resetTemporalState() }
         // Un seek no cambia la capacidad de la GPU ni el coste del stream. Se
         // conservan 60/48/24 ya calibrados para no oscilar durante la película.
         resetInterpolationCounters()
@@ -1136,7 +1190,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             requestedInterpolationMode = m
             persistPlaybackPreferences()
         }
-        usesHighQualityFluidProfile = true
+        if persistRequest { interpolationQuality = 1 }
+        automaticRetryAt = nil
         compensator = nil
         lastShownFrames.removeAll()
         // Estados de UI por transiciones reales (no por-par): al activar un modo
@@ -1163,15 +1218,38 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    /// El interruptor Frame+ usa estos dos niveles internamente: 60 fps primero
-    /// y 48 fps cuando la máquina no puede sostener 60. Ambos conservan la
-    /// máxima calidad disponible antes de reducir el plano de trabajo.
+    /// Resolution adapts before cadence, preserving the selected safety policy.
     private var interpolationConfig: InterpolationConfig {
-        switch interpolationMode {
-        case .motion2x, .motion4x, .motion2Intense:
-            return usesHighQualityFluidProfile ? .fluidHighQuality : .fluid
-        case .disabled, .motionAdaptive:
-            return .default
+        let profile: InterpolationConfig = interpolationQuality == 2 ? .fluidHighQuality
+            : interpolationQuality == 1 ? .fluid : .fluidEconomy
+        if interpolationMode == .motionAdaptive {
+            return InterpolationConfig(workWidth: profile.workWidth, workHeight: profile.workHeight)
+        }
+        return profile
+    }
+
+    private func changeInterpolationQuality(to quality: Int) {
+        interpolationQuality = min(max(quality, 0), 2)
+        compensator = nil
+        interpolationPairCount = 0
+        resetThroughputWindow()
+        lastStaleDropSnapshot = interpolationStaleDrops
+        os_log("Frame+ work-plane quality=%d", log: benchLog, type: .info, interpolationQuality)
+    }
+
+    /// Apply policy only after the current pair has been consumed and enqueued.
+    private func applyPendingLoadAction() {
+        guard let action = pendingLoadAction else { return }
+        pendingLoadAction = nil
+        switch action {
+        case .reduce:
+            downgradeTo48OrDisable(reason: "p95 del par supera 80% del presupuesto durante 6s")
+        case .recover:
+            if scheduler?.mode == .interpolated48, requestedInterpolationMode != .motion2x {
+                applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
+            } else if interpolationQuality < 2 {
+                changeInterpolationQuality(to: interpolationQuality + 1)
+            }
         }
     }
     func selectAudioTrack(_ streamIndex: Int) {
@@ -1512,7 +1590,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         resetInterpolationCounters()
         // EMA temporal: nuevo contenido → descartar la historia de vectores de
         // la sesión anterior (el compensator sobrevive entre videos).
-        compensator?.resetTemporalState()
+        if isInterpolating { compensator = nil } else { compensator?.resetTemporalState() }
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -1778,14 +1856,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     self.totalDecoded = decoded
                     pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
-                    let tPoolAddNS = DispatchTime.now().uptimeNanoseconds
-                    let key = RiftPlayerState.timelineKey(decodedFrame.pts)
-                    self.frameTimelines[key] = FrameTimeline(
-                        pts: decodedFrame.pts,
-                        decodeStartNS: tDecodeStartNS,
-                        decodeEndNS: tDecodeEndNS,
-                        poolAddNS: tPoolAddNS
-                    )
+                    if Self.detailedDiagnostics {
+                        let key = RiftPlayerState.timelineKey(decodedFrame.pts)
+                        self.frameTimelines[key] = FrameTimeline(
+                            pts: decodedFrame.pts, decodeStartNS: tDecodeStartNS,
+                            decodeEndNS: tDecodeEndNS,
+                            poolAddNS: DispatchTime.now().uptimeNanoseconds)
+                        if self.frameTimelines.count > 256, let oldest = self.frameTimelines.keys.min() {
+                            self.frameTimelines.removeValue(forKey: oldest)
+                        }
+                    }
                     if let activation = self.pendingSeekActivation,
                        activation.generation == generation {
                         let requiredFrames = self.interpolationMode == .disabled ? 1 : 2
@@ -1816,8 +1896,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     // MARK: - Audio
 
-    private nonisolated static func audioLog(_ s: String) {
-        let line = s + "\n"
+    private nonisolated static func audioLog(_ s: @autoclosure () -> String) {
+        guard detailedDiagnostics else { return }
+        let line = s() + "\n"
         if let h = FileHandle(forWritingAtPath: "/tmp/rift_audio.log") {
             h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
         } else {
@@ -2111,8 +2192,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // MARK: - Negative-PTS diagnostic (B-frame investigation)
 
     /// Writes a single line to /tmp/rift_negpts.log. Creates the file if needed.
-    private static func writeNegPTSLog(_ s: String) {
-        let line = s + "\n"
+    private static func writeNegPTSLog(_ s: @autoclosure () -> String) {
+        guard detailedDiagnostics else { return }
+        let line = s() + "\n"
         let path = "/tmp/rift_negpts.log"
         if let h = FileHandle(forWritingAtPath: path) {
             h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
@@ -2184,6 +2266,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     /// Write a diagnostic line to /tmp/rift_diag.log for headless capture.
     private static func writeDiagLog(_ line: String) {
+        guard detailedDiagnostics else { return }
         if let h = FileHandle(forWritingAtPath: "/tmp/rift_diag.log") {
             h.seekToEndOfFile()
             h.write(line.data(using: .utf8)!)
@@ -2230,26 +2313,38 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// en silencio, y con displayLayer.flush() tras un seek pueden dejar el video
     /// congelado mientras el audio (loop separado) sigue. Este helper espera a
     /// que la capa readmita (con tope de espera) antes de encolar.
-    private func enqueuePaced(_ rend: HDRDisplayRenderer, _ sbuf: CMSampleBuffer) async {
-        let maxWaitNS = UInt64(3 * 16_666_667)
-        var waited = UInt64(0)
-        while !Task.isCancelled {
-            if rend.displayLayer.isReadyForMoreMediaData {
-                rend.enqueue(sbuf)
-                self.enqueuedFramesInWindow += 1
-                self.framesEnqueuedReady += 1
-                self.logDiagIfDue()
-                return
+    @discardableResult
+    private func enqueuePaced(_ rend: HDRDisplayRenderer, _ sbuf: CMSampleBuffer) async -> Bool {
+        let generation = playbackGeneration
+        let started = ProcessInfo.processInfo.systemUptime
+        let pts = CMSampleBufferGetPresentationTimeStamp(sbuf).seconds
+        let deadline = max(0.05, 3 / max(targetRenderingFPS, 1))
+        while !Task.isCancelled, playbackGeneration == generation {
+            if scheduler?.synchronizer.rate == 0 {
+                interpolationCostMonitor.reset()
+                return false
             }
-            if waited >= maxWaitNS {
-                self.interpBurstDropped += 1
-                self.framesDroppedTimeout += 1
-                self.logDiagIfDue()
-                return
+            let clock = scheduler?.synchronizer.currentTime().seconds ?? pts
+            if clock - pts > max(sourcePeriod, 1 / max(targetRenderingFPS, 1)) {
+                framesDroppedTimeout += 1
+                return false
             }
-            try? await Task.sleep(nanoseconds: 4_000_000)
-            waited += 4_000_000
+            if rend.displayLayer.isReadyForMoreMediaData, rend.enqueue(sbuf) {
+                enqueuedFramesInWindow += 1
+                framesEnqueuedReady += 1
+                logDiagIfDue()
+                return true
+            }
+            if rend.displayLayer.status == .failed ||
+               ProcessInfo.processInfo.systemUptime - started >= deadline {
+                interpBurstDropped += 1
+                framesDroppedTimeout += 1
+                logDiagIfDue()
+                return false
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000)
         }
+        return false
     }
 
     /// Encola un frame en el displayLayer con DisplayImmediately=true (pacer
@@ -2279,6 +2374,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func interpolatePair(i0: Frame, i1: Frame, tValues: [Float])
         async -> (buffers: InterpolatedBuffersBox, totalMS: Double, meMS: Double, warpMS: Double) {
         guard interpolationMode != .disabled, !isInterpolating else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
+        let generation = playbackGeneration
+        let initialMode = interpolationMode
+        let initialQuality = interpolationQuality
         if compensator == nil {
             // Bonus: construir los pipelines Metal en background. El init de
             // MotionCompensator compila el shader fuente / crea PSOs (cientos de
@@ -2286,10 +2384,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // decode↔clock en los toggles de modo. al await, el MainActor queda
             // libre durante la construcción.
             do {
-                let config = interpolationConfig
-                compensator = try await Task.detached(priority: .userInitiated) {
+                let config = interpolationConfig.fittingAspect(
+                    width: CVPixelBufferGetWidth(i0.pixelBuffer), height: CVPixelBufferGetHeight(i0.pixelBuffer))
+                let initialized = try await Task.detached(priority: .userInitiated) {
                     try MotionCompensator(config: config)
                 }.value
+                guard !Task.isCancelled, playbackGeneration == generation,
+                      interpolationMode == initialMode, interpolationQuality == initialQuality else {
+                    return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
+                }
+                compensator = initialized
             } catch {
                 os_log("interpolatePair: failed to init MotionCompensator: %{public}@",
                        log: benchLog, type: .error, String(describing: error))
@@ -2299,6 +2403,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         guard let comp = compensator else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
 
         isInterpolating = true
+        let jobID = UUID()
+        interpolationJobID = jobID
         let measured = await Task.detached { @Sendable in
             let started = DispatchTime.now().uptimeNanoseconds
             // Fase B fast-path: luma + ME se calculan UNA vez por par; el warp/
@@ -2310,85 +2416,34 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000.0
             return (buffers: InterpolatedBuffersBox(buffers: r.pixelBuffers), totalMS: elapsed, meMS: r.meMS, warpMS: r.warpMS + r.upscaleMS)
         }.value
-        isInterpolating = false
+        if interpolationJobID == jobID {
+            isInterpolating = false
+            interpolationJobID = nil
+        }
+        guard !Task.isCancelled, playbackGeneration == generation,
+              interpolationMode == initialMode, interpolationQuality == initialQuality else {
+            return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
+        }
         interpolationPairCount += 1
 
-        if comp.config.workWidth > InterpolationConfig.default.workWidth {
-            recentHighQualityPairTimings.append(measured.totalMS)
-            if recentHighQualityPairTimings.count > 6 {
-                recentHighQualityPairTimings.removeFirst()
-            }
-            // El MCFI se procesa por cada intervalo de la fuente: el par entero
-            // debe caber holgadamente en ese periodo, no solo cada frame de salida.
-            if interpolationPairCount > interpolationWarmupPairs,
-               recentHighQualityPairTimings.count == 6 {
-                let average = recentHighQualityPairTimings.reduce(0, +)
-                    / Double(recentHighQualityPairTimings.count)
-                let pairBudgetMS = sourcePeriod * 1_000.0 * 0.90
-                if average > pairBudgetMS {
-                    usesHighQualityFluidProfile = false
-                    compensator = nil
-                    recentHighQualityPairTimings.removeAll()
-                    recentPairTimings.removeAll()
-                    os_log("Frame+ HQ degradado: %.1fms/par > presupuesto %.1fms; se mantiene perfil fluido",
-                           log: benchLog, type: .info, average, pairBudgetMS)
-                    // Nueva época de medición, sin alterar la fase de salida.
-                    // El par actual pertenece todavía al perfil HQ.
-                    interpolationPairCount = 0
-                    resetThroughputWindow()
-                    lastStaleDropSnapshot = interpolationStaleDrops
-                    return measured
-                }
-            }
+        let rate = max(playbackRate, 0.25)
+        if measuredPlaybackRate != rate {
+            interpolationCostMonitor.reset()
+            measuredPlaybackRate = rate
+            interpolationPairCount = 0
         }
-
-        // A 60 fps se sintetizan dos imágenes por intervalo fuente, así que la
-        // medida debe ser el coste del PAR completo. A 48 sólo hay una síntesis
-        // por par y el coste por imagen coincide con ese mismo presupuesto.
-        let frameBudgetMS = 1_000.0 / max(sourceFrameRate ?? 24.0, 24.0)
-        // A 60 conservamos holgura para bajar a 48. En el último nivel,
-        // perder ese margen no equivale a perder tiempo real.
-        let budgetThreshold = frameBudgetMS * (scheduler?.mode == .interpolated60 ? 0.90 : 1.0)
-        let perFrameCost = measured.totalMS / Double(max(tValues.count, 1))
-        let is60FPS = scheduler?.mode == .interpolated60
-        let budgetCost = is60FPS ? measured.totalMS : perFrameCost
-        let budgetUnit = is60FPS ? "par" : "frame"
-
-        if interpolationPairCount <= interpolationWarmupPairs {
-            os_log("interpolatePair [warm-up %d/%d, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
-                   log: benchLog, type: .info,
-                   interpolationPairCount, interpolationWarmupPairs, tValues.count,
-                   measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
-        } else {
-            recentPairTimings.append(budgetCost)
-            if recentPairTimings.count > interpolationTimingWindow {
-                recentPairTimings.removeFirst()
-            }
-            let avg = recentPairTimings.reduce(0, +) / Double(recentPairTimings.count)
-            os_log("interpolatePair [%d/%d avg %.1fms/%{public}@, %d interp]: %.1fms pair / %.1fms per-frame (ME: %.1f Warp: %.1f)",
-                   log: benchLog, type: .info,
-                   recentPairTimings.count, interpolationTimingWindow, avg, budgetUnit, tValues.count,
-                   measured.totalMS, perFrameCost, measured.meMS, measured.warpMS)
-            // Excluir el arranque antes de acumular dos ventanas independientes
-            // de coste. Diez pares (~0.4s) sólo sirven como diagnóstico: un pico
-            // tan breve no justifica apagar Frame+. El gate de latencia conserva
-            // además la protección contra retrasos reales del pipeline completo.
-            if recentPairTimings.count >= interpolationTimingWindow {
-                let startupElapsed = firstPairCompletedAt == 0
-                    ? 0
-                    : Double(DispatchTime.now().uptimeNanoseconds - firstPairCompletedAt) / 1e9
-                if startupElapsed >= throughputSkipStartupSeconds,
-                   let sustainedAverage = interpolationCostMonitor.record(
-                       costMS: budgetCost,
-                       budgetMS: budgetThreshold,
-                       now: Double(DispatchTime.now().uptimeNanoseconds) / 1e9
-                   ) {
-                    downgradeTo48OrDisable(reason: String(format: "coste sostenido %.1fms/%@ > presupuesto %.1fms durante dos ventanas de 3s", sustainedAverage, budgetUnit, budgetThreshold))
-                    return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
-                }
-            }
+        // Zero ME is the static fast-path: it cannot calibrate motion capacity.
+        // Whole-pair elapsed time includes all requested outputs.
+        let warmedUp = firstPairCompletedAt != 0 &&
+            Double(DispatchTime.now().uptimeNanoseconds - firstPairCompletedAt) / 1e9 >= throughputSkipStartupSeconds
+        if warmedUp, interpolationPairCount > interpolationWarmupPairs, measured.meMS > 0,
+           !measured.buffers.buffers.isEmpty {
+            pendingLoadAction = interpolationCostMonitor.record(
+                costMS: measured.totalMS,
+                pairBudgetMS: sourcePeriod * 1000 / Double(rate),
+                now: ProcessInfo.processInfo.systemUptime
+            )
         }
-
         // Estados de UI por transiciones reales (no por-par): al completar el
         // warm-up (6º par, tras pasar el gate de presupuesto) pasamos de
         // "Preparing HQ" a "60fps ready" una sola vez, y se mantiene hasta una
@@ -2448,6 +2503,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             var invEnqueueWaitNS: UInt64 = 0
             var invEnqueueCalls: Int = 0
             var invEnqueueNotReady: Int = 0
+            var cadence = UniformCadence(framesPerSecond: self.cadenceFramesPerSecond)
+            var cadenceFPS = self.cadenceFramesPerSecond
             while true {
                 if Task.isCancelled || self.playbackGeneration != generation { break }
                 guard let pool = self.framePool, let rend = self.renderer, let sched = self.scheduler else {
@@ -2476,6 +2533,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let workStart = DispatchTime.now().uptimeNanoseconds
                 if self.interpolationMode == .disabled {
+                    if requestedInterpolationMode != .disabled,
+                       let retryAt = automaticRetryAt,
+                       ProcessInfo.processInfo.systemUptime >= retryAt {
+                        interpolationQuality = 0
+                        applyInterpolationMode(.motion2x, persistRequest: false)
+                        continue
+                    }
                     guard let f = pool.oldest() else {
                         try? await Task.sleep(nanoseconds: 10_000_000)
                         continue
@@ -2498,15 +2562,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let behindMargin = 0.020
                     let aheadMargin = 0.050
                     if f.pts + behindMargin >= clkN {
-                        let pts = CMTime(seconds: f.pts, preferredTimescale: 1200)
-                        let dur = CMTime(seconds: 1.0 / 24.0, preferredTimescale: 1200)
+                        let pts = CMTime(seconds: f.pts, preferredTimescale: 60_000_000)
+                        let dur = CMTime(seconds: sourcePeriod, preferredTimescale: 60_000_000)
                         rend.pendingOrigin = "native"; rend.pendingType = "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
                             if f.pts - clkN <= aheadMargin {
                                 self.markDisplayImmediately(sbuf)
                             }
-                            rend.enqueue(sbuf)
-                            self.enqueuedFramesInWindow += 1
+                            await self.enqueuePaced(rend, sbuf)
                         }
                     }
                 } else {
@@ -2519,9 +2582,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let stageReserveMS = Double(tAfterReserve - tStageStart) / 1_000_000.0
                     let first = pair.0
                     let second = pair.1
-                    let delta = max(second.pts - first.pts, 1.0 / 24.0)
+                    let delta = second.pts - first.pts
                     let pairIsEven = interpPairIndex % 2 == 0
-                    let uniform60 = uniformCadence && sched.mode == .interpolated60
+                    let uniform60 = uniformCadence
+                    if cadenceFPS != cadenceFramesPerSecond {
+                        cadenceFPS = cadenceFramesPerSecond
+                        cadence = UniformCadence(framesPerSecond: cadenceFPS)
+                    }
+                    var proposedCadence = cadence
+                    let cadenceSamples = proposedCadence.samples(from: first.pts, to: second.pts)
+                    // MKV PTS are commonly millisecond-quantized. A grid point
+                    // within that rounding interval can use the original image
+                    // without running a nearly-identity warp.
+                    let sourceTolerance = min(0.001, sourcePeriod * 0.025)
+                    let syntheticSamples = cadenceSamples.filter {
+                        $0.pts.seconds - first.pts > sourceTolerance &&
+                        second.pts - $0.pts.seconds > sourceTolerance
+                    }
                     // The first source image of a uniform-60 pair is often not
                     // emitted at all: the earliest visible sample is t=0.4 or
                     // t=0.2. Staleness must therefore use that sample's PTS,
@@ -2529,7 +2606,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // and creates a 58ms presentation hole.
                     let firstOutputT: Double
                     if uniform60 {
-                        firstOutputT = pairIsEven ? 0.4 : 0.2
+                        firstOutputT = Double(cadenceSamples.first?.t ?? 0)
                     } else if !hasPresentedInterpolatedStart {
                         firstOutputT = 0
                     } else if sched.mode == .interpolated60 {
@@ -2539,7 +2616,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     let firstOutputPTS = first.pts + delta * firstOutputT
                     // ── Timeline log: display reserve ──────────────────────────────
-                    do {
+                    if Self.detailedDiagnostics {
                         let isConsecutive = abs(delta - sourcePeriod) < 1e-4
                         let isDoubleGap = abs(delta - 2 * sourcePeriod) < 1e-3
                         let nPlusOnePTS = first.pts + sourcePeriod
@@ -2652,13 +2729,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             prevPairEmittedSecondSource = false
                             continue
                         }
-                        let pts = CMTime(seconds: first.pts, preferredTimescale: 1200)
-                        let gridStep = uniformCadence ? (sourcePeriod * 0.4) : (second.pts - first.pts)
-                        let dur = CMTime(seconds: gridStep, preferredTimescale: 1200)
+                        let pts = CMTime(seconds: first.pts, preferredTimescale: 60_000_000)
+                        let gridStep = uniformCadence ? cadence.step.seconds : delta
+                        let dur = CMTime(seconds: gridStep, preferredTimescale: 60_000_000)
                         rend.pendingOrigin = "gapFallback"; rend.pendingType = "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
-                            rend.enqueue(sbuf)
-                            self.enqueuedFramesInWindow += 1
+                            let admitted = await self.enqueuePaced(rend, sbuf)
+                            if Task.isCancelled || self.playbackGeneration != generation { break }
+                            guard admitted else {
+                                pool.consumePair()
+                                await self.coordinator.signal()
+                                continue
+                            }
                             // --- DIAGNOSTIC: gapFallback enqueue ---
                             let diagLine = String(format: "[RIFT-GAP] id=%d pair=(%.3f,%.3f) enqueued=%.3f poolN=%d prev=%.3f",
                                 interpInvocationID, first.pts, second.pts, first.pts, pool.count, previousEnqueuedPTS)
@@ -2693,13 +2775,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     interpPairIndex += 1
                     let tValues: [Float]
                     switch sched.mode {
-                    case .interpolated60 where uniformCadence:
-                        // Grid 60Hz uniforme (16.67ms = delta/2.5): par par [A,
-                        // 0.4, 0.8] a A+{0, .4*, .8*delta}; par impar [0.2, 0.6]
-                        // + B a A+{0.2, .6, 1.0}*delta del par (50/66.67/83.33).
-                        // La fase transversal evita las duraciones 20.8/13.9
-                        // alternantes de la 3:2 (judder).
-                        tValues = pairIsEven ? [0.4, 0.8] : [0.2, 0.6]
+                    case _ where uniformCadence:
+                        // Continuous grid across pairs, independent of source
+                        // timestamp rounding, source rate and playback speed.
+                        cadence = proposedCadence
+                        tValues = syntheticSamples.map(\.t)
                     case .interpolated60:
                         tValues = pairIsEven ? [0.5] : [1.0/3.0, 2.0/3.0]
                     default: // .interpolated48
@@ -2718,32 +2798,22 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // Construir la secuencia ordenada de salida del par.
                     var outputs: [(pts: Double, isInterp: Bool, pb: CVPixelBuffer)] = []
                     if uniform60 {
-                        // Cadencia uniforme 60Hz: cada salida cae en el grid de
-                        // 16.67ms. El frame real central (B) de cada par par NO
-                        // cae sobre el grid (41.67 vs 0/16.67/33.33/50...) y se
-                        // sustituye por las interpolaciones que lo flanquean:
-                        //   par par   (A,B): [A?, M0.4@16.67, M0.8@33.33]   (sin B)
-                        //   par impar (B,C): [M0.2@50, M0.6@66.67, C@83.33] (sin I0)
-                        // Deltas consecutivos = 16.67 uniforme (sin judder).
-                        if result.totalMS > 0 || !interpBuffers.isEmpty || hasPresentedInterpolatedStart {
-                            if pairIsEven {
-                                if !hasPresentedInterpolatedStart {
-                                    outputs.append((first.pts, false, first.pixelBuffer))
-                                }
-                                for (idx, interpBuf) in interpBuffers.enumerated() where idx < tValues.count {
-                                    outputs.append((first.pts + delta * Double(tValues[idx]), true, interpBuf))
-                                }
+                        var generatedIndex = 0
+                        let completePair = interpBuffers.count == tValues.count
+                        for sample in cadenceSamples {
+                            if sample.pts.seconds - first.pts <= sourceTolerance {
+                                outputs.append((sample.pts.seconds, false, first.pixelBuffer))
+                            } else if second.pts - sample.pts.seconds <= sourceTolerance {
+                                outputs.append((sample.pts.seconds, false, second.pixelBuffer))
+                            } else if completePair {
+                                outputs.append((sample.pts.seconds, true, interpBuffers[generatedIndex]))
+                                generatedIndex += 1
                             } else {
-                                for (idx, interpBuf) in interpBuffers.enumerated() where idx < tValues.count {
-                                    outputs.append((first.pts + delta * Double(tValues[idx]), true, interpBuf))
-                                }
-                                outputs.append((second.pts, false, second.pixelBuffer))
+                                // Keep the timestamp grid even under memory pressure.
+                                // Repeat the nearest original; never mislabel a partial pair.
+                                outputs.append((sample.pts.seconds, false,
+                                    sample.t < 0.5 ? first.pixelBuffer : second.pixelBuffer))
                             }
-                        }
-                        // Fallback: interpolación devolvió nada (fallback interno)
-                        // → presentar I0 nativo en vez de quedarse sin frame.
-                        if outputs.isEmpty {
-                            outputs.append((first.pts, false, first.pixelBuffer))
                         }
                     } else if result.totalMS > 0 || !interpBuffers.isEmpty || hasPresentedInterpolatedStart {
                         // Real I0 (solo si aún no se presentó el arranque interpolado)
@@ -2788,18 +2858,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     for i in 0..<outputs.count {
                         if Task.isCancelled || self.playbackGeneration != generation { break }
                         let o = outputs[i]
-                        let pts = CMTime(seconds: o.pts, preferredTimescale: 1200)
+                        let pts = CMTime(seconds: o.pts, preferredTimescale: 60_000_000)
                         let endPTS: Double
                         if i + 1 < outputs.count {
                             endPTS = outputs[i + 1].pts
                         } else if uniform60 {
-                            // El siguiente frame del grid está a 0.4*delta
-                            // (16.67ms), no a delta/3 como en la 3:2.
-                            endPTS = o.pts + delta * 0.4
+                            // Duration remains on the same rational output grid.
+                            endPTS = o.pts + cadence.step.seconds
                         } else {
                             endPTS = o.pts + delta / Double(max(tValues.count + 1, 2))
                         }
-                        let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 1200)
+                        let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 60_000_000)
                         rend.pendingOrigin = "interpOutputs"; rend.pendingType = o.isInterp ? "INTERP" : "SOURCE"
                         if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
                             let clockAtEnqueue = sched.synchronizer.currentTime().seconds
@@ -2809,8 +2878,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             self.framesRequestedForEnqueue += 1
                             let wasReadyBefore = rend.displayLayer.isReadyForMoreMediaData
                             let tBeforeEnq = DispatchTime.now().uptimeNanoseconds
-                            await self.enqueuePaced(rend, sbuf)
+                            let admitted = await self.enqueuePaced(rend, sbuf)
                             if Task.isCancelled || self.playbackGeneration != generation { break }
+                            guard admitted else { continue }
                             let tAfterEnq = DispatchTime.now().uptimeNanoseconds
                             invEnqueueWaitNS += (tAfterEnq - tBeforeEnq)
                             invEnqueueCalls += 1
@@ -2878,6 +2948,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     pool.consumePair()
                     // Déficit de throughput sostenido (pares/s < realtime) → fallback.
                     self.notePairCompleted()
+                    self.applyPendingLoadAction()
                     await self.coordinator.signal()
                 }
                 let workEnd = DispatchTime.now().uptimeNanoseconds
