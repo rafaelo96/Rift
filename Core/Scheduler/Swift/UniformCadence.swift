@@ -82,3 +82,34 @@ public struct AdaptiveLoadMonitor {
         return nil
     }
 }
+
+/// Tracks renderer-side frame drops. Pair cost alone can look healthy while
+/// AVSampleBufferDisplayLayer is still unable to present the admitted cadence.
+public struct PresentationDropMonitor {
+    public enum Action { case reduce, recover }
+    private var previousTotal: Int?
+    private var previousDropped: Int?
+    private var weakWindows = 0
+    private var healthyWindows = 0
+
+    public init() {}
+    public mutating func reset() { self = Self() }
+
+    public mutating func record(totalFrames: Int, droppedFrames: Int) -> Action? {
+        guard totalFrames >= 0, droppedFrames >= 0 else { return nil }
+        defer {
+            previousTotal = totalFrames
+            previousDropped = droppedFrames
+        }
+        guard let previousTotal, let previousDropped else { return nil }
+        let totalDelta = totalFrames - previousTotal
+        let droppedDelta = droppedFrames - previousDropped
+        guard totalDelta > 0, droppedDelta >= 0 else { reset(); return nil }
+        let ratio = Double(droppedDelta) / Double(totalDelta)
+        weakWindows = ratio > 0.02 ? weakWindows + 1 : 0
+        healthyWindows = ratio < 0.002 ? healthyWindows + 1 : 0
+        if weakWindows >= 2 { reset(); return .reduce }
+        if healthyWindows >= 12 { reset(); return .recover }
+        return nil
+    }
+}

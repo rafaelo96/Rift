@@ -146,4 +146,14 @@ for index in 0..<760 {
 }
 precondition(recoveries == 1)
 precondition(load.record(costMS: 100, pairBudgetMS: 41.7, now: 1000) == nil)
-print("PASS: 15 rational cadence cases, 10 minutes each; overload, spike, recovery and discontinuity")
+var presentation = PresentationDropMonitor()
+precondition(presentation.record(totalFrames: 100, droppedFrames: 0) == nil)
+precondition(presentation.record(totalFrames: 200, droppedFrames: 3) == nil)
+precondition(presentation.record(totalFrames: 300, droppedFrames: 6) == .reduce)
+presentation.reset()
+precondition(presentation.record(totalFrames: 100, droppedFrames: 10) == nil)
+for window in 1...11 {
+    precondition(presentation.record(totalFrames: 100 + window * 100, droppedFrames: 10) == nil)
+}
+precondition(presentation.record(totalFrames: 1300, droppedFrames: 10) == .recover)
+print("PASS: 15 rational cadence cases, 10 minutes each; overload, spike, recovery, discontinuity and presentation drops")

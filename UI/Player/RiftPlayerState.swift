@@ -240,10 +240,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var interpolationPairCount = 0
     /// Whole-pair load policy lives in Scheduler, independent of rendering.
     private var interpolationCostMonitor = AdaptiveLoadMonitor()
+    /// AVFoundation presentation drops can happen after admission, so they need
+    /// a separate signal from interpolation cost.
+    private var presentationDropMonitor = PresentationDropMonitor()
     /// Start at balanced quality; sustained measured headroom permits HQ.
     private var interpolationQuality = 1
     private var pendingLoadAction: AdaptiveLoadMonitor.Action?
+    private var pendingPresentationAction: PresentationDropMonitor.Action?
+    private var presentationRecoverEligible = true
     private var automaticRetryAt: Double?
+    private var autoModeApplied = false
     private var measuredPlaybackRate: Float = 1
     /// Preferencia del usuario, separada del tier activo. Una degradación
     /// automática a 48/24 no debe convertirse en su nueva configuración.
@@ -436,8 +442,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// file open — gives Frame+ a fresh chance to measure sustained cost.
     private func resetInterpolationCounters() {
         interpolationCostMonitor.reset()
+        presentationDropMonitor.reset()
         interpolationPairCount = 0
         pendingLoadAction = nil
+        pendingPresentationAction = nil
+        presentationRecoverEligible = true
         interpPairIndex = 0
         interpSinglePairCount = 0
         interpDoublePairCount = 0
@@ -462,8 +471,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     /// Desactiva la interpolación por una razón dada (coste o throughput),
     /// guardando la preferencia para calibrarla de nuevo con otro video.
-    private func disableInterpolation(reason: String) {
-        automaticRetryAt = ProcessInfo.processInfo.systemUptime + 60
+    private func disableInterpolation(reason: String, retryAutomatically: Bool = false) {
+        automaticRetryAt = retryAutomatically ? ProcessInfo.processInfo.systemUptime + 60 : nil
         interpolationMode = .disabled
         scheduler?.setMode(.native24)
         // Al degradar a nativo hay que salir de "60fps ready": framePlusStateTitle
@@ -483,13 +492,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Frame+ siempre intenta primero la cadencia uniforme de 60 fps. Si el
     /// coste o la latencia sostenida no la sostienen, conservar la interpolación
     /// a 48 fps es preferible a volver de golpe al vídeo nativo.
-    private func downgradeTo48OrDisable(reason: String) {
+    private func downgradeTo48OrDisable(reason: String, retryAutomatically: Bool = false) {
         if interpolationQuality > 0 {
             changeInterpolationQuality(to: interpolationQuality - 1)
             return
         }
         guard scheduler?.mode == .interpolated60 else {
-            disableInterpolation(reason: reason)
+            disableInterpolation(reason: reason, retryAutomatically: retryAutomatically)
             return
         }
         os_log("Frame+ baja de 60 a 48 fps: %{public}@", log: benchLog, type: .info, reason)
@@ -944,6 +953,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 guard let self else { return }
                 Task { @MainActor [weak self] in
                     self?.updateRenderingFPS()
+                    self?.updatePresentationMetrics()
                 }
             }
         } else {
@@ -967,6 +977,28 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         enqueuedFramesInWindow = 0
         fpsWindowStart = .now()
+    }
+
+    private func updatePresentationMetrics() {
+        guard interpolationMode != .disabled, scheduler?.synchronizer.rate != 0 else { return }
+        guard #available(macOS 14.4, *),
+              let videoRenderer = renderer?.displayLayer.sampleBufferRenderer else { return }
+        videoRenderer.loadVideoPerformanceMetrics { [weak self] metrics in
+            guard let metrics else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let action = self.presentationDropMonitor.record(
+                    totalFrames: Int(metrics.totalNumberOfFrames),
+                    droppedFrames: Int(metrics.numberOfDroppedFrames)
+                )
+                self.pendingPresentationAction = action
+                if action == .reduce {
+                    self.presentationRecoverEligible = false
+                } else if action == .recover {
+                    self.presentationRecoverEligible = true
+                }
+            }
+        }
     }
     private func updateActiveSubtitle(at time: Double) {
         let newText = subtitleText(at: time)
@@ -1245,11 +1277,27 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         case .reduce:
             downgradeTo48OrDisable(reason: "p95 del par supera 80% del presupuesto durante 6s")
         case .recover:
+            guard presentationRecoverEligible else { return }
             if scheduler?.mode == .interpolated48, requestedInterpolationMode != .motion2x {
                 applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
             } else if interpolationQuality < 2 {
                 changeInterpolationQuality(to: interpolationQuality + 1)
             }
+        }
+    }
+
+    private func applyPendingPresentationAction() {
+        guard let action = pendingPresentationAction else { return }
+        pendingPresentationAction = nil
+        switch action {
+        case .reduce:
+            presentationRecoverEligible = false
+            downgradeTo48OrDisable(
+                reason: "AVFoundation descarta frames presentados de forma sostenida",
+                retryAutomatically: false
+            )
+        case .recover:
+            presentationRecoverEligible = true
         }
     }
     func selectAudioTrack(_ streamIndex: Int) {
@@ -2473,7 +2521,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let autoMode = ProcessInfo.processInfo.environment["RIFT_AUTO_MODE"]
         let autoModeAt = ProcessInfo.processInfo.environment["RIFT_AUTO_MODE_AT"]
         if let autoMode, autoModeAt == nil,
+           !autoModeApplied,
            let m = InterpolationMode(rawValue: autoMode), m != .disabled, interpolationMode == .disabled {
+            autoModeApplied = true
             os_log("RIFT_AUTO_MODE=%{public}@ → activando interpolación", log: benchLog, type: .info, autoMode)
             self.setInterpolationMode(m)
         }
@@ -2533,7 +2583,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let workStart = DispatchTime.now().uptimeNanoseconds
                 if self.interpolationMode == .disabled {
-                    if requestedInterpolationMode != .disabled,
+                    if presentationRecoverEligible,
+                       requestedInterpolationMode != .disabled,
                        let retryAt = automaticRetryAt,
                        ProcessInfo.processInfo.systemUptime >= retryAt {
                         interpolationQuality = 0
@@ -2948,6 +2999,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     pool.consumePair()
                     // Déficit de throughput sostenido (pares/s < realtime) → fallback.
                     self.notePairCompleted()
+                    self.applyPendingPresentationAction()
                     self.applyPendingLoadAction()
                     await self.coordinator.signal()
                 }
