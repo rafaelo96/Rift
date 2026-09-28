@@ -401,11 +401,38 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     private var videoContentView: some View {
         if let rift = state as? RiftPlayerState, let dl = rift.displayLayer {
             HDRDisplayView(displayLayer: dl, videoGravity: presentationMode.videoGravity)
+                .overlay {
+                    if rift.isPictureInPictureActive {
+                        pictureInPicturePlaceholder
+                            .transition(.opacity)
+                    }
+                }
         } else if let rift = state as? RiftPlayerState, let p = rift.player {
             PlayerView(player: p, videoGravity: presentationMode.videoGravity)
         } else {
             videoPlaceholder
         }
+    }
+
+    private var pictureInPicturePlaceholder: some View {
+        ZStack {
+            Color.black
+
+            VStack(spacing: 18) {
+                Image(systemName: "pip")
+                    .font(.system(size: 58, weight: .light))
+                    .foregroundStyle(.white.opacity(0.64))
+
+                Text(NSLocalizedString("This video is playing in picture in picture.", comment: ""))
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.66))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(32)
+        }
+        .allowsHitTesting(false)
+        .animation(controlVisibilityAnimation, value: (state as? RiftPlayerState)?.isPictureInPictureActive)
+        .accessibilityElement(children: .combine)
     }
 
     private var topPlayerControls: some View {
