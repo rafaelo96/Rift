@@ -138,17 +138,18 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        state?.isPictureInPictureActive = true
+        state?.beginPictureInPictureSubtitlePresentation()
         state?.resizePictureInPictureSourceLayer()
         state?.suppressBrokenPictureInPictureHostOverlay()
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         state?.restorePictureInPictureSourceLayer()
-        state?.isPictureInPictureActive = false
+        state?.endPictureInPictureSubtitlePresentation()
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        state?.endPictureInPictureSubtitlePresentation()
         state?.statusMessage = "Picture in Picture unavailable: \(error.localizedDescription)"
     }
 }
@@ -914,13 +915,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         fpsWindowStart = .now()
     }
     private func updateActiveSubtitle(at time: Double) {
-        let active = subtitleCues.first { cue in
-            cue.start <= time && time < cue.end
-        }
-        let newText = active?.text
+        let newText = subtitleText(at: time)
         if newText != currentSubtitleText {
             currentSubtitleText = newText
+            if isPictureInPictureActive, !isPlaying {
+                renderer?.refreshSubtitlePresentation()
+            }
         }
+    }
+
+    private func subtitleText(at time: Double) -> String? {
+        subtitleCues.first { cue in
+            cue.start <= time && time < cue.end
+        }?.text
     }
     func seek(to time: Double) {
         pendingSeekTarget = time
@@ -1265,8 +1272,23 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if controller.isPictureInPictureActive {
             controller.stopPictureInPicture()
         } else {
+            beginPictureInPictureSubtitlePresentation()
             controller.startPictureInPicture()
         }
+    }
+
+    fileprivate func beginPictureInPictureSubtitlePresentation() {
+        isPictureInPictureActive = true
+        renderer?.pictureInPictureSubtitle = { [weak self] time in
+            self?.subtitleText(at: time)
+        }
+        renderer?.refreshSubtitlePresentation()
+    }
+
+    fileprivate func endPictureInPictureSubtitlePresentation() {
+        isPictureInPictureActive = false
+        renderer?.pictureInPictureSubtitle = nil
+        renderer?.refreshSubtitlePresentation()
     }
 
     private func configurePictureInPicture() {

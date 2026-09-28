@@ -247,7 +247,10 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .transition(.opacity.combined(with: .scale(scale: 1.01)))
             }
 
-            if state.hasVideo, let subtitleText = state.currentSubtitleText, !subtitleText.isEmpty {
+            if state.hasVideo,
+               !((state as? RiftPlayerState)?.isPictureInPictureActive ?? false),
+               let subtitleText = state.currentSubtitleText,
+               !subtitleText.isEmpty {
                 subtitleOverlay(subtitleText)
                     .transition(.opacity)
             }
