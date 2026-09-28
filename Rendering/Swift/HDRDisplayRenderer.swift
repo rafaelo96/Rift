@@ -4,6 +4,7 @@ import CoreVideo
 import CoreImage
 import QuartzCore
 import AppKit
+import os
 
 // MARK: - HDRDisplayRenderer (SDR/HDR, sin tone-mapping propio)
 
@@ -31,6 +32,7 @@ public final class HDRDisplayRenderer {
     @MainActor public var pictureInPictureSubtitle: ((Double) -> String?)?
     @MainActor private var subtitleCompositor: SubtitleCompositor?
     @MainActor private var lastSourceFrame: (buffer: CVPixelBuffer, duration: CMTime)?
+    @MainActor public private(set) var subtitleCompositionFailures = 0
 
     /// Refresh the held frame as well, so entering/exiting PiP while paused
     /// does not leave a missing or permanently burned-in caption.
@@ -105,6 +107,8 @@ public final class HDRDisplayRenderer {
             // the source frame is the safe degradation if system pressure wins.
             if let composed = subtitleCompositor?.composite(sourceBuffer, text: text) {
                 pixelBuffer = composed
+            } else {
+                subtitleCompositionFailures += 1
             }
         } else {
             subtitleCompositor?.releaseExcessBuffers()
@@ -125,9 +129,22 @@ public final class HDRDisplayRenderer {
     public var pendingType: String = "unknown"
     public var pendingSchedulerMode: String = "unknown"
 
-    public func enqueue(_ sampleBuffer: CMSampleBuffer) {
+    /// True means admitted to AVKit, not physically presented on screen.
+    /// The caller retains the sample and may retry under its bounded deadline.
+    @discardableResult
+    public func enqueue(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        enqueueAttempts += 1
+        guard displayLayer.status != .failed else {
+            lastLayerError = displayLayer.error
+            return false
+        }
+        guard displayLayer.isReadyForMoreMediaData else {
+            notReadyEnqueues += 1
+            return false
+        }
+        displayLayer.enqueue(sampleBuffer)
         enqueuedFrames += 1
-        if cadenceLogCount < 300 {
+        if detailedDiagnostics, cadenceLogCount < 300 {
             var timingInfo = CMSampleTimingInfo()
             if CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timingInfo) == noErr {
                 let ptsSec = CMTimeGetSeconds(timingInfo.presentationTimeStamp)
@@ -135,34 +152,10 @@ public final class HDRDisplayRenderer {
                 let line = String(format: "[RIFT-CADENCE] #%d origin=%@ type=%@ pts=%.6f dur=%.6f mode=%@\n",
                                   enqueuedFrames, pendingOrigin, pendingType, ptsSec, durSec, pendingSchedulerMode)
                 cadenceLogCount += 1
-                if let h = FileHandle(forWritingAtPath: "/tmp/rift_cadence.log") {
-                    h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
-                } else {
-                    FileManager.default.createFile(atPath: "/tmp/rift_cadence.log", contents: line.data(using: .utf8))
-                }
+                os_log("%{public}@", log: cadenceLog, type: .debug, line)
             }
         }
-        if displayLayer.isReadyForMoreMediaData {
-            displayLayer.enqueue(sampleBuffer)
-        } else {
-            notReadyEnqueues += 1
-            let line = "[RIFT-DIAG] enqueue while NOT ready — total notReady=\(notReadyEnqueues) enqueued=\(enqueuedFrames)\n"
-            if let h = FileHandle(forWritingAtPath: "/tmp/rift_diag.log") {
-                h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile()
-            }
-            if displayLayer.status == .failed, let err = displayLayer.error {
-                if lastLayerError?.localizedDescription != err.localizedDescription {
-                    lastLayerError = err
-                }
-            }
-            displayLayer.requestMediaDataWhenReady(on: DispatchQueue.main) { [weak self] in
-                guard let self else { return }
-                while self.displayLayer.isReadyForMoreMediaData {
-                    break
-                }
-            }
-            displayLayer.enqueue(sampleBuffer)
-        }
+        return true
     }
 
     /// Diags de presentación vs encolado. `notReadyEnqueues > 0` sostenido
@@ -176,20 +169,24 @@ public final class HDRDisplayRenderer {
         } else {
             st = "\(displayLayer.status.rawValue)"
         }
-        return "enqueued=\(enqueuedFrames) notReady=\(notReadyEnqueues) status=\(st) error=\(lastLayerError?.localizedDescription ?? "-")"
+        return "attempts=\(enqueueAttempts) admitted=\(enqueuedFrames) notReady=\(notReadyEnqueues) status=\(st) error=\(lastLayerError?.localizedDescription ?? "-")"
     }
 
     public func resetDiagnostics() {
         enqueuedFrames = 0
+        enqueueAttempts = 0
         notReadyEnqueues = 0
         lastLayerError = nil
         cadenceLogCount = 0
     }
 
     public private(set) var enqueuedFrames = 0
+    public private(set) var enqueueAttempts = 0
     public private(set) var notReadyEnqueues = 0
     public private(set) var lastLayerError: Error?
     private var cadenceLogCount = 0
+    private let detailedDiagnostics = ProcessInfo.processInfo.environment["RIFT_DIAGNOSTICS"] == "1"
+    private let cadenceLog = OSLog(subsystem: "com.rift.player", category: "Cadence")
 
     public func flush() {
         displayLayer.flush()
