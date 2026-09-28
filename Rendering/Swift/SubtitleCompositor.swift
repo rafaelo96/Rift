@@ -7,6 +7,11 @@ import CoreVideo
 /// has a hard allocation limit even when AVKit retains queued frames.
 @MainActor
 final class SubtitleCompositor {
+    /// AVSampleBufferDisplayLayer can retain several frames ahead of playback,
+    /// especially at 60 fps. Keep enough presentation buffers for that queue
+    /// while preserving a strict upper bound for 4K/HDR memory use.
+    private static let maximumOutstandingFrames = 12
+
     private let context = CIContext(options: [.cacheIntermediates: false])
     private var pool: CVPixelBufferPool?
     private var dimensions: CGSize = .zero
@@ -34,9 +39,17 @@ final class SubtitleCompositor {
         }
         guard let pool else { return nil }
         var destination: CVPixelBuffer?
-        let limit = [kCVPixelBufferPoolAllocationThresholdKey as String: 6] as CFDictionary
-        guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pool, limit, &destination) == kCVReturnSuccess,
-              let destination else { return nil }
+        let limit = [
+            kCVPixelBufferPoolAllocationThresholdKey as String: Self.maximumOutstandingFrames
+        ] as CFDictionary
+        var allocationStatus = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
+            nil, pool, limit, &destination)
+        if allocationStatus == kCVReturnWouldExceedAllocationThreshold {
+            CVPixelBufferPoolFlush(pool, .excessBuffers)
+            allocationStatus = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
+                nil, pool, limit, &destination)
+        }
+        guard allocationStatus == kCVReturnSuccess, let destination else { return nil }
         if cachedText != text {
             cachedOverlay = makeOverlay(text: text, size: size)
             cachedText = text
@@ -50,6 +63,11 @@ final class SubtitleCompositor {
         context.render(overlay.composited(over: image), to: destination,
                        bounds: CGRect(origin: .zero, size: size), colorSpace: image.colorSpace)
         return destination
+    }
+
+    func releaseExcessBuffers() {
+        guard let pool else { return }
+        CVPixelBufferPoolFlush(pool, .excessBuffers)
     }
 
     private func makeOverlay(text: String, size: CGSize) -> CIImage? {

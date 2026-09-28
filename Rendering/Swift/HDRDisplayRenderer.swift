@@ -100,8 +100,14 @@ public final class HDRDisplayRenderer {
         var pixelBuffer = sourceBuffer
         if let text = pictureInPictureSubtitle?(pts.seconds), !text.isEmpty {
             if subtitleCompositor == nil { subtitleCompositor = SubtitleCompositor() }
-            guard let composed = subtitleCompositor?.composite(sourceBuffer, text: text) else { return nil }
-            pixelBuffer = composed
+            // A transient compositor allocation failure must not drop the video
+            // frame. The larger bounded pool normally avoids this path; keeping
+            // the source frame is the safe degradation if system pressure wins.
+            if let composed = subtitleCompositor?.composite(sourceBuffer, text: text) {
+                pixelBuffer = composed
+            }
+        } else {
+            subtitleCompositor?.releaseExcessBuffers()
         }
         var fmt: CMFormatDescription?
         let s1 = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &fmt)
