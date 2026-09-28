@@ -79,4 +79,27 @@ public struct InterpolationConfig: Sendable {
         usesAttenuatedCatastrophicSafetyBlend: false,
         usesUnmatchableEffectSafetyCheck: false
     )
+
+    /// Same motion safety policy at a smaller work plane. The output remains
+    /// native resolution; selection depends on measured cost, never chip name.
+    public static let fluidEconomy = InterpolationConfig(
+        workWidth: 768, workHeight: 320,
+        usesBidirectionalSafetyCheck: false,
+        usesCatastrophicSafetyCheck: true
+    )
+
+    public func fittingAspect(width: Int, height: Int) -> InterpolationConfig {
+        guard width > 0, height > 0 else { return self }
+        let scale = min(Double(workWidth) / Double(width), Double(workHeight) / Double(height))
+        let alignment = blockSize * 4
+        let fittedWidth = max(alignment, Int(Double(width) * scale) / alignment * alignment)
+        let fittedHeight = max(alignment, Int(Double(height) * scale) / alignment * alignment)
+        return InterpolationConfig(workWidth: fittedWidth, workHeight: fittedHeight,
+            blockSize: blockSize, lambdaPx: lambdaPx, subpel: subpel,
+            temporalGatePx: temporalGatePx,
+            usesBidirectionalSafetyCheck: usesBidirectionalSafetyCheck,
+            usesCatastrophicSafetyCheck: usesCatastrophicSafetyCheck,
+            usesAttenuatedCatastrophicSafetyBlend: usesAttenuatedCatastrophicSafetyBlend,
+            usesUnmatchableEffectSafetyCheck: usesUnmatchableEffectSafetyCheck)
+    }
 }

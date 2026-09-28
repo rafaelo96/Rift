@@ -2066,7 +2066,10 @@ if combined > 41.7 {
 if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     let mc: MotionCompensator
     do {
-        mc = try MotionCompensator(config: .default)
+        let profile = ProcessInfo.processInfo.environment["MV_PROFILE"] ?? "default"
+        let config: InterpolationConfig = profile == "hq" ? .fluidHighQuality
+            : profile == "fluid" ? .fluid : .default
+        mc = try MotionCompensator(config: config)
     } catch {
         print("PIPELINE INIT FAILED: \(error)")
         print("\nOK — MVProbe finished (pipeline skipped)")
@@ -2079,7 +2082,15 @@ if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     print("\n--- pipeline real (MotionCompensator, full-res CVPixelBuffer, warp work-plane + upscale) ---")
     for i in 0..<pairCount {
         let s = DispatchTime.now().uptimeNanoseconds
-        let r = mc.interpolateWithTimings(I0: frameBuffers[i], I1: frameBuffers[i + 1], t: 0.5)
+        let r: InterpolationResult
+        if envInt("MV_PAIR_OUTPUTS", 1) == 2 {
+            let pair = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: [0.4, 0.8])
+            precondition(pair.pixelBuffers.count == 2, "Incomplete production pair")
+            r = InterpolationResult(pixelBuffer: pair.pixelBuffers.first,
+                meMS: pair.meMS, warpMS: pair.warpMS, upscaleMS: pair.upscaleMS)
+        } else {
+            r = mc.interpolateWithTimings(I0: frameBuffers[i], I1: frameBuffers[i + 1], t: 0.5)
+        }
         let tot = Double(DispatchTime.now().uptimeNanoseconds - s) / 1_000_000.0
         pipelineME.append(r.meMS)
         pipelineWarp.append(r.warpMS)

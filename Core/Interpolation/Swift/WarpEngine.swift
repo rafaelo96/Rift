@@ -24,13 +24,10 @@ public final class WarpEngine {
     // Pool de buffers de salida (fast-path 4K/1080p): los CVPixelBuffer de salida
     // se reusan entre frames en vez de crearse desde cero (CVPixelBufferCreate +
     // registro IOSurface por par). El pool es el primitive thread-safe de CoreVideo;
-    // el overflow degrada a create aislado si el displayLayer aún retiene todos los
-    // buffers del pool. La cache de envoltorios CVMetalTexture por IOSurfaceID evita
-    // el CVMetalTextureCacheCreateTextureFromImage por frame (la IOSurface no cambia).
+    // El límite de asignación es duro. Los wrappers solo viven durante el comando
+    // síncrono; retener el CVPixelBuffer en una caché impediría su reciclado.
     private var outPool: CVPixelBufferPool?
     private var outPoolSize: (w: Int, h: Int, pixelFormat: OSType)?
-    private var pooledTex: [UInt32: (CVPixelBuffer, CVMetalTexture)] = [:]
-    private var pooledChromaTex: [UInt32: (CVPixelBuffer, CVMetalTexture)] = [:]
     private var loggedChromaPath = false
     private var loggedChromaStride = false
     private var loggedNoChromaWarp = false
@@ -217,12 +214,8 @@ public final class WarpEngine {
     /// se crean una vez; por t se repite solo warp + upscale + copy CbCr + HDR.
     ///
     /// Fast-path 4K HDR (pooling): los buffers de salida provienen de un
-    /// CVPixelBufferPool reutilizable de 8 slots (en vez de CVPixelBufferCreate
-    /// + registro IOSurface por frame), y el envoltorio CVMetalTexture del luma
-    /// de salida se cachea por IOSurfaceID (el surface del pool no cambia → no
-    /// se re-registra por frame). El pool es el primitive thread-safe de
-    /// CoreVideo; overflow → degrada a create aislado si el displayLayer aún
-    /// retiene todos los slots.
+    /// CVPixelBufferPool con un máximo de 32 salidas retenidas. Un par fallido
+    /// devuelve cero salidas para no asociar un buffer al timestamp equivocado.
 func interpolatePixelBufferPair(
     I0: CVPixelBuffer,
     I1: CVPixelBuffer,
@@ -281,10 +274,13 @@ func interpolatePixelBufferPair(
     var upscaleTotal = 0.0
     if let prepared { warpTotal += prepared.downMS }
     for t in tValues {
-        guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else { continue }
+        guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else {
+            return ([], warpTotal, upscaleTotal)
+        }
 
         let wrapped = wrapOutputTexture(out, format: metalLumaFormat, w: w, h: h, cache: cache)
-        guard let texOut = wrapped.1 else { continue }
+        guard let texOut = wrapped.1 else { return ([], warpTotal, upscaleTotal) }
+        defer { withExtendedLifetime(wrapped) {} }
         warpTotal += interpolate(tex0: tex0w, tex1: tex1w, mv: mvBuf,
                                  gridW: UInt32(gridW), gridH: UInt32(gridH),
                                      blockSize: UInt32(blockSize), t: t, occThresh: occThresh, outTex: texOutW)
@@ -308,18 +304,22 @@ func interpolatePixelBufferPair(
 
             if chromaIs10 && ProcessInfo.processInfo.environment["RIFT_CHROMA_ZEROCOPY"] != "0" {
                 let chromaWrapped = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache)
+                defer { withExtendedLifetime(chromaWrapped) {} }
                 if let chromaTexOut = chromaWrapped.1 {
                     logChromaPathOnce(zeroCopy: true)
                     upscaleTotal += chromaUpscale(src: chromaSrc, outTex: chromaTexOut,
                                                   srcW: prepared.outW, srcH: prepared.outH,
                                                   dstW: cwCh, dstH: chCh, fmt10: true)
                 }
-            } else if !chromaIs10, let chromaWrapped8 = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache, is8Bit: true).1 {
+            } else if !chromaIs10 {
+                let chromaWrapped8 = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache, is8Bit: true)
+                defer { withExtendedLifetime(chromaWrapped8) {} }
+                guard let chromaTexture8 = chromaWrapped8.1 else { return ([], warpTotal, upscaleTotal) }
                 // Zero-copy 8-bit: el upscale escribe el plano CbCr empaquetado
                 // directamente (rg8Uint), sin el compactado host de
                 // writeChromaPlane (loop Swift por píxel, ~40ms por t en debug).
                 logChromaPathOnce(zeroCopy: true)
-                upscaleTotal += chromaUpscale8(src: chromaSrc, outTex: chromaWrapped8,
+                upscaleTotal += chromaUpscale8(src: chromaSrc, outTex: chromaTexture8,
                                                srcW: prepared.outW, srcH: prepared.outH,
                                                dstW: cwCh, dstH: chCh)
             } else if let cOutFull {
@@ -340,9 +340,7 @@ func interpolatePixelBufferPair(
 }
 
     /// Crea (si hace falta) el pool de buffers de salida con las dims/formato del
-    /// par actual. Si el video cambia de resolución/formato se recrea y se vacía
-    /// la cache de envoltorios (los wraps cacheados pinen sus buffers, así que el
-    /// pool no reutiliza un surface mientras haya un envoltorio referente a él).
+    /// par actual. Los wrappers no se conservan entre llamadas.
     private func ensureOutputPool(w: Int, h: Int, pixelFormat: OSType) {
         if let cur = outPoolSize, cur.w == w, cur.h == h, cur.pixelFormat == pixelFormat, outPool != nil { return }
         let attrs: [String: Any] = [
@@ -350,66 +348,27 @@ func interpolatePixelBufferPair(
             kCVPixelBufferHeightKey as String: h,
             kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
             kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-            kCVPixelBufferPoolMinimumBufferCountKey as String: outPoolCapacity,
         ]
         var pool: CVPixelBufferPool?
         guard CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool) == kCVReturnSuccess,
               let p = pool else { return }
         outPool = p
         outPoolSize = (w, h, pixelFormat)
-        pooledTex.removeAll()
-        // Pre-warm: los 8 buffers se crean y se devuelven al pool.
-        for _ in 0..<outPoolCapacity {
-            var pb: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, p, &pb)
-        }
+        if let textureCache { CVMetalTextureCacheFlush(textureCache, 0) }
     }
 
-    /// Adquiere un buffer de salida del pool; si el pool está vacío (todos los
-    /// slots aún retenidos por el displayLayer) degrada a create aislado — nunca
-    /// bloquea ni devuelve datos de un par anterior.
+    /// La presión de memoria devuelve nil; nunca crea buffers fuera del límite.
     private func acquireOutputBuffer(w: Int, h: Int, pixelFormat: OSType) -> CVPixelBuffer? {
-        if let pool = outPool {
-            var pb: CVPixelBuffer?
-            if CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let b = pb {
-                return b
-            }
-        }
+        guard let pool = outPool else { return nil }
         var pb: CVPixelBuffer?
-        let attrs: [String: Any] = [
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-            kCVPixelBufferWidthKey as String: w,
-            kCVPixelBufferHeightKey as String: h,
-            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
-        ]
-        guard CVPixelBufferCreate(kCFAllocatorDefault, w, h, pixelFormat, attrs as CFDictionary, &pb) == kCVReturnSuccess else { return nil }
+        let limit = [kCVPixelBufferPoolAllocationThresholdKey as String: outPoolCapacity] as CFDictionary
+        guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
+            kCFAllocatorDefault, pool, limit, &pb) == kCVReturnSuccess else { return nil }
         return pb
     }
 
-    /// Devuelve la textura Metal del plano de luma del buffer de salida, cacheada
-    /// por IOSurfaceID. El wrap NO retiene el CVPixelBuffer (texture cache), así
-    /// que el valor del dict pinea el buffer fuerte para que el pool no pueda
-    /// reciclar/destruir la superficie bajo el envoltorio; solo al desalojar el
-    /// wrap se libera el buffer y el surface queda a disposición del pool.
+    /// El caller conserva el wrapper hasta que los comandos GPU terminan.
     private func wrapOutputTexture(_ pb: CVPixelBuffer, format: MTLPixelFormat, w: Int, h: Int, cache: CVMetalTextureCache) -> (CVMetalTexture?, MTLTexture?) {
-        if let surfaceUnmanaged = CVPixelBufferGetIOSurface(pb) {
-            let surface = surfaceUnmanaged.takeUnretainedValue()
-            let sid = IOSurfaceGetID(surface)
-            if let cached = pooledTex[sid], let tex = CVMetalTextureGetTexture(cached.1) {
-                return (cached.1, tex)
-            }
-            var wrapped: CVMetalTexture?
-            if CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
-               let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) {
-                if pooledTex.count >= outPoolCapacity * 2 {
-                    if let oldest = pooledTex.keys.first {
-                        pooledTex.removeValue(forKey: oldest)
-                    }
-                }
-                pooledTex[sid] = (pb, w2)
-                return (w2, tex)
-            }
-        }
         var wrapped: CVMetalTexture?
         guard CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
               let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) else { return (nil, nil) }
@@ -423,24 +382,6 @@ func interpolatePixelBufferPair(
             print("[RIFT-DIAG-CHROMA-STRIDE] bytesPerRow=\(CVPixelBufferGetBytesPerRowOfPlane(pb, 1)) expectedBytesPerRow=\(expPBR) height=\(CVPixelBufferGetHeightOfPlane(pb, 1))")
         }
         let format: MTLPixelFormat = is8Bit ? .rg8Uint : .rg16Uint
-        if let surfaceUnmanaged = CVPixelBufferGetIOSurface(pb) {
-            let surface = surfaceUnmanaged.takeUnretainedValue()
-            let sid = IOSurfaceGetID(surface)
-            if let cached = pooledChromaTex[sid], let tex = CVMetalTextureGetTexture(cached.1) {
-                return (cached.1, tex)
-            }
-            var wrappedC: CVMetalTexture?
-            if CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 1, &wrappedC) == kCVReturnSuccess,
-               let w2 = wrappedC, let tex = CVMetalTextureGetTexture(w2) {
-                if pooledChromaTex.count >= outPoolCapacity * 2 {
-                    if let oldest = pooledChromaTex.keys.first {
-                        pooledChromaTex.removeValue(forKey: oldest)
-                    }
-                }
-                pooledChromaTex[sid] = (pb, w2)
-                return (w2, tex)
-            }
-        }
         var wrappedC: CVMetalTexture?
         guard CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 1, &wrappedC) == kCVReturnSuccess,
               let w2 = wrappedC, let tex = CVMetalTextureGetTexture(w2) else { return (nil, nil) }
