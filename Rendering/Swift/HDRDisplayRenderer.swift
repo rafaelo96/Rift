@@ -28,6 +28,23 @@ public struct VisualAdjustments: Equatable, Sendable {
 public final class HDRDisplayRenderer {
     public let displayLayer: AVSampleBufferDisplayLayer
     public let synchronizer: AVSampleBufferRenderSynchronizer
+    @MainActor public var pictureInPictureSubtitle: ((Double) -> String?)?
+    @MainActor private var subtitleCompositor: SubtitleCompositor?
+    @MainActor private var lastSourceFrame: (buffer: CVPixelBuffer, duration: CMTime)?
+
+    /// Refresh the held frame as well, so entering/exiting PiP while paused
+    /// does not leave a missing or permanently burned-in caption.
+    @MainActor
+    public func refreshSubtitlePresentation() {
+        guard let frame = lastSourceFrame,
+              let sample = sampleBuffer(from: frame.buffer, pts: synchronizer.currentTime(), duration: frame.duration) else { return }
+        displayLayer.flush()
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) as? [NSMutableDictionary] {
+            attachments.first?[kCMSampleAttachmentKey_DisplayImmediately] = true
+        }
+        displayLayer.enqueue(sample)
+        if pictureInPictureSubtitle == nil { subtitleCompositor = nil }
+    }
 
     public init(synchronizer: AVSampleBufferRenderSynchronizer? = nil) {
         let layer = AVSampleBufferDisplayLayer()
@@ -77,7 +94,15 @@ public final class HDRDisplayRenderer {
     // Wrapping CVPixelBuffer -> CMSampleBuffer con timing, preservando HDR attachments
     // El CVPixelBuffer ya trae kCVImageBuffer* attachments (Decode/Warp los propagó)
     // CMVideoFormatDescriptionCreateForImageBuffer lee esos attachments para el CMSampleBuffer.
-    public func sampleBuffer(from pixelBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime) -> CMSampleBuffer? {
+    @MainActor
+    public func sampleBuffer(from sourceBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime) -> CMSampleBuffer? {
+        lastSourceFrame = (sourceBuffer, duration)
+        var pixelBuffer = sourceBuffer
+        if let text = pictureInPictureSubtitle?(pts.seconds), !text.isEmpty {
+            if subtitleCompositor == nil { subtitleCompositor = SubtitleCompositor() }
+            guard let composed = subtitleCompositor?.composite(sourceBuffer, text: text) else { return nil }
+            pixelBuffer = composed
+        }
         var fmt: CMFormatDescription?
         let s1 = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &fmt)
         guard s1 == noErr, let fmt else { return nil }
