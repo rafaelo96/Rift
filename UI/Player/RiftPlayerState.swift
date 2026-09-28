@@ -1858,9 +1858,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                   let end = subtitleTimestamp(timing[1].components(separatedBy: " ").first ?? "") else {
                 return nil
             }
-            let subtitleText = lines.dropFirst(timingIndex + 1)
+            let subtitleText = SubtitleTextSanitizer.plainText(from: lines.dropFirst(timingIndex + 1)
                 .joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: .whitespacesAndNewlines))
             guard !subtitleText.isEmpty else { return nil }
             return SubtitleCue(start: start, end: max(end, start + 0.1), text: subtitleText)
         }
@@ -1887,7 +1887,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         while let packet = try? demuxer.nextPacket() {
             guard packet.streamIndex == trackStreamIndex else { continue }
             guard let text = String(bytes: packet.data, encoding: .utf8) else { continue }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = SubtitleTextSanitizer.plainText(from: text)
             guard !trimmed.isEmpty else { continue }
             let end = packet.duration > 0 ? packet.pts + packet.duration : packet.pts + 3.0
             cues.append(SubtitleCue(start: packet.pts, end: end, text: trimmed))
