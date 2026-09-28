@@ -97,3 +97,53 @@ if st == kCVReturnSuccess, let pb {
 }
 
 print("\nOK — SchedulerProbe finished")
+
+// Ten minutes for each source/output combination. Quantized source PTS mimic
+// MKV's millisecond time base; the output grid must not inherit its jitter.
+for sourceFPS in [24_000.0 / 1001, 24, 25, 30_000.0 / 1001, 30] {
+    for targetFPS in [50.0, 60_000.0 / 1001, 60] {
+        var grid = UniformCadence(framesPerSecond: targetFPS)
+        var previous: CMTime?
+        var count = 0
+        let pairs = Int(sourceFPS * 600)
+        for index in 0..<pairs {
+            let start = (Double(index) / sourceFPS * 1000).rounded() / 1000
+            let end = (Double(index + 1) / sourceFPS * 1000).rounded() / 1000
+            for sample in grid.samples(from: start, to: end) {
+                precondition(sample.t >= 0 && sample.t < 1)
+                if let previous {
+                    precondition(CMTimeCompare(CMTimeSubtract(sample.pts, previous), grid.step) == 0)
+                }
+                precondition(abs(sample.pts.seconds - Double(count) * grid.step.seconds) < 0.000_001)
+                previous = sample.pts
+                count += 1
+            }
+        }
+        precondition(abs(Double(count) - Double(pairs) / sourceFPS * targetFPS) < 2)
+        grid.reset()
+        precondition(abs(grid.samples(from: 120, to: 120.04).first!.pts.seconds - 120) < 0.000_001)
+    }
+}
+var load = AdaptiveLoadMonitor()
+var reductions = 0
+for index in 0..<160 {
+    if load.record(costMS: 40, pairBudgetMS: 41.7, now: Double(index) / 24) == .reduce {
+        reductions += 1
+    }
+}
+precondition(reductions == 1)
+load.reset()
+for index in 0..<160 {
+    precondition(load.record(costMS: index == 80 ? 100 : 15,
+        pairBudgetMS: 41.7, now: Double(index) / 24) == nil)
+}
+load.reset()
+var recoveries = 0
+for index in 0..<760 {
+    if load.record(costMS: 10, pairBudgetMS: 41.7, now: Double(index) / 24) == .recover {
+        recoveries += 1
+    }
+}
+precondition(recoveries == 1)
+precondition(load.record(costMS: 100, pairBudgetMS: 41.7, now: 1000) == nil)
+print("PASS: 15 rational cadence cases, 10 minutes each; overload, spike, recovery and discontinuity")
