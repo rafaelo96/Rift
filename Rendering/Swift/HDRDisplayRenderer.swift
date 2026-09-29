@@ -36,6 +36,7 @@ public final class HDRDisplayRenderer {
     @MainActor private var lastSourceFrame: (buffer: CVPixelBuffer, duration: CMTime)?
     @MainActor public private(set) var subtitleCompositionFailures = 0
     @MainActor public private(set) var heldFrameRefreshes = 0
+    @MainActor private var superResolutionDiagnosticCount = 0
 
     /// Refresh the held frame as well, so entering/exiting PiP while paused
     /// does not leave a missing or permanently burned-in caption.
@@ -80,6 +81,7 @@ public final class HDRDisplayRenderer {
     public func setSuperResolutionMode(_ mode: SuperResolutionMode) {
         guard superResolutionMode != mode else { return }
         superResolutionMode = mode
+        superResolutionDiagnosticCount = 0
         if mode == .off { superResolutionProcessor = nil }
         // A paused synchronizer produces no new samples. Rebuild the held frame
         // now so changing the Visual selector has an immediate visible effect.
@@ -118,6 +120,11 @@ public final class HDRDisplayRenderer {
             if superResolutionProcessor == nil { superResolutionProcessor = SuperResolutionProcessor() }
             if let enhanced = superResolutionProcessor?.process(sourceBuffer, mode: superResolutionMode) {
                 pixelBuffer = enhanced
+            }
+            if detailedDiagnostics, superResolutionDiagnosticCount < 5 {
+                superResolutionDiagnosticCount += 1
+                let line = "SUPERRES mode=\(superResolutionMode.rawValue) input=\(CVPixelBufferGetWidth(sourceBuffer))x\(CVPixelBufferGetHeight(sourceBuffer)) format=\(CVPixelBufferGetPixelFormatType(sourceBuffer)) output=\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer)) processed=\(pixelBuffer !== sourceBuffer) bypass=\(superResolutionProcessor?.isAdaptivelyBypassed ?? false)\n"
+                FileHandle.standardOutput.write(Data(line.utf8))
             }
         }
         if let text = pictureInPictureSubtitle?(pts.seconds), !text.isEmpty {
