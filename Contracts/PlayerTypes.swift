@@ -89,3 +89,14 @@ public enum FPSMode: String, CaseIterable, Sendable {
         }
     }
 }
+
+// MARK: - Super Resolution
+
+/// User-facing preference shared by the UI contract. Rendering maps this value
+/// to its implementation-specific mode without making Contracts depend on Metal.
+public enum SuperResolutionPreference: String, CaseIterable, Sendable, Codable {
+    case off
+    case soft
+    case balanced
+    case strong
+}
