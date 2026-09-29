@@ -105,6 +105,18 @@ struct AdmissionCheck {
         let range = lumaRange(enhanced)
         precondition(range.lowerBound >= 32 && range.upperBound <= 192)
         precondition(CVBufferCopyAttachment(enhanced, kCVImageBufferColorPrimariesKey, nil) != nil)
+
+        let pausedRenderer = HDRDisplayRenderer()
+        precondition(pausedRenderer.sampleBuffer(
+            from: source,
+            pts: .zero,
+            duration: CMTime(value: 1, timescale: 24)
+        ) != nil)
+        precondition(pausedRenderer.heldFrameRefreshes == 0)
+        pausedRenderer.setSuperResolutionMode(.strong)
+        precondition(pausedRenderer.heldFrameRefreshes == 1,
+                     "changing super resolution must refresh a paused frame")
+
         guard let soft = processor.process(source, mode: .soft),
               let strong = processor.process(source, mode: .strong) else {
             preconditionFailure("super resolution profiles unavailable")

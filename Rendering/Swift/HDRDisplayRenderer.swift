@@ -35,6 +35,7 @@ public final class HDRDisplayRenderer {
     @MainActor public private(set) var superResolutionMode: SuperResolutionMode = .off
     @MainActor private var lastSourceFrame: (buffer: CVPixelBuffer, duration: CMTime)?
     @MainActor public private(set) var subtitleCompositionFailures = 0
+    @MainActor public private(set) var heldFrameRefreshes = 0
 
     /// Refresh the held frame as well, so entering/exiting PiP while paused
     /// does not leave a missing or permanently burned-in caption.
@@ -47,6 +48,7 @@ public final class HDRDisplayRenderer {
             attachments.first?[kCMSampleAttachmentKey_DisplayImmediately] = true
         }
         displayLayer.enqueue(sample)
+        heldFrameRefreshes += 1
         if pictureInPictureSubtitle == nil { subtitleCompositor = nil }
     }
 
@@ -76,8 +78,12 @@ public final class HDRDisplayRenderer {
 
     @MainActor
     public func setSuperResolutionMode(_ mode: SuperResolutionMode) {
+        guard superResolutionMode != mode else { return }
         superResolutionMode = mode
         if mode == .off { superResolutionProcessor = nil }
+        // A paused synchronizer produces no new samples. Rebuild the held frame
+        // now so changing the Visual selector has an immediate visible effect.
+        refreshSubtitlePresentation()
     }
 
     /// Aplica ajustes no destructivos en la capa de presentación. El pipeline
