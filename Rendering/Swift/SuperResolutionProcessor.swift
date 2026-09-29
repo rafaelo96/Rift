@@ -10,9 +10,9 @@ public enum SuperResolutionMode: String, CaseIterable, Sendable {
     fileprivate var detail: Float {
         switch self {
         case .off: return 0
-        case .soft: return 0.10
-        case .balanced: return 0.22
-        case .strong: return 0.35
+        case .soft: return 0.22
+        case .balanced: return 0.48
+        case .strong: return 0.85
         }
     }
 }

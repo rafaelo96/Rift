@@ -42,6 +42,30 @@ private func lumaRange(_ buffer: CVPixelBuffer) -> ClosedRange<UInt8> {
     return minimum...maximum
 }
 
+private func lumaMeanAbsoluteDifference(_ lhs: CVPixelBuffer, _ rhs: CVPixelBuffer) -> Double {
+    precondition(CVPixelBufferGetWidthOfPlane(lhs, 0) == CVPixelBufferGetWidthOfPlane(rhs, 0))
+    precondition(CVPixelBufferGetHeightOfPlane(lhs, 0) == CVPixelBufferGetHeightOfPlane(rhs, 0))
+    CVPixelBufferLockBaseAddress(lhs, .readOnly)
+    CVPixelBufferLockBaseAddress(rhs, .readOnly)
+    defer {
+        CVPixelBufferUnlockBaseAddress(rhs, .readOnly)
+        CVPixelBufferUnlockBaseAddress(lhs, .readOnly)
+    }
+    let width = CVPixelBufferGetWidthOfPlane(lhs, 0)
+    let height = CVPixelBufferGetHeightOfPlane(lhs, 0)
+    let lhsStride = CVPixelBufferGetBytesPerRowOfPlane(lhs, 0)
+    let rhsStride = CVPixelBufferGetBytesPerRowOfPlane(rhs, 0)
+    let lhsBase = CVPixelBufferGetBaseAddressOfPlane(lhs, 0)!
+    let rhsBase = CVPixelBufferGetBaseAddressOfPlane(rhs, 0)!
+    var total = 0
+    for y in 0..<height {
+        let lhsRow = lhsBase.advanced(by: y * lhsStride).assumingMemoryBound(to: UInt8.self)
+        let rhsRow = rhsBase.advanced(by: y * rhsStride).assumingMemoryBound(to: UInt8.self)
+        for x in 0..<width { total += abs(Int(lhsRow[x]) - Int(rhsRow[x])) }
+    }
+    return Double(total) / Double(width * height)
+}
+
 @main
 struct AdmissionCheck {
     @MainActor static func main() {
@@ -81,6 +105,13 @@ struct AdmissionCheck {
         let range = lumaRange(enhanced)
         precondition(range.lowerBound >= 32 && range.upperBound <= 192)
         precondition(CVBufferCopyAttachment(enhanced, kCVImageBufferColorPrimariesKey, nil) != nil)
+        guard let soft = processor.process(source, mode: .soft),
+              let strong = processor.process(source, mode: .strong) else {
+            preconditionFailure("super resolution profiles unavailable")
+        }
+        let profileDifference = lumaMeanAbsoluteDifference(soft, strong)
+        print("SR profile difference: \(String(format: "%.2f", profileDifference)) luma levels")
+        precondition(profileDifference >= 3.0, "profiles are not visually distinct")
         for size in [(1280, 720), (1920, 1080), (3840, 2160)] {
             let frame = makeBiPlanar(width: size.0, height: size.1)
             precondition(processor.process(frame, mode: .balanced) != nil)
