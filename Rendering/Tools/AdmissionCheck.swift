@@ -2,6 +2,46 @@
 import AVFoundation
 import CoreVideo
 
+private func makeBiPlanar(width: Int, height: Int) -> CVPixelBuffer {
+    var buffer: CVPixelBuffer?
+    let attributes: [String: Any] = [
+        kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        kCVPixelBufferMetalCompatibilityKey as String: true
+    ]
+    precondition(CVPixelBufferCreate(nil, width, height,
+        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+        attributes as CFDictionary, &buffer) == kCVReturnSuccess)
+    let result = buffer!
+    CVPixelBufferLockBaseAddress(result, [])
+    if let yBase = CVPixelBufferGetBaseAddressOfPlane(result, 0) {
+        let stride = CVPixelBufferGetBytesPerRowOfPlane(result, 0)
+        for y in 0..<height {
+            let row = yBase.advanced(by: y * stride).assumingMemoryBound(to: UInt8.self)
+            for x in 0..<width { row[x] = ((x / 8 + y / 8) & 1) == 0 ? 32 : 192 }
+        }
+    }
+    if let cBase = CVPixelBufferGetBaseAddressOfPlane(result, 1) {
+        memset(cBase, 128, CVPixelBufferGetBytesPerRowOfPlane(result, 1) * CVPixelBufferGetHeightOfPlane(result, 1))
+    }
+    CVPixelBufferUnlockBaseAddress(result, [])
+    return result
+}
+
+private func lumaRange(_ buffer: CVPixelBuffer) -> ClosedRange<UInt8> {
+    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+    let width = CVPixelBufferGetWidthOfPlane(buffer, 0)
+    let height = CVPixelBufferGetHeightOfPlane(buffer, 0)
+    let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+    let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0)!
+    var minimum: UInt8 = 255, maximum: UInt8 = 0
+    for y in 0..<height {
+        let row = base.advanced(by: y * stride).assumingMemoryBound(to: UInt8.self)
+        for x in 0..<width { minimum = min(minimum, row[x]); maximum = max(maximum, row[x]) }
+    }
+    return minimum...maximum
+}
+
 @main
 struct AdmissionCheck {
     @MainActor static func main() {
@@ -25,6 +65,27 @@ struct AdmissionCheck {
         renderer.flush()
         renderer.resetDiagnostics()
         precondition(renderer.enqueueAttempts == 0 && renderer.enqueuedFrames == 0)
-        print("PASS: bounded admission and exact accepted/rejected accounting")
+
+        precondition(SuperResolutionProcessor.outputDimensions(width: 1280, height: 720) == (2560, 1440))
+        precondition(SuperResolutionProcessor.outputDimensions(width: 1920, height: 1080) == (3840, 2160))
+        precondition(SuperResolutionProcessor.outputDimensions(width: 3840, height: 2160) == (3840, 2160))
+        let source = makeBiPlanar(width: 64, height: 36)
+        CVBufferSetAttachment(source, kCVImageBufferColorPrimariesKey,
+                              kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+        guard let processor = SuperResolutionProcessor(),
+              let enhanced = processor.process(source, mode: .balanced) else {
+            preconditionFailure("super resolution processor unavailable")
+        }
+        precondition(CVPixelBufferGetWidth(enhanced) == 128)
+        precondition(CVPixelBufferGetHeight(enhanced) == 72)
+        let range = lumaRange(enhanced)
+        precondition(range.lowerBound >= 32 && range.upperBound <= 192)
+        precondition(CVBufferCopyAttachment(enhanced, kCVImageBufferColorPrimariesKey, nil) != nil)
+        for size in [(1280, 720), (1920, 1080), (3840, 2160)] {
+            let frame = makeBiPlanar(width: size.0, height: size.1)
+            precondition(processor.process(frame, mode: .balanced) != nil)
+            print("SR \(size.0)x\(size.1): \(String(format: "%.2f", processor.lastProcessingMS)) ms")
+        }
+        print("PASS: bounded admission, native-range super resolution, attachments, and timing")
     }
 }

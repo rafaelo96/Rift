@@ -31,6 +31,8 @@ public final class HDRDisplayRenderer {
     public let synchronizer: AVSampleBufferRenderSynchronizer
     @MainActor public var pictureInPictureSubtitle: ((Double) -> String?)?
     @MainActor private var subtitleCompositor: SubtitleCompositor?
+    @MainActor private var superResolutionProcessor: SuperResolutionProcessor?
+    @MainActor public private(set) var superResolutionMode: SuperResolutionMode = .off
     @MainActor private var lastSourceFrame: (buffer: CVPixelBuffer, duration: CMTime)?
     @MainActor public private(set) var subtitleCompositionFailures = 0
 
@@ -72,6 +74,12 @@ public final class HDRDisplayRenderer {
         displayLayer.needsDisplayOnBoundsChange = true
     }
 
+    @MainActor
+    public func setSuperResolutionMode(_ mode: SuperResolutionMode) {
+        superResolutionMode = mode
+        if mode == .off { superResolutionProcessor = nil }
+    }
+
     /// Aplica ajustes no destructivos en la capa de presentación. El pipeline
     /// conserva sus CVPixelBuffer originales y la metadata HDR; valores neutros
     /// retiran el filtro por completo para mantener el camino de render original.
@@ -100,12 +108,18 @@ public final class HDRDisplayRenderer {
     public func sampleBuffer(from sourceBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime) -> CMSampleBuffer? {
         lastSourceFrame = (sourceBuffer, duration)
         var pixelBuffer = sourceBuffer
+        if superResolutionMode != .off {
+            if superResolutionProcessor == nil { superResolutionProcessor = SuperResolutionProcessor() }
+            if let enhanced = superResolutionProcessor?.process(sourceBuffer, mode: superResolutionMode) {
+                pixelBuffer = enhanced
+            }
+        }
         if let text = pictureInPictureSubtitle?(pts.seconds), !text.isEmpty {
             if subtitleCompositor == nil { subtitleCompositor = SubtitleCompositor() }
             // A transient compositor allocation failure must not drop the video
             // frame. The larger bounded pool normally avoids this path; keeping
             // the source frame is the safe degradation if system pressure wins.
-            if let composed = subtitleCompositor?.composite(sourceBuffer, text: text) {
+            if let composed = subtitleCompositor?.composite(pixelBuffer, text: text) {
                 pixelBuffer = composed
             } else {
                 subtitleCompositionFailures += 1
