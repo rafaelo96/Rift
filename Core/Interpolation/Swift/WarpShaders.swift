@@ -22,6 +22,19 @@ struct UpscaleUniforms {
     uint fmt10; // 1 = 10-bit (work-plane luma already >>6, write <<6 back), 0 = 8-bit
 };
 
+struct NativeWarpUniforms {
+    uint outW;
+    uint outH;
+    uint workW;
+    uint workH;
+    uint gridW;
+    uint gridH;
+    uint blockSize;
+    uint fmt10;
+    float t;
+    float occThresh;
+};
+
 static inline float4 sampleBilinearU16(texture2d<uint, access::read> tex, float2 p, int w, int h) {
     // clamp
     p = clamp(p, float2(0,0), float2(float(w-1), float(h-1)));
@@ -58,6 +71,108 @@ static inline float2 sampleMVBilinear(device const int2 *mv, float2 p, uint grid
     float2 m0 = mix(m00, m10, fx);
     float2 m1 = mix(m01, m11, fx);
     return mix(m0, m1, fy);
+}
+
+static inline float2 sampleBilinearNative2(texture2d<uint, access::read> tex,
+                                            float2 p, int w, int h) {
+    p = clamp(p, float2(0), float2(float(w - 1), float(h - 1)));
+    int2 i0 = clamp(int2(floor(p)), int2(0), int2(w - 2, h - 2));
+    float2 f = fract(p);
+    int2 i1 = i0 + int2(1, 0), i2 = i0 + int2(0, 1), i3 = i0 + int2(1, 1);
+    float2 v0 = mix(float2(tex.read(uint2(i0)).xy), float2(tex.read(uint2(i1)).xy), f.x);
+    float2 v1 = mix(float2(tex.read(uint2(i2)).xy), float2(tex.read(uint2(i3)).xy), f.x);
+    return mix(v0, v1, f.y);
+}
+
+// Full-resolution synthesis driven by a motion field measured on the smaller
+// work plane. Image samples always come from the native decoded planes; only
+// motion estimation is resolution-adaptive.
+kernel void warpBlendNative(
+    texture2d<uint, access::read>  tex0   [[texture(0)]],
+    texture2d<uint, access::read>  tex1   [[texture(1)]],
+    device const int2 *mv                  [[buffer(0)]],
+    texture2d<uint, access::write> outTex [[texture(2)]],
+    constant NativeWarpUniforms &u         [[buffer(1)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= u.outW || gid.y >= u.outH) return;
+
+    const float aS = float(tex0.read(gid).x);
+    const float bS = float(tex1.read(gid).x);
+    const float adS = fabs(aS - bS);
+    if (adS * 16.0 <= (aS + bS)) {
+        outTex.write(uint(aS + 0.5), gid);
+        return;
+    }
+
+    float2 nativeP = float2(gid);
+    float2 nativeToWork = float2(float(u.workW) / float(u.outW),
+                                 float(u.workH) / float(u.outH));
+    float2 workP = (nativeP + 0.5) * nativeToWork - 0.5;
+    float2 flowWork = sampleMVBilinear(mv, workP, u.gridW, u.gridH, u.blockSize);
+    float2 flowNative = flowWork / nativeToWork;
+    float2 p0 = nativeP - u.t * flowNative;
+    float2 p1 = nativeP + (1.0 - u.t) * flowNative;
+
+    float v0 = sampleBilinearU16(tex0, p0, int(u.outW), int(u.outH)).x;
+    float v1 = sampleBilinearU16(tex1, p1, int(u.outW), int(u.outH)).x;
+
+    float2 nextWork = clamp(workP + flowWork, float2(0),
+                            float2(float(u.workW - 1), float(u.workH - 1)));
+    float2 flow1 = sampleMVBilinear(mv, nextWork, u.gridW, u.gridH, u.blockSize);
+    float err = length(flowWork - flow1);
+    float occ = smoothstep(u.occThresh, u.occThresh * 2.0 + 1e-3, err);
+    float wF = (1.0 - u.t) * (1.0 - occ);
+    float wB = u.t * (1.0 - occ);
+    float dom = (u.t < 0.5) ? v0 : v1;
+    float out = (wF * v0 + wB * v1 + occ * dom) / max(wF + wB + occ, 1e-4);
+    if (occ > 0.5 && adS * 8.0 <= (aS + bS)) out = aS;
+    outTex.write(uint(out + 0.5), gid);
+}
+
+kernel void warpBlendChromaNative(
+    texture2d<uint, access::read>  tex0   [[texture(0)]],
+    texture2d<uint, access::read>  tex1   [[texture(1)]],
+    device const int2 *mv                  [[buffer(0)]],
+    texture2d<uint, access::write> outTex [[texture(2)]],
+    constant NativeWarpUniforms &u         [[buffer(1)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= u.outW || gid.y >= u.outH) return;
+    uint2 c0 = tex0.read(gid).xy;
+    uint2 c1 = tex1.read(gid).xy;
+    float2 aS = float2(c0), bS = float2(c1);
+    float adS = fabs(aS.x - bS.x) + fabs(aS.y - bS.y);
+    float sumLevels = aS.x + aS.y + bS.x + bS.y;
+    if (adS * 16.0 <= sumLevels) {
+        outTex.write(uint4(c0.x, c0.y, 0, 0), gid);
+        return;
+    }
+
+    // One chroma texel represents a 2x2 native-luma region.
+    float2 chromaP = float2(gid);
+    float2 nativeLumaP = chromaP * 2.0 + 0.5;
+    float2 nativeLumaSize = float2(float(u.outW * 2), float(u.outH * 2));
+    float2 nativeToWork = float2(float(u.workW), float(u.workH)) / nativeLumaSize;
+    float2 workP = (nativeLumaP + 0.5) * nativeToWork - 0.5;
+    float2 flowWork = sampleMVBilinear(mv, workP, u.gridW, u.gridH, u.blockSize);
+    float2 flowChroma = (flowWork / nativeToWork) * 0.5;
+    float2 p0 = chromaP - u.t * flowChroma;
+    float2 p1 = chromaP + (1.0 - u.t) * flowChroma;
+    float2 v0 = sampleBilinearNative2(tex0, p0, int(u.outW), int(u.outH));
+    float2 v1 = sampleBilinearNative2(tex1, p1, int(u.outW), int(u.outH));
+
+    float2 nextWork = clamp(workP + flowWork, float2(0),
+                            float2(float(u.workW - 1), float(u.workH - 1)));
+    float2 flow1 = sampleMVBilinear(mv, nextWork, u.gridW, u.gridH, u.blockSize);
+    float err = length(flowWork - flow1);
+    float occ = smoothstep(u.occThresh, u.occThresh * 2.0 + 1e-3, err);
+    float wF = (1.0 - u.t) * (1.0 - occ);
+    float wB = u.t * (1.0 - occ);
+    float2 dom = (u.t < 0.5) ? v0 : v1;
+    float2 out = (wF * v0 + wB * v1 + occ * dom) / max(wF + wB + occ, 1e-4);
+    if (occ > 0.5 && adS * 8.0 <= sumLevels) out = aS;
+    outTex.write(uint4(uint(out.x + 0.5), uint(out.y + 0.5), 0, 0), gid);
 }
 
 kernel void warpBlend(

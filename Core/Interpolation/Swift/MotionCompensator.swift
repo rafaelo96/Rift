@@ -197,7 +197,7 @@ public final class MotionCompensator {
     /// Fast-path de interpolación por-par (Fase B): calcula scaledLuma(I0),
     /// scaledLuma(I1) y el ME (runPair) UNA sola vez por par y genera un frame
     /// interpolado por cada `t` en `tValues` reusando ese mismo resultado — solo
-    /// warp + upscale + CbCr + HDR se repiten por `t`. Para la cadencia 3:2 de
+    /// warp nativo de luma/CbCr + HDR se repiten por `t`. Para la cadencia 3:2 de
     /// .interpolated60 (tValues=[1/3,2/3]) esto elimina el ME+luma duplicado del
     /// camino viejo (llamaba interpolateWithTimings dos veces por par). Los
     /// buffers de salida vienen del pool reusable de WarpEngine.
@@ -328,18 +328,19 @@ public final class MotionCompensator {
             gridH: g.h,
             blockSize: config.blockSize
         )
-        let (pb, gpuWarpMS, upscaleMS) = warp.interpolatePixelBuffer(
+        let rendered = warp.interpolatePixelBufferPair(
             I0: I0, I1: I1,
             luma0: luma0, luma1: luma1,
             workWidth: config.workWidth, workHeight: config.workHeight,
             mv: renderField.vectors,
             gridW: renderField.gridW, gridH: renderField.gridH,
             blockSize: renderField.blockSize,
-            t: t,
+            tValues: [t],
             occThresh: 1.0
         )
         _ = pairTimes
-        return InterpolationResult(pixelBuffer: pb, meMS: meMS, warpMS: gpuWarpMS, upscaleMS: upscaleMS)
+        return InterpolationResult(pixelBuffer: rendered.buffers.first, meMS: meMS,
+                                   warpMS: rendered.warpMS, upscaleMS: rendered.upscaleMS)
     }
 
     // Diferencia media absoluta entre dos lumas de work-plane (Data de UInt16,

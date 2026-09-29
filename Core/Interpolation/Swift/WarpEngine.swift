@@ -13,6 +13,8 @@ public final class WarpEngine {
     public     let device: MTLDevice
     let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
+    private let nativeLumaPipeline: MTLComputePipelineState
+    private let nativeChromaPipeline: MTLComputePipelineState
     private let upscalePipeline: MTLComputePipelineState
     private let chromaDownPipeline: MTLComputePipelineState
     private let chromaWarpPipeline: MTLComputePipelineState
@@ -53,6 +55,10 @@ public final class WarpEngine {
         guard let warpFn = library.makeFunction(name: "warpBlend") else {
             throw Error.pipeline("missing warpBlend function")
         }
+        guard let nativeLumaFn = library.makeFunction(name: "warpBlendNative"),
+              let nativeChromaFn = library.makeFunction(name: "warpBlendChromaNative") else {
+            throw Error.pipeline("missing native-resolution warp functions")
+        }
         guard let upscaleFn = library.makeFunction(name: "upscaleLuma") else {
             throw Error.pipeline("missing upscaleLuma function")
         }
@@ -64,6 +70,8 @@ public final class WarpEngine {
         }
         do {
             pipeline = try device.makeComputePipelineState(function: warpFn)
+            nativeLumaPipeline = try device.makeComputePipelineState(function: nativeLumaFn)
+            nativeChromaPipeline = try device.makeComputePipelineState(function: nativeChromaFn)
             upscalePipeline = try device.makeComputePipelineState(function: upscaleFn)
             chromaDownPipeline = try device.makeComputePipelineState(function: cDownFn)
             chromaWarpPipeline = try device.makeComputePipelineState(function: cWarpFn)
@@ -206,12 +214,9 @@ public final class WarpEngine {
         return (out, warpMS + chromaTotal, upscaleMS)
     }
 
-    /// Variante por-par de `interpolatePixelBuffer`: recibe el par de luma
-    /// work-plane ya escalado + el campo de MV (ME/luma corre UNA vez en el
-    /// caller) y genera un buffer interpolado por cada `t` en `tValues`.
-    /// Los recursos que solo dependen del par — texturas de luma del work-plane,
-    /// textura de salida del warp (reusada secuencialmente por t) y el MV buffer —
-    /// se crean una vez; por t se repite solo warp + upscale + copy CbCr + HDR.
+    /// Variante por-par: recibe la luma reducida usada exclusivamente por ME y
+    /// el campo de MV, pero sintetiza cada `t` muestreando los planos originales
+    /// a resolución nativa. Reducir el work plane ya no reduce la nitidez final.
     ///
     /// Fast-path 4K HDR (pooling): los buffers de salida provienen de un
     /// CVPixelBufferPool con un máximo de 32 salidas retenidas. Un par fallido
@@ -247,32 +252,37 @@ func interpolatePixelBufferPair(
     let is10Bit = metalLumaFormat == .r16Uint
     guard let cache = textureCache else { return ([], 0, 0) }
 
-    let workLumaFormat = MTLPixelFormat.r16Uint
-    guard let tex0w = makeWorkTexture(data: luma0, width: workWidth, height: workHeight, format: workLumaFormat),
-          let tex1w = makeWorkTexture(data: luma1, width: workWidth, height: workHeight, format: workLumaFormat),
-          let texOutW = device.makeTexture(descriptor: workTextureDescriptor(width: workWidth, height: workHeight, format: workLumaFormat)) else {
-        return ([], 0, 0)
-    }
-
     let mvBuf = device.makeBuffer(bytes: mv, length: mv.count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)!
 
     ensureOutputPool(w: w, h: h, pixelFormat: pixelFormat)
 
+    // Keep the decoded planes at native resolution. `luma0`/`luma1` remain the
+    // inputs to motion estimation in MotionCompensator, but synthesis samples
+    // directly from I0/I1 so reducing the work plane cannot soften the image.
+    let inputLuma0 = wrapPlaneTexture(I0, plane: 0, format: metalLumaFormat, w: w, h: h, cache: cache)
+    let inputLuma1 = wrapPlaneTexture(I1, plane: 0, format: metalLumaFormat, w: w, h: h, cache: cache)
+    guard let nativeLuma0 = inputLuma0.1, let nativeLuma1 = inputLuma1.1 else {
+        return ([], 0, 0)
+    }
+    defer {
+        withExtendedLifetime(inputLuma0) {}
+        withExtendedLifetime(inputLuma1) {}
+    }
+
     let cwCh = CVPixelBufferGetWidthOfPlane(I0, 1)
     let chCh = CVPixelBufferGetHeightOfPlane(I0, 1)
     let chromaIs10 = isChroma10Bit(I0)
-    let prepared = prepareChromaWork(I0: I0, I1: I1, workWidth: workWidth, workHeight: workHeight)
-    var cOutFull: MTLTexture?
-    var cOutW: MTLTexture?
-    if let prepared, cwCh > 0, chCh > 0 {
-        cOutFull = device.makeTexture(descriptor: workTextureDescriptor(width: cwCh, height: chCh, format: .rg16Uint))
-        cOutW = device.makeTexture(descriptor: workTextureDescriptor(width: prepared.outW, height: prepared.outH, format: .rg16Uint))
+    let chromaFormat: MTLPixelFormat = chromaIs10 ? .rg16Uint : .rg8Uint
+    let inputChroma0 = wrapPlaneTexture(I0, plane: 1, format: chromaFormat, w: cwCh, h: chCh, cache: cache)
+    let inputChroma1 = wrapPlaneTexture(I1, plane: 1, format: chromaFormat, w: cwCh, h: chCh, cache: cache)
+    defer {
+        withExtendedLifetime(inputChroma0) {}
+        withExtendedLifetime(inputChroma1) {}
     }
 
     var buffers: [CVPixelBuffer] = []
     var warpTotal = 0.0
-    var upscaleTotal = 0.0
-    if let prepared { warpTotal += prepared.downMS }
+    let upscaleTotal = 0.0
     for t in tValues {
         guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else {
             return ([], warpTotal, upscaleTotal)
@@ -281,54 +291,28 @@ func interpolatePixelBufferPair(
         let wrapped = wrapOutputTexture(out, format: metalLumaFormat, w: w, h: h, cache: cache)
         guard let texOut = wrapped.1 else { return ([], warpTotal, upscaleTotal) }
         defer { withExtendedLifetime(wrapped) {} }
-        warpTotal += interpolate(tex0: tex0w, tex1: tex1w, mv: mvBuf,
-                                 gridW: UInt32(gridW), gridH: UInt32(gridH),
-                                     blockSize: UInt32(blockSize), t: t, occThresh: occThresh, outTex: texOutW)
-        upscaleTotal += upscale(from: texOutW, to: texOut,
-                                srcW: UInt32(workWidth), srcH: UInt32(workHeight),
-                                outW: UInt32(w), outH: UInt32(h), fmt10: is10Bit)
+        warpTotal += nativeWarp(
+            tex0: nativeLuma0, tex1: nativeLuma1, mv: mvBuf, outTex: texOut,
+            workWidth: workWidth, workHeight: workHeight,
+            gridW: gridW, gridH: gridH, blockSize: blockSize,
+            t: t, occThresh: occThresh, chroma: false, fmt10: is10Bit
+        )
 
-        if let prepared, let cOutW {
-            let chromaSrc: MTLTexture
-            if noChromaWarp {
-                chromaSrc = prepared.c0
-                if !loggedNoChromaWarp {
-                    print("[RIFT-DIAG-CHROMA-PATH] noChromaWarp=1 (I0 chroma passthrough, warp skipped)")
-                    loggedNoChromaWarp = true
-                }
-            } else {
-                warpTotal += chromaWarp(c0: prepared.c0, c1: prepared.c1, mv: mvBuf, outW: cOutW,
-                                        gridW: gridW, gridH: gridH, blockSize: blockSize, t: t, occThresh: occThresh)
-                chromaSrc = cOutW
+        if let nativeChroma0 = inputChroma0.1, let nativeChroma1 = inputChroma1.1 {
+            let outputChroma = wrapPlaneTexture(out, plane: 1, format: chromaFormat,
+                                                w: cwCh, h: chCh, cache: cache)
+            defer { withExtendedLifetime(outputChroma) {} }
+            guard let nativeChromaOut = outputChroma.1 else {
+                return ([], warpTotal, upscaleTotal)
             }
-
-            if chromaIs10 && ProcessInfo.processInfo.environment["RIFT_CHROMA_ZEROCOPY"] != "0" {
-                let chromaWrapped = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache)
-                defer { withExtendedLifetime(chromaWrapped) {} }
-                if let chromaTexOut = chromaWrapped.1 {
-                    logChromaPathOnce(zeroCopy: true)
-                    upscaleTotal += chromaUpscale(src: chromaSrc, outTex: chromaTexOut,
-                                                  srcW: prepared.outW, srcH: prepared.outH,
-                                                  dstW: cwCh, dstH: chCh, fmt10: true)
-                }
-            } else if !chromaIs10 {
-                let chromaWrapped8 = wrapOutputChromaTexture(out, w: cwCh, h: chCh, cache: cache, is8Bit: true)
-                defer { withExtendedLifetime(chromaWrapped8) {} }
-                guard let chromaTexture8 = chromaWrapped8.1 else { return ([], warpTotal, upscaleTotal) }
-                // Zero-copy 8-bit: el upscale escribe el plano CbCr empaquetado
-                // directamente (rg8Uint), sin el compactado host de
-                // writeChromaPlane (loop Swift por píxel, ~40ms por t en debug).
-                logChromaPathOnce(zeroCopy: true)
-                upscaleTotal += chromaUpscale8(src: chromaSrc, outTex: chromaTexture8,
-                                               srcW: prepared.outW, srcH: prepared.outH,
-                                               dstW: cwCh, dstH: chCh)
-            } else if let cOutFull {
-                logChromaPathOnce(zeroCopy: false)
-                upscaleTotal += chromaUpscale(src: chromaSrc, outTex: cOutFull,
-                                              srcW: prepared.outW, srcH: prepared.outH,
-                                              dstW: cwCh, dstH: chCh, fmt10: chromaIs10)
-                writeChromaPlane(from: cOutFull, is10Bit: chromaIs10, into: out)
-            }
+            logChromaPathOnce(zeroCopy: true)
+            warpTotal += nativeWarp(
+                tex0: nativeChroma0, tex1: nativeChroma1, mv: mvBuf, outTex: nativeChromaOut,
+                workWidth: workWidth, workHeight: workHeight,
+                gridW: gridW, gridH: gridH, blockSize: blockSize,
+                t: noChromaWarp ? 0 : t, occThresh: occThresh,
+                chroma: true, fmt10: chromaIs10
+            )
         }
 
         propagateHDR(from: I0, to: out)
@@ -373,6 +357,70 @@ func interpolatePixelBufferPair(
         guard CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, format, w, h, 0, &wrapped) == kCVReturnSuccess,
               let w2 = wrapped, let tex = CVMetalTextureGetTexture(w2) else { return (nil, nil) }
         return (w2, tex)
+    }
+
+    private func wrapPlaneTexture(
+        _ pb: CVPixelBuffer,
+        plane: Int,
+        format: MTLPixelFormat,
+        w: Int,
+        h: Int,
+        cache: CVMetalTextureCache
+    ) -> (CVMetalTexture?, MTLTexture?) {
+        guard w > 0, h > 0 else { return (nil, nil) }
+        var wrapped: CVMetalTexture?
+        guard CVMetalTextureCacheCreateTextureFromImage(
+            kCFAllocatorDefault, cache, pb, nil, format, w, h, plane, &wrapped
+        ) == kCVReturnSuccess,
+        let cvTexture = wrapped,
+        let texture = CVMetalTextureGetTexture(cvTexture) else { return (nil, nil) }
+        return (cvTexture, texture)
+    }
+
+    private func nativeWarp(
+        tex0: MTLTexture,
+        tex1: MTLTexture,
+        mv: MTLBuffer,
+        outTex: MTLTexture,
+        workWidth: Int,
+        workHeight: Int,
+        gridW: Int,
+        gridH: Int,
+        blockSize: Int,
+        t: Float,
+        occThresh: Float,
+        chroma: Bool,
+        fmt10: Bool
+    ) -> Double {
+        let width = outTex.width
+        let height = outTex.height
+        guard let cmd = queue.makeCommandBuffer(),
+              let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        let start = DispatchTime.now().uptimeNanoseconds
+        enc.setComputePipelineState(chroma ? nativeChromaPipeline : nativeLumaPipeline)
+        enc.setTexture(tex0, index: 0)
+        enc.setTexture(tex1, index: 1)
+        enc.setBuffer(mv, offset: 0, index: 0)
+        enc.setTexture(outTex, index: 2)
+        var uniforms = NativeWarpUniforms(
+            outW: UInt32(width), outH: UInt32(height),
+            workW: UInt32(workWidth), workH: UInt32(workHeight),
+            gridW: UInt32(gridW), gridH: UInt32(gridH),
+            blockSize: UInt32(blockSize), fmt10: fmt10 ? 1 : 0,
+            t: t, occThresh: occThresh
+        )
+        enc.setBytes(&uniforms, length: MemoryLayout<NativeWarpUniforms>.stride, index: 1)
+        let tg = MTLSize(width: 16, height: 16, depth: 1)
+        let groups = MTLSize(
+            width: (width + tg.width - 1) / tg.width,
+            height: (height + tg.height - 1) / tg.height,
+            depth: 1
+        )
+        enc.dispatchThreadgroups(groups, threadsPerThreadgroup: tg)
+        enc.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
     }
 
     private func wrapOutputChromaTexture(_ pb: CVPixelBuffer, w: Int, h: Int, cache: CVMetalTextureCache, is8Bit: Bool = false) -> (CVMetalTexture?, MTLTexture?) {
@@ -632,4 +680,17 @@ private struct UpscaleUniforms {
     var outW: UInt32
     var outH: UInt32
     var fmt10: UInt32
+}
+
+private struct NativeWarpUniforms {
+    var outW: UInt32
+    var outH: UInt32
+    var workW: UInt32
+    var workH: UInt32
+    var gridW: UInt32
+    var gridH: UInt32
+    var blockSize: UInt32
+    var fmt10: UInt32
+    var t: Float
+    var occThresh: Float
 }

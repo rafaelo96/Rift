@@ -2060,15 +2060,18 @@ if combined > 41.7 {
 // --- Pipeline real: MotionCompensator sobre CVPixelBuffer full-res ---
 // Mide el flujo de producción tal cual lo usa la UI: la luma se extrae y se baja
 // a work-plane en host (MotionCompensator.scaledLuma), el ME corre en work-plane,
-// el warp corrido AHORA en work-plane, y el upscale bilinear sube el luma a la
-// resolución nativa del CVPixelBuffer de salida. CbCr se copia de I0 y los
+// el warp sintetiza luma y croma directamente desde los planos full-res y los
 // attachments HDR se propagan. Desglose ME / Warp / Upscale por par.
 if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     let mc: MotionCompensator
     do {
         let profile = ProcessInfo.processInfo.environment["MV_PROFILE"] ?? "default"
         let config: InterpolationConfig = profile == "hq" ? .fluidHighQuality
-            : profile == "fluid" ? .fluid : .default
+            : profile == "fluid" ? .fluid
+            : profile == "native-warp-test" ? InterpolationConfig(
+                usesBidirectionalSafetyCheck: false,
+                usesCatastrophicSafetyCheck: false
+            ) : .default
         mc = try MotionCompensator(config: config)
     } catch {
         print("PIPELINE INIT FAILED: \(error)")
@@ -2079,7 +2082,7 @@ if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     var pipelineWarp: [Double] = []
     var pipelineUpscale: [Double] = []
     var pipelineTotal: [Double] = []
-    print("\n--- pipeline real (MotionCompensator, full-res CVPixelBuffer, warp work-plane + upscale) ---")
+    print("\n--- pipeline real (MotionCompensator, ME reducido + warp nativo) ---")
     for i in 0..<pairCount {
         let s = DispatchTime.now().uptimeNanoseconds
         let r: InterpolationResult
