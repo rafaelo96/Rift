@@ -505,6 +505,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         applyInterpolationMode(.motion2x, persistRequest: false)
     }
 
+    /// Compute pressure changes the bounded work plane only. Cadence decisions
+    /// use renderer/latency evidence, avoiding accumulated 60→48→off changes
+    /// while AVFoundation is still presenting smoothly.
+    private func reduceInterpolationWorkPlane(reason: String) {
+        guard interpolationQuality > 0 else {
+            os_log("Frame+ mantiene cadencia con work-plane mínimo: %{public}@",
+                   log: benchLog, type: .info, reason)
+            return
+        }
+        changeInterpolationQuality(to: interpolationQuality - 1)
+    }
+
     /// Cada vídeo puede tener resolución, codec y complejidad de movimiento
     /// distintos. Se empieza de nuevo desde la preferencia solicitada y las
     /// mediciones de esta sesión deciden si se queda en 60, baja a 48 o a 24.
@@ -567,8 +579,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         if weakThroughputWindows >= throughputRequiredWeakWindows {
             weakThroughputWindows = 0
-            downgradeTo48OrDisable(reason: String(format: "bajo pacing: %d pares stale / lead %.3fs (estancado)",
-                                                   staleDelta, lead))
+            reduceInterpolationWorkPlane(reason: String(
+                format: "bajo pacing: %d pares stale / lead %.3fs (estancado)",
+                staleDelta, lead
+            ))
         }
     }
 
@@ -1275,7 +1289,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         pendingLoadAction = nil
         switch action {
         case .reduce:
-            downgradeTo48OrDisable(reason: "p95 del par supera 80% del presupuesto durante 6s")
+            reduceInterpolationWorkPlane(
+                reason: "p95 del par supera 80% del presupuesto durante 6s"
+            )
         case .recover:
             guard presentationRecoverEligible else { return }
             if scheduler?.mode == .interpolated48, requestedInterpolationMode != .motion2x {
@@ -1292,12 +1308,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         switch action {
         case .reduce:
             presentationRecoverEligible = false
-            downgradeTo48OrDisable(
-                reason: "AVFoundation descarta frames presentados de forma sostenida",
-                retryAutomatically: false
-            )
+            // Moderate presentation pressure may lower 60→48, but never turns
+            // Frame+ off by itself. The monitor has a separate severe path.
+            if scheduler?.mode == .interpolated60 {
+                applyInterpolationMode(.motion2x, persistRequest: false)
+            }
         case .recover:
             presentationRecoverEligible = true
+        case .disable:
+            presentationRecoverEligible = false
+            disableInterpolation(
+                reason: "AVFoundation descarta más de 10% durante 10s",
+                retryAutomatically: false
+            )
         }
     }
     func selectAudioTrack(_ streamIndex: Int) {

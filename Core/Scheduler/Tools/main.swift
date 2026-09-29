@@ -148,8 +148,16 @@ precondition(recoveries == 1)
 precondition(load.record(costMS: 100, pairBudgetMS: 41.7, now: 1000) == nil)
 var presentation = PresentationDropMonitor()
 precondition(presentation.record(totalFrames: 100, droppedFrames: 0) == nil)
-precondition(presentation.record(totalFrames: 200, droppedFrames: 3) == nil)
-precondition(presentation.record(totalFrames: 300, droppedFrames: 6) == .reduce)
+for window in 1...5 {
+    precondition(presentation.record(totalFrames: 100 + window * 100, droppedFrames: window * 3) == nil)
+}
+precondition(presentation.record(totalFrames: 700, droppedFrames: 18) == .reduce)
+presentation.reset()
+precondition(presentation.record(totalFrames: 100, droppedFrames: 0) == nil)
+for window in 1...19 {
+    precondition(presentation.record(totalFrames: 100 + window * 100, droppedFrames: window * 15) != .disable)
+}
+precondition(presentation.record(totalFrames: 2100, droppedFrames: 300) == .disable)
 presentation.reset()
 precondition(presentation.record(totalFrames: 100, droppedFrames: 10) == nil)
 for window in 1...11 {
