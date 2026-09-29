@@ -298,6 +298,27 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .disabled(!state.visualEnhancementsEnabled)
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text(NSLocalizedString("Super Resolution", comment: ""))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+
+                Picker(
+                    NSLocalizedString("Super Resolution", comment: ""),
+                    selection: Binding(
+                        get: { state.superResolutionMode },
+                        set: { state.setSuperResolutionMode($0) }
+                    )
+                ) {
+                    ForEach(SuperResolutionPreference.allCases, id: \.self) { mode in
+                        Text(superResolutionTitle(mode)).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel(NSLocalizedString("Super Resolution Mode", comment: ""))
+            }
+
             visualAdjustmentRow(
                 title: NSLocalizedString("Brightness", comment: ""),
                 value: state.visualBrightness,
@@ -326,11 +347,20 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             )
         }
         .padding(16)
-        .frame(width: 280)
+        .frame(width: 340)
         .background(GlassBackground(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(RiftPalette.cyan.opacity(0.22), lineWidth: 0.5)
+        }
+    }
+
+    private func superResolutionTitle(_ mode: SuperResolutionPreference) -> String {
+        switch mode {
+        case .off: NSLocalizedString("Off", comment: "")
+        case .soft: NSLocalizedString("Soft", comment: "")
+        case .balanced: NSLocalizedString("Balanced", comment: "")
+        case .strong: NSLocalizedString("Strong", comment: "")
         }
     }
 

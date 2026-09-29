@@ -108,6 +108,7 @@ private struct PlaybackPreferences: Codable {
     let volume: Double
     let interpolationMode: String
     let audioSyncOffset: Double?
+    let superResolutionMode: String?
 }
 
 @MainActor
@@ -186,6 +187,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var visualBrightness: Double = 0
     @Published var visualContrast: Double = 1
     @Published var visualSaturation: Double = 1
+    @Published var superResolutionMode: SuperResolutionPreference = .off
     @Published var currentSubtitleText: String?
     @Published var conversionProgress: Double = 0
     @Published var statusMessage: String?
@@ -610,6 +612,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         restoreExternalSubtitleAssociations()
 
         let env = ProcessInfo.processInfo.environment
+        if let requestedSuperResolution = env["RIFT_AUTO_SUPERRES"].flatMap(SuperResolutionPreference.init(rawValue:)) {
+            superResolutionMode = requestedSuperResolution
+            updateVisualEnhancements()
+        }
         guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
         let seekAt = env["RIFT_AUTO_SEEK_AT"].flatMap(Double.init)
@@ -723,6 +729,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpolationMode = InterpolationMode(rawValue: preferences.interpolationMode) ?? .disabled
         requestedInterpolationMode = interpolationMode
         audioSyncOffset = min(max(preferences.audioSyncOffset ?? 0, -2), 2)
+        superResolutionMode = preferences.superResolutionMode
+            .flatMap(SuperResolutionPreference.init(rawValue:)) ?? .off
+        updateVisualEnhancements()
     }
 
     private func restoreRecentVideos() {
@@ -746,7 +755,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             PlaybackPreferences(
                 volume: volume,
                 interpolationMode: requestedInterpolationMode.rawValue,
-                audioSyncOffset: audioSyncOffset
+                audioSyncOffset: audioSyncOffset,
+                superResolutionMode: superResolutionMode.rawValue
             ),
             forKey: Self.preferencesKey
         )
@@ -1560,18 +1570,28 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         updateVisualEnhancements()
     }
 
+    func setSuperResolutionMode(_ mode: SuperResolutionPreference) {
+        guard superResolutionMode != mode else { return }
+        superResolutionMode = mode
+        updateVisualEnhancements()
+        persistPlaybackPreferences()
+    }
+
     func resetVisualEnhancements() {
         visualBrightness = 0
         visualContrast = 1
         visualSaturation = 1
+        superResolutionMode = .off
         visualEnhancementsEnabled = false
         applyVisualAdjustments()
+        persistPlaybackPreferences()
     }
 
     private func updateVisualEnhancements() {
         visualEnhancementsEnabled = abs(visualBrightness) > 0.0001
             || abs(visualContrast - 1) > 0.0001
             || abs(visualSaturation - 1) > 0.0001
+            || superResolutionMode != .off
         applyVisualAdjustments()
     }
 
@@ -1584,6 +1604,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             ),
             enabled: visualEnhancementsEnabled
         )
+        renderer?.setSuperResolutionMode(renderingSuperResolutionMode)
+    }
+
+    private var renderingSuperResolutionMode: Rendering.SuperResolutionMode {
+        Rendering.SuperResolutionMode(rawValue: superResolutionMode.rawValue) ?? .off
     }
 
     func requestTimelineThumbnail(at time: Double) {
