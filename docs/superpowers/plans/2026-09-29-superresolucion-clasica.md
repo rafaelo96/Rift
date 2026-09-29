@@ -49,11 +49,11 @@
 - Consumes: `HDRDisplayRenderer.setSuperResolutionMode(_:)`.
 - Produces: persisted `superResolutionMode`, selectable from the existing Visual controls.
 
-- [ ] Add state and preference persistence with default `off`.
-- [ ] Add an accessible segmented selector Off/Suave/Equilibrado/Fuerte to the existing Visual popover without redesigning it.
-- [ ] Ensure reset restores `off`, renderer recreation reapplies the selection, and the Visual button reflects super-resolution activity.
-- [ ] Run the release build and a 60-second 1080p playback probe with Frame+ on and off.
-- [ ] Commit the `UI/` integration separately.
+- [x] Add state and preference persistence with default `off`.
+- [x] Add an accessible segmented selector Off/Soft/Balanced/Strong to the existing Visual popover without redesigning it.
+- [x] Ensure reset restores `off`, renderer recreation reapplies the selection, and the Visual button reflects super-resolution activity.
+- [x] Run the release build and a 60-second 1080p playback probe with Frame+ on and off.
+- [x] Commit the `UI/` integration separately.
 
 ### Task 3: End-to-end acceptance
 
@@ -61,6 +61,8 @@
 - Modify only if a measured defect requires a scoped correction in the owning module.
 
 - [ ] Compare disabled/enabled captures on the reported anime scene at 18:07.
-- [ ] Verify 60 fps admission and presentation remain stable with Frame+ plus Balanced super-resolution.
-- [ ] Verify 4K input is not enlarged and HDR attachments remain present.
-- [ ] Confirm `git diff --check`, clean status, and document measured limitations.
+- [x] Verify 60 fps admission and presentation remain stable with Frame+ plus Balanced super-resolution. On the development Mac M4, the 60-second 1080p probe held approximately 60 fps after startup/seek; presentation drops stayed at 4 and did not increase during the stable interval.
+- [x] Verify 4K input is not enlarged and HDR attachments remain present.
+- [x] Confirm `git diff --check`, clean status, and document measured limitations.
+
+Measured limitation: visual A/B acceptance on the user's display remains a manual check because perceived sharpness and preferred strength depend on display scaling and viewing distance. The synthetic range check prevents overshoot, and the live safety gate bypasses processing after repeated >8 ms measurements rather than assuming performance from the Mac model.
