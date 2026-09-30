@@ -8,8 +8,6 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     @State private var isDraggingSlider = false
     @State private var dragSliderValue: Double = 0
-    @State private var showAudioMenu = false
-    @State private var showSubsMenu = false
     @State private var showVisualPanel = false
 
     var body: some View {
@@ -54,35 +52,26 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             Text(state.formattedTime(isDraggingSlider ? dragSliderValue : state.currentTime))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .frame(width: 68, alignment: .leading)
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(.primary)
 
-            TimelineTrack(
-                currentTime: isDraggingSlider ? dragSliderValue : state.currentTime,
-                duration: max(state.duration, 1),
-                thumbnailImage: (state as? RiftPlayerState)?.timelineThumbnail?.image,
-                isThumbnailLoading: (state as? RiftPlayerState)?.isTimelineThumbnailLoading ?? false,
-                onSeek: { value in
-                    withAnimation(surfaceAnimation) {
-                        isDraggingSlider = true
-                        dragSliderValue = value
-                    }
-                },
-                onSeekEnd: { value in
-                    state.seek(to: value)
-                    isDraggingSlider = false
-                },
-                onPreviewRequest: { time in
-                    (state as? RiftPlayerState)?.requestTimelineThumbnail(at: time)
-                },
-                onPreviewDismiss: {
-                    (state as? RiftPlayerState)?.hideTimelineThumbnailPreview()
+            Slider(
+                value: Binding(
+                    get: { isDraggingSlider ? dragSliderValue : state.currentTime },
+                    set: { dragSliderValue = $0 }
+                ),
+                in: 0...max(state.duration, 1),
+                onEditingChanged: { editing in
+                    isDraggingSlider = editing
+                    if !editing { state.seek(to: dragSliderValue) }
                 }
             )
+            .controlSize(.small)
+            .accessibilityLabel(NSLocalizedString("Playback position", comment: ""))
 
             Text(state.formattedTime(state.duration))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .frame(width: 68, alignment: .trailing)
-                .foregroundStyle(.white.opacity(0.60))
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -102,17 +91,16 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var volumeControl: some View {
         HStack(spacing: 6) {
-            GlassIconButton(
-                systemName: volumeIcon,
-                size: 14,
-                action: { state.setVolume(state.volume > 0 ? 0 : 0.68) },
-                accessibilityLabel: state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: "")
-            )
+            Button {
+                state.setVolume(state.volume > 0 ? 0 : 0.68)
+            } label: {
+                Image(systemName: volumeIcon)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: ""))
 
-            VolumeTrack(
-                value: state.volume,
-                onChange: { state.setVolume($0) }
-            )
+            Slider(value: Binding(get: { state.volume }, set: state.setVolume), in: 0...1)
+                .controlSize(.mini)
             .frame(width: 72)
             .accessibilityLabel(NSLocalizedString("Volume", comment: ""))
         }
@@ -151,12 +139,9 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var transportControls: some View {
         HStack(spacing: 14) {
-            GlassIconButton(
-                systemName: "gobackward.10",
-                size: 15,
-                action: { state.seek(by: -10) },
-                accessibilityLabel: NSLocalizedString("Skip Back 10s", comment: "")
-            )
+            Button { state.seek(by: -10) } label: { Image(systemName: "gobackward.10") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(NSLocalizedString("Skip Back 10s", comment: ""))
 
             Button {
                 withAnimation(surfaceAnimation) {
@@ -165,31 +150,19 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background {
-                        Circle()
-                            .fill(RiftPalette.luminousGradient)
-                            .overlay {
-                                Circle().strokeBorder(.white.opacity(0.72), lineWidth: 0.5)
-                                    .padding(1)
-                            }
-                    }
-                    .shadow(color: RiftPalette.cyan.opacity(0.24), radius: 10, x: 0, y: -2)
-                    .shadow(color: RiftPalette.blue.opacity(0.42), radius: 18, x: 0, y: 8)
+                    .frame(width: 34, height: 34)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
             .keyboardShortcut(.space, modifiers: [])
             .scaleEffect(reduceMotion ? 1 : (state.isPlaying ? 1 : 0.96))
             .animation(surfaceAnimation, value: state.isPlaying)
             .accessibilityLabel(state.isPlaying ? NSLocalizedString("Pause", comment: "") : NSLocalizedString("Play", comment: ""))
 
-            GlassIconButton(
-                systemName: "goforward.10",
-                size: 15,
-                action: { state.seek(by: 10) },
-                accessibilityLabel: NSLocalizedString("Skip Forward 10s", comment: "")
-            )
+            Button { state.seek(by: 10) } label: { Image(systemName: "goforward.10") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(NSLocalizedString("Skip Forward 10s", comment: ""))
         }
     }
 
@@ -230,7 +203,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Frame Interpolation", comment: "")
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .tint(state.interpolationMode == .disabled ? Color.secondary : Color.accentColor)
         .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : NSLocalizedString("Interpolation enabled", comment: ""))")
     }
 
@@ -247,7 +221,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Playback Speed", comment: "")
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
         .accessibilityLabel("\(NSLocalizedString("Playback Speed", comment: "")), \(speedTitle)")
     }
 
@@ -262,7 +236,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Visual Enhancements", comment: "")
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .tint(state.visualEnhancementsEnabled ? Color.accentColor : Color.secondary)
         .accessibilityLabel(NSLocalizedString("Open Visual Controls", comment: ""))
         .popover(isPresented: $showVisualPanel, arrowEdge: .bottom) {
             visualControlsPanel
@@ -273,7 +248,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(state.visualEnhancementsEnabled ? RiftPalette.cyan : .white.opacity(0.55))
+                    .foregroundStyle(state.visualEnhancementsEnabled ? Color.accentColor : .secondary)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(NSLocalizedString("Visual Controls", comment: ""))
@@ -282,7 +257,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                          ? NSLocalizedString("Custom image adjustments", comment: "")
                          : NSLocalizedString("Neutral image", comment: ""))
                         .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.52))
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 12)
@@ -292,16 +267,15 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                         state.resetVisualEnhancements()
                     }
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(state.visualEnhancementsEnabled ? RiftPalette.cyan : .white.opacity(0.35))
+                .buttonStyle(.borderless)
+                .controlSize(.small)
                 .disabled(!state.visualEnhancementsEnabled)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(NSLocalizedString("Super Resolution", comment: ""))
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle(.secondary)
 
                 Picker(
                     NSLocalizedString("Super Resolution", comment: ""),
@@ -347,11 +321,6 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         }
         .padding(16)
         .frame(width: 340)
-        .background(GlassBackground(cornerRadius: 18))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(RiftPalette.cyan.opacity(0.22), lineWidth: 0.5)
-        }
     }
 
     private func visualAdjustmentRow(
@@ -368,148 +337,88 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 Spacer()
                 Text(valueText)
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(.secondary)
             }
             .font(.system(size: 11, weight: .medium, design: .rounded))
-            .foregroundStyle(.white.opacity(0.82))
+            .foregroundStyle(.primary)
 
             Slider(
                 value: Binding(get: { value }, set: onChange),
                 in: range,
                 step: step
             )
-            .tint(RiftPalette.cyan)
+            .tint(.accentColor)
             .accessibilityLabel(title)
             .accessibilityValue(valueText)
         }
     }
 
     private var audioTrackButton: some View {
-        Button {
-            showAudioMenu = true
-        } label: {
-            glassPill(
-                title: NSLocalizedString("Audio", comment: ""),
-                systemName: "music.note.list",
-                isActive: state.selectedAudioTrackIndex != (state.audioTracks.first?.id ?? 0),
-                hint: NSLocalizedString("Audio Track", comment: "")
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(NSLocalizedString("Audio Track", comment: ""))
-        .popover(isPresented: $showAudioMenu, arrowEdge: .bottom) {
-            VStack(spacing: 0) {
-                ForEach(state.audioTracks) { track in
-                    Button {
-                        showAudioMenu = false
-                        withAnimation(surfaceAnimation) {
-                            state.selectAudioTrack(track.id)
-                        }
-                    } label: {
-                        optionMenuRow(title: track.label, selected: track.id == state.selectedAudioTrackIndex)
+        Menu {
+            ForEach(state.audioTracks) { track in
+                Button {
+                    state.selectAudioTrack(track.id)
+                } label: {
+                    if track.id == state.selectedAudioTrackIndex {
+                        Label(track.label, systemImage: "checkmark")
+                    } else {
+                        Text(track.label)
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(6)
-            .frame(minWidth: 184)
-            .background(GlassBackground(cornerRadius: 16))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(RiftPalette.cyan.opacity(0.22), lineWidth: 0.5)
-            }
+        } label: {
+            Label(NSLocalizedString("Audio", comment: ""), systemImage: "music.note.list")
         }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .accessibilityLabel(NSLocalizedString("Audio Track", comment: ""))
     }
 
     private var subtitleButton: some View {
         let subtitleTracks = state.availableTracks.filter { $0.kind == .subtitle }
 
-        return Button {
-            showSubsMenu = true
-        } label: {
-            glassPill(
-                title: NSLocalizedString("Subs", comment: ""),
-                systemName: "captions.bubble",
-                isActive: state.selectedSubtitleTrack != nil,
-                hint: NSLocalizedString("Subtitles", comment: "")
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(NSLocalizedString("Subtitles", comment: ""))
-        .popover(isPresented: $showSubsMenu, arrowEdge: .bottom) {
-            VStack(spacing: 0) {
-                Button {
-                    showSubsMenu = false
-                    withAnimation(surfaceAnimation) {
-                        state.selectPipelineTrack(nil)
-                    }
-                } label: {
-                    optionMenuRow(title: "None", selected: state.selectedSubtitleTrack == nil)
-                }
-                .buttonStyle(.plain)
+        return Menu {
+            Button {
+                state.selectPipelineTrack(nil)
+            } label: {
+                Label(NSLocalizedString("None", comment: ""), systemImage: state.selectedSubtitleTrack == nil ? "checkmark" : "captions.bubble")
+            }
 
-                ForEach(subtitleTracks) { track in
-                    Button {
-                        showSubsMenu = false
-                        withAnimation(surfaceAnimation) {
-                            state.selectPipelineTrack(track)
-                        }
-                    } label: {
-                        optionMenuRow(title: track.label, selected: state.selectedSubtitleTrack == track)
+            Divider()
+
+            ForEach(subtitleTracks) { track in
+                Button {
+                    state.selectPipelineTrack(track)
+                } label: {
+                    if state.selectedSubtitleTrack == track {
+                        Label(track.label, systemImage: "checkmark")
+                    } else {
+                        Text(track.label)
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(6)
-            .frame(minWidth: 184)
-            .background(GlassBackground(cornerRadius: 16))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(RiftPalette.cyan.opacity(0.22), lineWidth: 0.5)
-            }
+        } label: {
+            Label(NSLocalizedString("Subs", comment: ""), systemImage: "captions.bubble")
         }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .tint(state.selectedSubtitleTrack == nil ? Color.secondary : Color.accentColor)
+        .accessibilityLabel(NSLocalizedString("Subtitles", comment: ""))
     }
 
     // MARK: - Glass Pill
 
     private func glassPill(title: String, systemName: String, isActive: Bool, hint: String) -> some View {
-        GlassPill(
-            title: title,
-            systemName: systemName,
-            isActive: isActive,
-            hint: hint
-        )
+        Label(title, systemImage: systemName)
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(isActive ? Color.accentColor : .primary)
+            .help(hint)
     }
 
     // MARK: - Helpers
 
-    private func optionMenuRow(title: String, selected: Bool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(selected ? RiftPalette.cyan : .white.opacity(0.28))
-
-            Text(title)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-        }
-        .font(.system(size: 12, weight: .medium, design: .rounded))
-        .foregroundStyle(.white.opacity(selected ? 0.98 : 0.72))
-        .padding(.horizontal, 10)
-        .frame(height: 32)
-        .background {
-            if selected {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(RiftPalette.luminousGradient.opacity(0.18))
-            }
-        }
-    }
-
     private var optionDivider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.12))
-            .frame(width: 0.5, height: 22)
+        Divider().frame(height: 22)
     }
 
     private var accentColor: Color {

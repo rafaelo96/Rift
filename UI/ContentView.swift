@@ -139,26 +139,11 @@ private enum VideoPresentationMode: CaseIterable, Identifiable {
 
 private struct TopChromeGlyph: View {
     let systemName: String
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isHovered = false
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white.opacity(isHovered ? 0.98 : 0.76))
-            .frame(width: 30, height: 30)
-            .contentShape(Circle())
-            .background {
-                Circle()
-                    .fill(.white.opacity(isHovered ? 0.16 : 0.001))
-            }
-            .overlay {
-                Circle()
-                    .strokeBorder(.white.opacity(isHovered ? 0.24 : 0.001), lineWidth: 0.5)
-            }
-            .scaleEffect(reduceMotion || !isHovered ? 1 : 1.04)
-            .animation(reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.16), value: isHovered)
-            .onHover { isHovered = $0 }
+            .font(.system(size: 13, weight: .medium))
+            .frame(width: 22, height: 22)
     }
 }
 
@@ -171,7 +156,7 @@ private struct TopChromeButton: View {
         Button(action: action) {
             TopChromeGlyph(systemName: systemName)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .accessibilityLabel(accessibilityLabel)
         .help(accessibilityLabel)
     }
@@ -607,15 +592,9 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .fixedSize()
-        .padding(4)
-        .background {
-            GlassBackground(cornerRadius: 19, effectOpacity: 0.34)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 19, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        .padding(6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
         .padding(.top, 12)
         .padding(.trailing, 14)
         .popover(isPresented: $showTechnicalInfo, arrowEdge: .top) {
@@ -640,21 +619,17 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     technicalInfoRow(NSLocalizedString("Duration", comment: ""), info.duration)
                 }
             }
-            .foregroundStyle(.white.opacity(0.92))
             .padding(18)
             .frame(width: 320, alignment: .leading)
-            .background {
-                GlassBackground(cornerRadius: 16, effectOpacity: 0.28)
-            }
         }
     }
 
     private func technicalInfoRow(_ label: String, _ value: String) -> some View {
         GridRow {
             Text(label)
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(.secondary)
             Text(value)
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.primary)
                 .lineLimit(1)
         }
         .font(.system(size: 12, weight: .medium))
@@ -782,18 +757,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var appBackdrop: some View {
-        ZStack {
-            if state.hasVideo {
-                Color.black
-            } else {
-                GlassBackground(
-                    cornerRadius: 0,
-                    blendingMode: .behindWindow,
-                    effectOpacity: 0.58
-                )
-
-                Color.black.opacity(isDropTargeted ? 0.12 : 0.20)
-            }
+        Group {
+            if state.hasVideo { Color.black } else { Color(nsColor: .windowBackgroundColor) }
         }
         .ignoresSafeArea()
     }
@@ -836,37 +801,25 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var openVideoPrompt: some View {
-        Button {
-            (state as? RiftPlayerState)?.openVideo()
-        } label: {
-            VStack(spacing: 22) {
-                RiftBrandMark(size: 100)
-                    .scaleEffect(isDropTargeted ? 1.06 : 1 + promptPulse * 0.018)
-                    .shadow(color: RiftPalette.blue.opacity(0.35 + promptPulse * 0.12), radius: 24, x: 0, y: 12)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .strokeBorder(.white.opacity(isDropTargeted ? 0.48 : 0.22), lineWidth: 0.5)
-                    }
+        VStack(spacing: 16) {
+            Image(systemName: "play.rectangle")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(.secondary)
 
-                VStack(spacing: 10) {
-                    Text(NSLocalizedString("Open Video", comment: ""))
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.96))
+            Text(NSLocalizedString("Open Video", comment: ""))
+                .font(.title2.weight(.semibold))
 
-                    Text(NSLocalizedString("Drop a file here or click to browse", comment: ""))
-                        .font(.system(size: 15, weight: .regular))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .foregroundStyle(.white.opacity(0.48))
+            Text(NSLocalizedString("Drop a file here or click to browse", comment: ""))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
-                    // TODO(Core): la referencia mostraba aquí `state.statusMessage`
-                    // y `state.conversionProgress` del pipeline (progreso de carga/
-                    // transcodificación). Sin Core/ esos estados no existen.
-                }
+            Button(NSLocalizedString("Choose Video…", comment: "")) {
+                (state as? RiftPlayerState)?.openVideo()
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
-        .buttonStyle(.plain)
+        .padding(32)
     }
 
     private func subtitleOverlay(_ text: String) -> some View {
@@ -878,15 +831,12 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.95), radius: 4, x: 0, y: 1)
+                .shadow(color: .black, radius: 3, x: 0, y: 1)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
                 .background {
-                    GlassBackground(cornerRadius: 12)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(RiftPalette.cyan.opacity(0.24), lineWidth: 0.5)
-                        }
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.black.opacity(0.72))
                 }
                 .frame(maxWidth: 920)
                 .padding(.horizontal, 34)

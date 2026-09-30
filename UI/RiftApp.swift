@@ -121,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             if let window = NSApp.windows.first {
-                configureTranslucentAppearance(for: window)
+                configureNativeAppearance(for: window)
                 window.makeKeyAndOrderFront(nil)
             }
             NSApp.activate(ignoringOtherApps: true)
@@ -129,10 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    private static func configureTranslucentAppearance(for window: NSWindow) {
-        window.isOpaque = false
-        window.backgroundColor = .clear
+    private static func configureNativeAppearance(for window: NSWindow) {
+        window.isOpaque = true
+        window.backgroundColor = .windowBackgroundColor
         window.hasShadow = true
+        window.titlebarAppearsTransparent = false
     }
 
     @MainActor
@@ -155,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 defer: false
             )
             window.title = NSLocalizedString("Rift", comment: "")
-            configureTranslucentAppearance(for: window)
+            configureNativeAppearance(for: window)
             window.contentViewController = hostingController
             window.center()
             window.makeKeyAndOrderFront(nil)
