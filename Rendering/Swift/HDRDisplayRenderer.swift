@@ -37,6 +37,7 @@ public final class HDRDisplayRenderer {
     @MainActor public private(set) var subtitleCompositionFailures = 0
     @MainActor public private(set) var heldFrameRefreshes = 0
     @MainActor private var superResolutionDiagnosticCount = 0
+    @MainActor private var superResolutionCaptureCompleted = false
 
     /// Refresh the held frame as well, so entering/exiting PiP while paused
     /// does not leave a missing or permanently burned-in caption.
@@ -126,6 +127,11 @@ public final class HDRDisplayRenderer {
                 let line = "SUPERRES mode=\(superResolutionMode.rawValue) input=\(CVPixelBufferGetWidth(sourceBuffer))x\(CVPixelBufferGetHeight(sourceBuffer)) format=\(CVPixelBufferGetPixelFormatType(sourceBuffer)) output=\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer)) processed=\(pixelBuffer !== sourceBuffer) bypass=\(superResolutionProcessor?.isAdaptivelyBypassed ?? false)\n"
                 FileHandle.standardOutput.write(Data(line.utf8))
             }
+            captureSuperResolutionComparisonIfRequested(
+                source: sourceBuffer,
+                processed: pixelBuffer,
+                pts: pts.seconds
+            )
         }
         if let text = pictureInPictureSubtitle?(pts.seconds), !text.isEmpty {
             if subtitleCompositor == nil { subtitleCompositor = SubtitleCompositor() }
@@ -148,6 +154,47 @@ public final class HDRDisplayRenderer {
         let s2 = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: fmt, sampleTiming: &timing, sampleBufferOut: &sbuf)
         guard s2 == noErr else { return nil }
         return sbuf
+    }
+
+    /// Opt-in quality harness. Captures the same decoded frame before and after
+    /// super resolution, so visual acceptance is based on real content rather
+    /// than a synthetic pattern. Inert during normal playback.
+    @MainActor
+    private func captureSuperResolutionComparisonIfRequested(
+        source: CVPixelBuffer,
+        processed: CVPixelBuffer,
+        pts: Double
+    ) {
+        guard !superResolutionCaptureCompleted,
+              processed !== source,
+              let directory = ProcessInfo.processInfo.environment["RIFT_SUPERRES_CAPTURE_DIR"],
+              !directory.isEmpty else { return }
+        let targetPTS = ProcessInfo.processInfo.environment["RIFT_SUPERRES_CAPTURE_AT"].flatMap(Double.init) ?? 0
+        guard pts.isFinite, pts >= targetPTS else { return }
+        superResolutionCaptureCompleted = true
+
+        let outputDirectory = URL(fileURLWithPath: directory, isDirectory: true)
+        let context = CIContext(options: [.cacheIntermediates: false])
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
+        do {
+            try context.writePNGRepresentation(
+                of: CIImage(cvPixelBuffer: source),
+                to: outputDirectory.appendingPathComponent("frame-off.png"),
+                format: .RGBA8,
+                colorSpace: colorSpace
+            )
+            try context.writePNGRepresentation(
+                of: CIImage(cvPixelBuffer: processed),
+                to: outputDirectory.appendingPathComponent("frame-visual-strong.png"),
+                format: .RGBA8,
+                colorSpace: colorSpace
+            )
+        } catch {
+            if detailedDiagnostics {
+                let line = "SUPERRES capture failed: \(error.localizedDescription)\n"
+                FileHandle.standardError.write(Data(line.utf8))
+            }
+        }
     }
 
     // Tags de diagnóstico — el caller los setea ANTES de llamar sampleBuffer().
