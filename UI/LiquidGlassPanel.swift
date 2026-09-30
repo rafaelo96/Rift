@@ -20,13 +20,19 @@ struct GlassBackground: View {
     var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
     var effectOpacity: Double = 0.16
 
+    @ViewBuilder
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(.regularMaterial)
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(.separator.opacity(0.7), lineWidth: 0.5)
-            }
+        if #available(macOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        } else {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.regularMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(.separator.opacity(0.7), lineWidth: 0.5)
+                }
+        }
     }
 }
 
@@ -57,5 +63,20 @@ struct GlassButtonStyle: ViewModifier {
 extension View {
     func glassButton(cornerRadius: CGFloat = 8) -> some View {
         modifier(GlassButtonStyle(cornerRadius: cornerRadius))
+    }
+
+    @ViewBuilder
+    func riftGlassButton(prominent: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            if prominent {
+                buttonStyle(.glassProminent)
+            } else {
+                buttonStyle(.glass)
+            }
+        } else if prominent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
+        }
     }
 }

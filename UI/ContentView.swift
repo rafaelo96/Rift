@@ -156,7 +156,8 @@ private struct TopChromeButton: View {
         Button(action: action) {
             TopChromeGlyph(systemName: systemName)
         }
-        .buttonStyle(.borderless)
+        .riftGlassButton()
+        .buttonBorderShape(.circle)
         .accessibilityLabel(accessibilityLabel)
         .help(accessibilityLabel)
     }
@@ -816,7 +817,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             Button(NSLocalizedString("Choose Video…", comment: "")) {
                 (state as? RiftPlayerState)?.openVideo()
             }
-            .buttonStyle(.borderedProminent)
+            .riftGlassButton(prominent: true)
             .controlSize(.large)
         }
         .padding(32)

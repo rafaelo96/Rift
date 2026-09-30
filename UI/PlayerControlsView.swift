@@ -96,7 +96,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             } label: {
                 Image(systemName: volumeIcon)
             }
-            .buttonStyle(.borderless)
+            .riftGlassButton()
+            .buttonBorderShape(.circle)
             .accessibilityLabel(state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: ""))
 
             Slider(value: Binding(get: { state.volume }, set: state.setVolume), in: 0...1)
@@ -140,7 +141,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     private var transportControls: some View {
         HStack(spacing: 14) {
             Button { state.seek(by: -10) } label: { Image(systemName: "gobackward.10") }
-                .buttonStyle(.borderless)
+                .riftGlassButton()
+                .buttonBorderShape(.circle)
                 .accessibilityLabel(NSLocalizedString("Skip Back 10s", comment: ""))
 
             Button {
@@ -152,7 +154,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .frame(width: 34, height: 34)
             }
-            .buttonStyle(.borderedProminent)
+            .riftGlassButton(prominent: true)
             .buttonBorderShape(.circle)
             .controlSize(.large)
             .keyboardShortcut(.space, modifiers: [])
@@ -161,7 +163,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             .accessibilityLabel(state.isPlaying ? NSLocalizedString("Pause", comment: "") : NSLocalizedString("Play", comment: ""))
 
             Button { state.seek(by: 10) } label: { Image(systemName: "goforward.10") }
-                .buttonStyle(.borderless)
+                .riftGlassButton()
+                .buttonBorderShape(.circle)
                 .accessibilityLabel(NSLocalizedString("Skip Forward 10s", comment: ""))
         }
     }
@@ -203,7 +206,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Frame Interpolation", comment: "")
             )
         }
-        .buttonStyle(.bordered)
+        .riftGlassButton()
         .tint(state.interpolationMode == .disabled ? Color.secondary : Color.accentColor)
         .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : NSLocalizedString("Interpolation enabled", comment: ""))")
     }
@@ -221,7 +224,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Playback Speed", comment: "")
             )
         }
-        .buttonStyle(.bordered)
+        .riftGlassButton()
         .accessibilityLabel("\(NSLocalizedString("Playback Speed", comment: "")), \(speedTitle)")
     }
 
@@ -236,7 +239,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Visual Enhancements", comment: "")
             )
         }
-        .buttonStyle(.bordered)
+        .riftGlassButton()
         .tint(state.visualEnhancementsEnabled ? Color.accentColor : Color.secondary)
         .accessibilityLabel(NSLocalizedString("Open Visual Controls", comment: ""))
         .popover(isPresented: $showVisualPanel, arrowEdge: .bottom) {
@@ -267,7 +270,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                         state.resetVisualEnhancements()
                     }
                 }
-                .buttonStyle(.borderless)
+                .riftGlassButton()
                 .controlSize(.small)
                 .disabled(!state.visualEnhancementsEnabled)
             }
@@ -370,7 +373,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             Label(NSLocalizedString("Audio", comment: ""), systemImage: "music.note.list")
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .riftGlassButton()
         .accessibilityLabel(NSLocalizedString("Audio Track", comment: ""))
     }
 
@@ -401,7 +404,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             Label(NSLocalizedString("Subs", comment: ""), systemImage: "captions.bubble")
         }
         .menuStyle(.button)
-        .buttonStyle(.bordered)
+        .riftGlassButton()
         .tint(state.selectedSubtitleTrack == nil ? Color.secondary : Color.accentColor)
         .accessibilityLabel(NSLocalizedString("Subtitles", comment: ""))
     }
