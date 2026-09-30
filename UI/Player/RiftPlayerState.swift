@@ -613,7 +613,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
         let env = ProcessInfo.processInfo.environment
         if let requestedSuperResolution = env["RIFT_AUTO_SUPERRES"].flatMap(SuperResolutionPreference.init(rawValue:)) {
-            superResolutionMode = requestedSuperResolution
+            superResolutionMode = requestedSuperResolution == .off ? .off : .strong
             updateVisualEnhancements()
         }
         guard let path = env["RIFT_AUTO_OPEN"], !path.isEmpty else { return }
@@ -729,8 +729,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         interpolationMode = InterpolationMode(rawValue: preferences.interpolationMode) ?? .disabled
         requestedInterpolationMode = interpolationMode
         audioSyncOffset = min(max(preferences.audioSyncOffset ?? 0, -2), 2)
-        superResolutionMode = preferences.superResolutionMode
+        let restoredSuperResolution = preferences.superResolutionMode
             .flatMap(SuperResolutionPreference.init(rawValue:)) ?? .off
+        superResolutionMode = restoredSuperResolution == .off ? .off : .strong
         updateVisualEnhancements()
     }
 
@@ -1571,8 +1572,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     func setSuperResolutionMode(_ mode: SuperResolutionPreference) {
-        guard superResolutionMode != mode else { return }
-        superResolutionMode = mode
+        let normalizedMode: SuperResolutionPreference = mode == .off ? .off : .strong
+        guard superResolutionMode != normalizedMode else { return }
+        superResolutionMode = normalizedMode
         updateVisualEnhancements()
         persistPlaybackPreferences()
     }
@@ -1608,7 +1610,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private var renderingSuperResolutionMode: Rendering.SuperResolutionMode {
-        Rendering.SuperResolutionMode(rawValue: superResolutionMode.rawValue) ?? .off
+        superResolutionMode == .off ? .off : .strong
     }
 
     func requestTimelineThumbnail(at time: Double) {

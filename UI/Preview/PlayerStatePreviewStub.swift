@@ -92,7 +92,7 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
         updateVisualEnhancementsEnabled()
     }
     func setSuperResolutionMode(_ mode: SuperResolutionPreference) {
-        superResolutionMode = mode
+        superResolutionMode = mode == .off ? .off : .strong
         updateVisualEnhancementsEnabled()
     }
     func resetVisualEnhancements() {

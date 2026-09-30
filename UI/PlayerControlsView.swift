@@ -306,13 +306,12 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 Picker(
                     NSLocalizedString("Super Resolution", comment: ""),
                     selection: Binding(
-                        get: { state.superResolutionMode },
-                        set: { state.setSuperResolutionMode($0) }
+                        get: { state.superResolutionMode != .off },
+                        set: { state.setSuperResolutionMode($0 ? .strong : .off) }
                     )
                 ) {
-                    ForEach(SuperResolutionPreference.allCases, id: \.self) { mode in
-                        Text(superResolutionTitle(mode)).tag(mode)
-                    }
+                    Text(NSLocalizedString("Off", comment: "")).tag(false)
+                    Text(NSLocalizedString("On", comment: "")).tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -352,15 +351,6 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(RiftPalette.cyan.opacity(0.22), lineWidth: 0.5)
-        }
-    }
-
-    private func superResolutionTitle(_ mode: SuperResolutionPreference) -> String {
-        switch mode {
-        case .off: NSLocalizedString("Off", comment: "")
-        case .soft: NSLocalizedString("Soft", comment: "")
-        case .balanced: NSLocalizedString("Balanced", comment: "")
-        case .strong: NSLocalizedString("Strong", comment: "")
         }
     }
 
