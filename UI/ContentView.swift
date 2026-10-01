@@ -20,8 +20,14 @@ private struct RiftBrandMark: View {
     var size: CGFloat = 96
 
     var body: some View {
-        if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "png"),
+        if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "svg"),
            let image = NSImage(contentsOf: url) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        } else if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "png"),
+                  let image = NSImage(contentsOf: url) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -812,25 +818,73 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var openVideoPrompt: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "play.rectangle")
-                .font(.system(size: 48, weight: .light))
-                .foregroundStyle(.secondary)
+        ZStack {
+            VStack(spacing: 18) {
+                RiftBrandMark(size: 118)
+                    .scaleEffect(isDropTargeted ? 1.04 : 1)
+                    .shadow(color: Color.accentColor.opacity(0.32), radius: 22, y: 8)
 
-            Text(NSLocalizedString("Open Video", comment: ""))
-                .font(.title2.weight(.semibold))
+                VStack(spacing: 7) {
+                    Text(NSLocalizedString("Open Video", comment: ""))
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
 
-            Text(NSLocalizedString("Drop a file here or click to browse", comment: ""))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                    Text(NSLocalizedString("Drop a video here or click to browse", comment: ""))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
 
-            Button(NSLocalizedString("Choose Video…", comment: "")) {
-                (state as? RiftPlayerState)?.openVideo()
+                Button {
+                    (state as? RiftPlayerState)?.openVideo()
+                } label: {
+                    Label(NSLocalizedString("Choose Video…", comment: ""), systemImage: "folder")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 38)
+                }
+                .riftGlassButton(prominent: true)
+                .controlSize(.large)
             }
-            .riftGlassButton(prominent: true)
-            .controlSize(.large)
+
+            VStack {
+                Spacer()
+
+                Divider()
+
+                HStack(spacing: 14) {
+                    Label(NSLocalizedString("Supports MKV, MP4, HEVC, AV1, 4K", comment: ""), systemImage: "folder")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    formatBadge("MKV")
+                    formatBadge("MP4")
+                    formatBadge("HEVC")
+                    formatBadge("AV1")
+                    formatBadge("4K")
+                }
+                .padding(.top, 8)
+            }
         }
-        .padding(32)
+        .padding(.horizontal, 36)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .animation(controlDragAnimation, value: isDropTargeted)
+    }
+
+    private func formatBadge(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background {
+                Capsule()
+                    .fill(.white.opacity(0.025))
+                    .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5) }
+            }
     }
 
     private func subtitleOverlay(_ text: String) -> some View {
