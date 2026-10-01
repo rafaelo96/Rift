@@ -758,8 +758,18 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var appBackdrop: some View {
-        Group {
-            if state.hasVideo { Color.black } else { Color(nsColor: .windowBackgroundColor) }
+        ZStack {
+            if state.hasVideo {
+                Color.black
+            } else {
+                GlassBackground(
+                    cornerRadius: 0,
+                    blendingMode: .behindWindow,
+                    effectOpacity: 0.42
+                )
+
+                Color.black.opacity(isDropTargeted ? 0.04 : 0.08)
+            }
         }
         .ignoresSafeArea()
     }
