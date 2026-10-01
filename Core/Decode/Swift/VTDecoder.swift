@@ -93,7 +93,21 @@ public final class VTDecoder: VideoDecoding {
         }
         guard !packet.data.isEmpty else { return nil }
 
-        let sampleBuffer = try makeSampleBuffer(from: packet, formatDescription: formatDescription)
+        let sampleData: [UInt8]
+        if case .avc(let avc) = config {
+            do {
+                sampleData = try avc.videoToolboxSample(from: packet.data)
+            } catch let error as AVCConfigurationError {
+                throw DecodeError.malformedH264Sample(error.description)
+            }
+        } else {
+            sampleData = packet.data
+        }
+        let sampleBuffer = try makeSampleBuffer(
+            from: packet,
+            data: sampleData,
+            formatDescription: formatDescription
+        )
 
         pendingBuffer = nil
         pendingPresentationTime = nil
@@ -316,16 +330,17 @@ public final class VTDecoder: VideoDecoding {
 
     private func makeSampleBuffer(
         from packet: CompressedPacket,
+        data: [UInt8],
         formatDescription: CMFormatDescription
     ) throws -> CMSampleBuffer {
-        let blockBuffer = try makeBlockBuffer(packet.data)
+        let blockBuffer = try makeBlockBuffer(data)
 
         var timing = CMSampleTimingInfo(
             duration: CMTime(seconds: packet.duration, preferredTimescale: 90_000),
             presentationTimeStamp: CMTime(seconds: packet.pts, preferredTimescale: 90_000),
             decodeTimeStamp: CMTime(seconds: packet.dts, preferredTimescale: 90_000)
         )
-        var sampleSize = packet.data.count
+        var sampleSize = data.count
         var sampleBuffer: CMSampleBuffer?
         let status = CMSampleBufferCreate(
             allocator: kCFAllocatorDefault,

@@ -13,6 +13,7 @@ public enum DecodeError: Error, CustomStringConvertible {
     case unsupportedFormat(String)
     case malformedHvcC(String)
     case malformedAvcC(String)
+    case malformedH264Sample(String)
     case malformedAv1C(String)
     case hardwareDecoderUnavailable(String)
     case missingParameterSets
@@ -33,6 +34,8 @@ public enum DecodeError: Error, CustomStringConvertible {
             return "Decode: malformed hvcC extradata — \(detail)"
         case .malformedAvcC(let detail):
             return "Decode: malformed avcC extradata — \(detail)"
+        case .malformedH264Sample(let detail):
+            return "Decode: malformed H.264 sample — \(detail)"
         case .malformedAv1C(let detail):
             return "Decode: malformed av1C extradata — \(detail)"
         case .hardwareDecoderUnavailable(let codec):

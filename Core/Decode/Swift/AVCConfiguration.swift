@@ -36,13 +36,24 @@ enum AVCConfigurationError: Error, CustomStringConvertible {
 }
 
 struct AVCConfiguration {
+    enum BitstreamFormat {
+        case lengthPrefixed
+        case annexB
+    }
+
     /// SPS then PPS, in the order Core Video expects.
     let parameterSets: [AVCParameterSet]
     /// Length-field size of the NAL units in the packet bitstream
     /// (lengthSizeMinusOne + 1). MP4/MKV H.264 uses 4.
     let nalUnitHeaderLength: Int
+    /// Packet representation supplied by the container.
+    let bitstreamFormat: BitstreamFormat
 
     static func parse(_ extradata: [UInt8]) throws -> AVCConfiguration {
+        if Self.startCodeLength(at: 0, in: extradata) != nil {
+            return try parseAnnexB(extradata)
+        }
+
         guard let first = extradata.first, first == 1 else {
             throw AVCConfigurationError.notAvcC(
                 "first byte is 0x\(String(format: "%02x", extradata.first ?? 0)) (expected 0x01 configurationVersion)"
@@ -95,6 +106,82 @@ struct AVCConfiguration {
         guard !sets.isEmpty else {
             throw AVCConfigurationError.malformed("no SPS/PPS found in avcC extradata")
         }
-        return AVCConfiguration(parameterSets: sets, nalUnitHeaderLength: nalUnitHeaderLength)
+        return AVCConfiguration(
+            parameterSets: sets,
+            nalUnitHeaderLength: nalUnitHeaderLength,
+            bitstreamFormat: .lengthPrefixed
+        )
+    }
+
+    /// Converts one Annex-B access unit to the four-byte length-prefixed form
+    /// consumed by VideoToolbox. Only the current compressed packet is copied.
+    func videoToolboxSample(from packet: [UInt8]) throws -> [UInt8] {
+        guard bitstreamFormat == .annexB else { return packet }
+        let nalUnits = Self.annexBNALUnits(in: packet)
+        guard !nalUnits.isEmpty else {
+            throw AVCConfigurationError.malformed("Annex-B packet contains no NAL units")
+        }
+
+        var sample: [UInt8] = []
+        sample.reserveCapacity(packet.count + nalUnits.count)
+        for nal in nalUnits {
+            guard nal.count <= Int(UInt32.max) else {
+                throw AVCConfigurationError.malformed("NAL unit exceeds UInt32 length")
+            }
+            let length = UInt32(nal.count).bigEndian
+            withUnsafeBytes(of: length) { sample.append(contentsOf: $0) }
+            sample.append(contentsOf: nal)
+        }
+        return sample
+    }
+
+    private static func parseAnnexB(_ extradata: [UInt8]) throws -> AVCConfiguration {
+        let nalUnits = annexBNALUnits(in: extradata)
+        let sets = nalUnits.compactMap { bytes -> AVCParameterSet? in
+            guard let first = bytes.first else { return nil }
+            let type = first & 0x1f
+            guard type == 7 || type == 8 else { return nil }
+            return AVCParameterSet(type: type, bytes: bytes)
+        }
+        guard sets.contains(where: { $0.type == 7 }),
+              sets.contains(where: { $0.type == 8 }) else {
+            throw AVCConfigurationError.malformed("Annex-B extradata is missing SPS or PPS")
+        }
+        return AVCConfiguration(
+            parameterSets: sets.sorted { $0.type < $1.type },
+            nalUnitHeaderLength: 4,
+            bitstreamFormat: .annexB
+        )
+    }
+
+    private static func annexBNALUnits(in bytes: [UInt8]) -> [[UInt8]] {
+        var starts: [(offset: Int, prefixLength: Int)] = []
+        var index = 0
+        while index < bytes.count {
+            if let length = startCodeLength(at: index, in: bytes) {
+                starts.append((index, length))
+                index += length
+            } else {
+                index += 1
+            }
+        }
+
+        return starts.enumerated().compactMap { position, start in
+            let bodyStart = start.offset + start.prefixLength
+            var bodyEnd = position + 1 < starts.count ? starts[position + 1].offset : bytes.count
+            while bodyEnd > bodyStart, bytes[bodyEnd - 1] == 0 { bodyEnd -= 1 }
+            guard bodyStart < bodyEnd else { return nil }
+            return Array(bytes[bodyStart..<bodyEnd])
+        }
+    }
+
+    private static func startCodeLength(at index: Int, in bytes: [UInt8]) -> Int? {
+        guard index + 3 <= bytes.count,
+              bytes[index] == 0, bytes[index + 1] == 0 else { return nil }
+        if bytes[index + 2] == 1 { return 3 }
+        if index + 4 <= bytes.count, bytes[index + 2] == 0, bytes[index + 3] == 1 {
+            return 4
+        }
+        return nil
     }
 }
