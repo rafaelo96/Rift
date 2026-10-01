@@ -16,16 +16,21 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 timeline
                     .padding(.horizontal, 4)
 
-                HStack(spacing: 14) {
-                    playbackInfoCluster
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ZStack {
+                    HStack(spacing: 14) {
+                        playbackInfoCluster
+                            .fixedSize(horizontal: true, vertical: false)
+
+                        Spacer(minLength: 190)
+
+                        optionsBar
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
 
                     transportControls
-                        .frame(minWidth: 176)
-
-                    optionsBar
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .frame(width: 176)
                 }
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
