@@ -140,7 +140,11 @@ print("video: \(video.width ?? 0)x\(video.height ?? 0) \(video.codecName) "
     + "ct=\(video.colorTransfer.map(String.init) ?? "-") "
     + "cp=\(video.colorPrimaries.map(String.init) ?? "-")")
 print("extradata : \(video.codecExtradata.count) bytes (\(video.codecName))")
-print("VT hardware decode supported (HEVC): \(VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC))")
+let hardwareCodecType = video.codecName.lowercased() == "av1"
+    ? kCMVideoCodecType_AV1
+    : kCMVideoCodecType_HEVC
+print("VT hardware decode supported (\(video.codecName.uppercased())): "
+    + "\(VTIsHardwareDecodeSupported(hardwareCodecType))")
 
 let decoder = VTDecoder()
 do {

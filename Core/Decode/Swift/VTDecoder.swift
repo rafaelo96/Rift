@@ -21,6 +21,7 @@ public final class VTDecoder: VideoDecoding {
     private enum CodecConfig {
         case avc(AVCConfiguration)
         case hevc(HEVCConfiguration)
+        case av1(AV1Configuration)
     }
 
     private var session: VTDecompressionSession?
@@ -61,8 +62,17 @@ public final class VTDecoder: VideoDecoding {
             } catch let error as HEVCConfigurationError {
                 throw DecodeError.malformedHvcC(error.description)
             }
+        case "av1":
+            guard VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1) else {
+                throw DecodeError.hardwareDecoderUnavailable("AV1")
+            }
+            do {
+                config = .av1(try AV1Configuration.parse(track.codecExtradata))
+            } catch let error as AV1ConfigurationError {
+                throw DecodeError.malformedAv1C(error.description)
+            }
         default:
-            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc")
+            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc/av1")
         }
 
         self.config = config
@@ -148,7 +158,34 @@ public final class VTDecoder: VideoDecoding {
             return try makeHEVCFormatDescription(hevc.parameterSets.map { $0.bytes }, nalUnitHeaderLength: hevc.nalUnitHeaderLength)
         case .avc(let avc):
             return try makeAVCFormatDescription(avc.parameterSets.map { $0.bytes }, nalUnitHeaderLength: avc.nalUnitHeaderLength)
+        case .av1(let av1):
+            return try makeAV1FormatDescription(av1)
         }
+    }
+
+    private func makeAV1FormatDescription(_ av1: AV1Configuration) throws -> CMFormatDescription {
+        guard let track, let width = track.width, let height = track.height,
+              width > 0, height > 0 else {
+            throw DecodeError.unsupportedFormat("AV1 track has invalid dimensions")
+        }
+
+        let atoms: [String: Any] = ["av1C": Data(av1.record)]
+        let extensions: [CFString: Any] = [
+            kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: atoms,
+        ]
+        var formatDescription: CMVideoFormatDescription?
+        let status = CMVideoFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            codecType: kCMVideoCodecType_AV1,
+            width: Int32(width),
+            height: Int32(height),
+            extensions: extensions as CFDictionary,
+            formatDescriptionOut: &formatDescription
+        )
+        guard status == noErr, let formatDescription else {
+            throw DecodeError.formatDescriptionFailed(status)
+        }
+        return formatDescription
     }
 
     private func makeHEVCFormatDescription(_ sets: [[UInt8]], nalUnitHeaderLength: Int) throws -> CMFormatDescription {
@@ -224,18 +261,27 @@ public final class VTDecoder: VideoDecoding {
             throw DecodeError.notPrepared
         }
 
-        let decoderSpecification: [CFString: Any] = [
+        var decoderSpecification: [CFString: Any] = [
             kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: true,
         ]
+        if case .av1 = config {
+            // AV1 support in Rift is deliberately hardware-only. Never fall
+            // back to a software decoder that could stall playback.
+            decoderSpecification[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
+        }
 
         let width = max(track.width ?? 0, 16)
         let height = max(track.height ?? 0, 16)
 
-        // Pixel format condicional: HEVC (10-bit) vs H.264 (8-bit SDR).
+        // Preserve 10-bit AV1/HEVC output for HDR; use NV12 for 8-bit sources.
         let pixelFormat: Int
         switch config {
         case .hevc: pixelFormat = Int(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange)
         case .avc:  pixelFormat = Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        case .av1(let av1):
+            pixelFormat = Int(av1.usesHighBitDepth
+                ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+                : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
         }
 
         let destination: [String: Any] = [

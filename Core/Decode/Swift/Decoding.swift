@@ -13,6 +13,8 @@ public enum DecodeError: Error, CustomStringConvertible {
     case unsupportedFormat(String)
     case malformedHvcC(String)
     case malformedAvcC(String)
+    case malformedAv1C(String)
+    case hardwareDecoderUnavailable(String)
     case missingParameterSets
     case formatDescriptionFailed(OSStatus)
     case sessionFailed(OSStatus)
@@ -31,6 +33,10 @@ public enum DecodeError: Error, CustomStringConvertible {
             return "Decode: malformed hvcC extradata — \(detail)"
         case .malformedAvcC(let detail):
             return "Decode: malformed avcC extradata — \(detail)"
+        case .malformedAv1C(let detail):
+            return "Decode: malformed av1C extradata — \(detail)"
+        case .hardwareDecoderUnavailable(let codec):
+            return "Decode: hardware decoder unavailable for \(codec)"
         case .missingParameterSets:
             return "Decode: no VPS/SPS/PPS found in hvcC extradata"
         case .formatDescriptionFailed(let s):
