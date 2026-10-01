@@ -11,26 +11,26 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     @State private var showVisualPanel = false
 
     var body: some View {
-        LiquidGlassPanel(cornerRadius: 28) {
-            VStack(spacing: 8) {
+        LiquidGlassPanel(cornerRadius: 38) {
+            VStack(spacing: 14) {
                 timeline
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 4)
 
-                HStack(spacing: 10) {
+                HStack(spacing: 18) {
                     playbackInfoCluster
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     transportControls
-                        .frame(width: 168)
+                        .frame(minWidth: 196)
 
                     optionsBar
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 16)
         }
-        .frame(maxWidth: 880)
+        .frame(maxWidth: 1180)
         .animation(surfaceAnimation, value: state.isPlaying)
         .animation(surfaceAnimation, value: state.playbackRate)
         .animation(surfaceAnimation, value: state.fpsMode)
@@ -48,10 +48,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Timeline with Chapter Markers
 
     private var timeline: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             Text(state.formattedTime(isDraggingSlider ? dragSliderValue : state.currentTime))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .frame(width: 68, alignment: .leading)
+                .frame(width: 62, alignment: .leading)
                 .foregroundStyle(.primary)
 
             Slider(
@@ -65,12 +65,12 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     if !editing { state.seek(to: dragSliderValue) }
                 }
             )
-            .controlSize(.small)
+            .controlSize(.regular)
             .accessibilityLabel(NSLocalizedString("Playback position", comment: ""))
 
             Text(state.formattedTime(state.duration))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .frame(width: 68, alignment: .trailing)
+                .frame(width: 62, alignment: .trailing)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -79,7 +79,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Playback Info
 
     private var playbackInfoCluster: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 14) {
             volumeControl
 
             optionDivider
@@ -90,7 +90,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var volumeControl: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             Button {
                 state.setVolume(state.volume > 0 ? 0 : 0.68)
             } label: {
@@ -98,14 +98,15 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             }
             .riftGlassButton()
             .buttonBorderShape(.circle)
+            .controlSize(.large)
             .accessibilityLabel(state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: ""))
 
             Slider(value: Binding(get: { state.volume }, set: state.setVolume), in: 0...1)
-                .controlSize(.mini)
-            .frame(width: 72)
+                .controlSize(.small)
+            .frame(width: 108)
             .accessibilityLabel(NSLocalizedString("Volume", comment: ""))
         }
-        .frame(width: 96, alignment: .leading)
+        .frame(width: 154, alignment: .leading)
     }
 
     private var fpsReadout: some View {
@@ -139,10 +140,11 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Transport Controls
 
     private var transportControls: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             Button { state.seek(by: -10) } label: { Image(systemName: "gobackward.10") }
                 .riftGlassButton()
                 .buttonBorderShape(.circle)
+                .controlSize(.large)
                 .accessibilityLabel(NSLocalizedString("Skip Back 10s", comment: ""))
 
             Button {
@@ -151,8 +153,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 }
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .frame(width: 34, height: 34)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .frame(width: 44, height: 44)
             }
             .riftGlassButton(prominent: true)
             .buttonBorderShape(.circle)
@@ -165,6 +167,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             Button { state.seek(by: 10) } label: { Image(systemName: "goforward.10") }
                 .riftGlassButton()
                 .buttonBorderShape(.circle)
+                .controlSize(.large)
                 .accessibilityLabel(NSLocalizedString("Skip Forward 10s", comment: ""))
         }
     }
@@ -172,8 +175,11 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Options Bar
 
     private var optionsBar: some View {
-        HStack(spacing: 5) {
-            interpolationButton
+        HStack(spacing: 8) {
+            if state.availableTracks.filter({ $0.kind == .subtitle }).count > 0 {
+                subtitleButton
+            }
+
             speedButton
             visualButton
 
@@ -181,10 +187,9 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 audioTrackButton
             }
 
-            if state.availableTracks.filter({ $0.kind == .subtitle }).count > 0 {
-                subtitleButton
-            }
+            interpolationButton
         }
+        .controlSize(.large)
     }
 
     // MARK: - Option Buttons
