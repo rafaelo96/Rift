@@ -54,18 +54,22 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .frame(width: 62, alignment: .leading)
                 .foregroundStyle(.primary)
 
-            Slider(
-                value: Binding(
-                    get: { isDraggingSlider ? dragSliderValue : state.currentTime },
-                    set: { dragSliderValue = $0 }
-                ),
-                in: 0...max(state.duration, 1),
-                onEditingChanged: { editing in
-                    isDraggingSlider = editing
-                    if !editing { state.seek(to: dragSliderValue) }
-                }
+            TimelineTrack(
+                currentTime: isDraggingSlider ? dragSliderValue : state.currentTime,
+                duration: max(state.duration, 1),
+                thumbnailImage: (state as? RiftPlayerState)?.timelineThumbnail?.image,
+                isThumbnailLoading: (state as? RiftPlayerState)?.isTimelineThumbnailLoading ?? false,
+                onSeek: {
+                    isDraggingSlider = true
+                    dragSliderValue = $0
+                },
+                onSeekEnd: {
+                    state.seek(to: $0)
+                    isDraggingSlider = false
+                },
+                onPreviewRequest: { (state as? RiftPlayerState)?.requestTimelineThumbnail(at: $0) },
+                onPreviewDismiss: { (state as? RiftPlayerState)?.hideTimelineThumbnailPreview() }
             )
-            .controlSize(.regular)
             .accessibilityLabel(NSLocalizedString("Playback position", comment: ""))
 
             Text(state.formattedTime(state.duration))
@@ -91,18 +95,14 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var volumeControl: some View {
         HStack(spacing: 10) {
-            Button {
-                state.setVolume(state.volume > 0 ? 0 : 0.68)
-            } label: {
-                Image(systemName: volumeIcon)
-            }
-            .riftGlassButton()
-            .buttonBorderShape(.circle)
-            .controlSize(.large)
-            .accessibilityLabel(state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: ""))
+            GlassIconButton(
+                systemName: volumeIcon,
+                size: 15,
+                action: { state.setVolume(state.volume > 0 ? 0 : 0.68) },
+                accessibilityLabel: state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: "")
+            )
 
-            Slider(value: Binding(get: { state.volume }, set: state.setVolume), in: 0...1)
-                .controlSize(.small)
+            VolumeTrack(value: state.volume, onChange: state.setVolume)
             .frame(width: 108)
             .accessibilityLabel(NSLocalizedString("Volume", comment: ""))
         }
@@ -141,11 +141,12 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var transportControls: some View {
         HStack(spacing: 16) {
-            Button { state.seek(by: -10) } label: { Image(systemName: "gobackward.10") }
-                .riftGlassButton()
-                .buttonBorderShape(.circle)
-                .controlSize(.large)
-                .accessibilityLabel(NSLocalizedString("Skip Back 10s", comment: ""))
+            GlassIconButton(
+                systemName: "gobackward.10",
+                size: 17,
+                action: { state.seek(by: -10) },
+                accessibilityLabel: NSLocalizedString("Skip Back 10s", comment: "")
+            )
 
             Button {
                 withAnimation(surfaceAnimation) {
@@ -153,22 +154,28 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 }
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .frame(width: 44, height: 44)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background {
+                        Circle()
+                            .fill(.white.opacity(0.15))
+                            .overlay { Circle().strokeBorder(.white.opacity(0.24), lineWidth: 0.75) }
+                    }
+                    .shadow(color: .black.opacity(0.24), radius: 10, y: 5)
             }
-            .riftGlassButton(prominent: true)
-            .buttonBorderShape(.circle)
-            .controlSize(.large)
+            .buttonStyle(.plain)
             .keyboardShortcut(.space, modifiers: [])
             .scaleEffect(reduceMotion ? 1 : (state.isPlaying ? 1 : 0.96))
             .animation(surfaceAnimation, value: state.isPlaying)
             .accessibilityLabel(state.isPlaying ? NSLocalizedString("Pause", comment: "") : NSLocalizedString("Play", comment: ""))
 
-            Button { state.seek(by: 10) } label: { Image(systemName: "goforward.10") }
-                .riftGlassButton()
-                .buttonBorderShape(.circle)
-                .controlSize(.large)
-                .accessibilityLabel(NSLocalizedString("Skip Forward 10s", comment: ""))
+            GlassIconButton(
+                systemName: "goforward.10",
+                size: 17,
+                action: { state.seek(by: 10) },
+                accessibilityLabel: NSLocalizedString("Skip Forward 10s", comment: "")
+            )
         }
     }
 
@@ -176,10 +183,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var optionsBar: some View {
         HStack(spacing: 8) {
-            if state.availableTracks.filter({ $0.kind == .subtitle }).count > 0 {
-                subtitleButton
-            }
-
+            interpolationButton
             speedButton
             visualButton
 
@@ -187,9 +191,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 audioTrackButton
             }
 
-            interpolationButton
+            if state.availableTracks.filter({ $0.kind == .subtitle }).count > 0 {
+                subtitleButton
+            }
         }
-        .controlSize(.large)
     }
 
     // MARK: - Option Buttons
@@ -211,8 +216,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Frame Interpolation", comment: "")
             )
         }
-        .riftGlassButton()
-        .tint(state.interpolationMode == .disabled ? Color.secondary : Color.accentColor)
+        .buttonStyle(.plain)
         .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : NSLocalizedString("Interpolation enabled", comment: ""))")
     }
 
@@ -229,7 +233,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Playback Speed", comment: "")
             )
         }
-        .riftGlassButton()
+        .buttonStyle(.plain)
         .accessibilityLabel("\(NSLocalizedString("Playback Speed", comment: "")), \(speedTitle)")
     }
 
@@ -244,8 +248,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 hint: NSLocalizedString("Visual Enhancements", comment: "")
             )
         }
-        .riftGlassButton()
-        .tint(state.visualEnhancementsEnabled ? Color.accentColor : Color.secondary)
+        .buttonStyle(.plain)
         .accessibilityLabel(NSLocalizedString("Open Visual Controls", comment: ""))
         .popover(isPresented: $showVisualPanel, arrowEdge: .bottom) {
             visualControlsPanel
@@ -375,10 +378,15 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 }
             }
         } label: {
-            Label(NSLocalizedString("Audio", comment: ""), systemImage: "music.note.list")
+            GlassPill(
+                title: NSLocalizedString("Audio", comment: ""),
+                systemName: "music.note.list",
+                isActive: state.selectedAudioTrackIndex != (state.audioTracks.first?.id ?? 0),
+                hint: NSLocalizedString("Audio Track", comment: "")
+            )
         }
-        .menuStyle(.button)
-        .riftGlassButton()
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .accessibilityLabel(NSLocalizedString("Audio Track", comment: ""))
     }
 
@@ -406,21 +414,22 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 }
             }
         } label: {
-            Label(NSLocalizedString("Subs", comment: ""), systemImage: "captions.bubble")
+            GlassPill(
+                title: NSLocalizedString("Subs", comment: ""),
+                systemName: "captions.bubble",
+                isActive: state.selectedSubtitleTrack != nil,
+                hint: NSLocalizedString("Subtitles", comment: "")
+            )
         }
-        .menuStyle(.button)
-        .riftGlassButton()
-        .tint(state.selectedSubtitleTrack == nil ? Color.secondary : Color.accentColor)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .accessibilityLabel(NSLocalizedString("Subtitles", comment: ""))
     }
 
     // MARK: - Glass Pill
 
     private func glassPill(title: String, systemName: String, isActive: Bool, hint: String) -> some View {
-        Label(title, systemImage: systemName)
-            .labelStyle(.titleAndIcon)
-            .foregroundStyle(isActive ? Color.accentColor : .primary)
-            .help(hint)
+        GlassPill(title: title, systemName: systemName, isActive: isActive, hint: hint)
     }
 
     // MARK: - Helpers
@@ -477,19 +486,19 @@ private struct GlassPill: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 7) {
             Image(systemName: systemName)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .frame(width: 12)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .frame(width: 15)
 
             Text(title)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .lineLimit(1)
                 .fixedSize()
         }
         .foregroundStyle(isActive ? .white : .white.opacity(isHovered ? 0.84 : 0.60))
-        .frame(height: 28)
-        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .padding(.horizontal, 14)
         .background {
             ZStack {
                 Capsule()
@@ -792,7 +801,7 @@ struct GlassIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: size, weight: .semibold))
                 .foregroundStyle(.white.opacity(isHovered ? 0.96 : 0.70))
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
                 .background {
                     ZStack {
                         Circle()
