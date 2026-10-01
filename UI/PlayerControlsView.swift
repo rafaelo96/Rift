@@ -11,26 +11,26 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     @State private var showVisualPanel = false
 
     var body: some View {
-        LiquidGlassPanel(cornerRadius: 38) {
-            VStack(spacing: 14) {
+        LiquidGlassPanel(cornerRadius: 32) {
+            VStack(spacing: 10) {
                 timeline
                     .padding(.horizontal, 4)
 
-                HStack(spacing: 18) {
+                HStack(spacing: 14) {
                     playbackInfoCluster
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     transportControls
-                        .frame(minWidth: 196)
+                        .frame(minWidth: 176)
 
                     optionsBar
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
         }
-        .frame(maxWidth: 1180)
+        .frame(maxWidth: 1080)
         .animation(surfaceAnimation, value: state.isPlaying)
         .animation(surfaceAnimation, value: state.playbackRate)
         .animation(surfaceAnimation, value: state.fpsMode)
@@ -48,10 +48,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Timeline with Chapter Markers
 
     private var timeline: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 11) {
             Text(state.formattedTime(isDraggingSlider ? dragSliderValue : state.currentTime))
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .frame(width: 62, alignment: .leading)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .frame(width: 56, alignment: .leading)
                 .foregroundStyle(.primary)
 
             TimelineTrack(
@@ -73,8 +73,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             .accessibilityLabel(NSLocalizedString("Playback position", comment: ""))
 
             Text(state.formattedTime(state.duration))
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .frame(width: 62, alignment: .trailing)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .frame(width: 56, alignment: .trailing)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -83,7 +83,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Playback Info
 
     private var playbackInfoCluster: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 11) {
             volumeControl
 
             optionDivider
@@ -94,19 +94,19 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var volumeControl: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             GlassIconButton(
                 systemName: volumeIcon,
-                size: 15,
+                size: 14,
                 action: { state.setVolume(state.volume > 0 ? 0 : 0.68) },
                 accessibilityLabel: state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: "")
             )
 
             VolumeTrack(value: state.volume, onChange: state.setVolume)
-            .frame(width: 108)
+            .frame(width: 92)
             .accessibilityLabel(NSLocalizedString("Volume", comment: ""))
         }
-        .frame(width: 154, alignment: .leading)
+        .frame(width: 134, alignment: .leading)
     }
 
     private var fpsReadout: some View {
@@ -140,10 +140,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Transport Controls
 
     private var transportControls: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 13) {
             GlassIconButton(
                 systemName: "gobackward.10",
-                size: 17,
+                size: 15,
                 action: { state.seek(by: -10) },
                 accessibilityLabel: NSLocalizedString("Skip Back 10s", comment: "")
             )
@@ -154,9 +154,9 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 }
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 50, height: 50)
                     .background {
                         Circle()
                             .fill(.white.opacity(0.15))
@@ -172,7 +172,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
             GlassIconButton(
                 systemName: "goforward.10",
-                size: 17,
+                size: 15,
                 action: { state.seek(by: 10) },
                 accessibilityLabel: NSLocalizedString("Skip Forward 10s", comment: "")
             )
@@ -182,7 +182,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     // MARK: - Options Bar
 
     private var optionsBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             interpolationButton
             speedButton
             visualButton
@@ -486,19 +486,19 @@ private struct GlassPill: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .frame(width: 15)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .frame(width: 13)
 
             Text(title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .lineLimit(1)
                 .fixedSize()
         }
         .foregroundStyle(isActive ? .white : .white.opacity(isHovered ? 0.84 : 0.60))
-        .frame(height: 36)
-        .padding(.horizontal, 14)
+        .frame(height: 32)
+        .padding(.horizontal, 11)
         .background {
             ZStack {
                 Capsule()
@@ -801,7 +801,7 @@ struct GlassIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: size, weight: .semibold))
                 .foregroundStyle(.white.opacity(isHovered ? 0.96 : 0.70))
-                .frame(width: 44, height: 44)
+                .frame(width: 38, height: 38)
                 .background {
                     ZStack {
                         Circle()

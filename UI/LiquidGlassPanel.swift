@@ -22,23 +22,23 @@ struct GlassBackground: View {
 
     var body: some View {
         ZStack {
-            NativeVisualEffectView(material: .hudWindow, blendingMode: blendingMode)
-                .opacity(max(effectOpacity, 0.72))
+            NativeVisualEffectView(material: .underWindowBackground, blendingMode: blendingMode)
+                .opacity(max(effectOpacity, 0.34))
 
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(.black.opacity(0.20))
+                .fill(.black.opacity(0.055))
 
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.white.opacity(0.10), .white.opacity(0.025), .clear],
+                        colors: [.white.opacity(0.065), .white.opacity(0.012), .clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(.white.opacity(0.22), lineWidth: 0.75)
+                .strokeBorder(.white.opacity(0.16), lineWidth: 0.6)
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -53,7 +53,7 @@ struct LiquidGlassPanel<Content: View>: View {
     var body: some View {
         content
             .background(GlassBackground(cornerRadius: cornerRadius))
-            .shadow(color: .black.opacity(0.34), radius: 18, y: 8)
+            .shadow(color: .black.opacity(0.20), radius: 12, y: 5)
     }
 }
 
