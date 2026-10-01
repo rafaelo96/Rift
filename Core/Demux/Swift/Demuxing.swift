@@ -108,9 +108,11 @@ public struct ChapterInfo: Equatable {
 /// Data is NOT decoded — decoding belongs to Core/Decode.
 public struct CompressedPacket: Equatable {
     public let streamIndex: Int
-    /// Presentation timestamp in seconds (stream timebase, 0 if N/A).
+    /// Presentation timestamp in seconds (stream timebase). If a container
+    /// omits PTS but provides DTS, Demux uses DTS as a bounded fallback.
     public let pts: Double
-    /// Decoding timestamp in seconds (0 if N/A).
+    /// Decoding timestamp in seconds. If a container omits DTS but provides
+    /// PTS, Demux uses PTS as a bounded fallback.
     public let dts: Double
     public let duration: Double
     public let isKeyframe: Bool

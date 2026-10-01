@@ -184,8 +184,17 @@ int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
 
     memset(out, 0, sizeof(*out));
     out->stream_index = (int32_t)ctx->pkt->stream_index;
-    out->pts_seconds = ts_to_seconds(ctx->pkt->pts, st->time_base);
-    out->dts_seconds = ts_to_seconds(ctx->pkt->dts, st->time_base);
+    /* Some legacy containers (notably AVI with H.264) expose only DTS even
+     * though packets are timestamped in presentation order. Preserve native
+     * timestamps whenever present and use the other timestamp only when one
+     * is genuinely AV_NOPTS_VALUE. This keeps modern MP4/MKV behavior intact
+     * while avoiding a stream of artificial zero PTS values. */
+    const int64_t presentation_ts =
+        ctx->pkt->pts != AV_NOPTS_VALUE ? ctx->pkt->pts : ctx->pkt->dts;
+    const int64_t decoding_ts =
+        ctx->pkt->dts != AV_NOPTS_VALUE ? ctx->pkt->dts : ctx->pkt->pts;
+    out->pts_seconds = ts_to_seconds(presentation_ts, st->time_base);
+    out->dts_seconds = ts_to_seconds(decoding_ts, st->time_base);
     out->duration_seconds =
         ctx->pkt->duration > 0
             ? (double)ctx->pkt->duration * av_q2d(st->time_base)
