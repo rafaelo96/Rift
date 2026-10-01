@@ -6,7 +6,7 @@ import Demux
 
 // MARK: - VTDecoder
 //
-// VTDecompressionSession-backed HEVC decoder (hardware preferred). Each decoded
+// VTDecompressionSession-backed video decoder (hardware preferred). Each decoded
 // CVPixelBuffer carries the HDR color information exposed by Demux (color_trc /
 // color_primaries) as CVBufferAttachments, so downstream rendering knows how to
 // interpret the samples.
@@ -22,6 +22,7 @@ public final class VTDecoder: VideoDecoding {
         case avc(AVCConfiguration)
         case hevc(HEVCConfiguration)
         case av1(AV1Configuration)
+        case mjpeg
     }
 
     private var session: VTDecompressionSession?
@@ -44,25 +45,30 @@ public final class VTDecoder: VideoDecoding {
         guard track.kind == .video else {
             throw DecodeError.unsupportedFormat("track \(track.streamIndex) is not video")
         }
-        guard !track.codecExtradata.isEmpty else {
-            throw DecodeError.unsupportedFormat("video track has no codec extradata")
-        }
-
         let config: CodecConfig
         switch track.codecName.lowercased() {
         case "h264", "avc":
+            guard !track.codecExtradata.isEmpty else {
+                throw DecodeError.unsupportedFormat("H.264 track has no codec extradata")
+            }
             do {
                 config = .avc(try AVCConfiguration.parse(track.codecExtradata))
             } catch let error as AVCConfigurationError {
                 throw DecodeError.malformedAvcC(error.description)
             }
         case "hevc", "h265":
+            guard !track.codecExtradata.isEmpty else {
+                throw DecodeError.unsupportedFormat("HEVC track has no codec extradata")
+            }
             do {
                 config = .hevc(try HEVCConfiguration.parse(track.codecExtradata))
             } catch let error as HEVCConfigurationError {
                 throw DecodeError.malformedHvcC(error.description)
             }
         case "av1":
+            guard !track.codecExtradata.isEmpty else {
+                throw DecodeError.unsupportedFormat("AV1 track has no codec extradata")
+            }
             guard VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1) else {
                 throw DecodeError.hardwareDecoderUnavailable("AV1")
             }
@@ -71,8 +77,13 @@ public final class VTDecoder: VideoDecoding {
             } catch let error as AV1ConfigurationError {
                 throw DecodeError.malformedAv1C(error.description)
             }
+        case "mjpeg":
+            guard VTIsHardwareDecodeSupported(kCMVideoCodecType_JPEG) else {
+                throw DecodeError.hardwareDecoderUnavailable("MJPEG")
+            }
+            config = .mjpeg
         default:
-            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc/av1")
+            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc/av1/mjpeg")
         }
 
         self.config = config
@@ -174,7 +185,33 @@ public final class VTDecoder: VideoDecoding {
             return try makeAVCFormatDescription(avc.parameterSets.map { $0.bytes }, nalUnitHeaderLength: avc.nalUnitHeaderLength)
         case .av1(let av1):
             return try makeAV1FormatDescription(av1)
+        case .mjpeg:
+            return try makeGenericFormatDescription(codecType: kCMVideoCodecType_JPEG, codecName: "MJPEG")
         }
+    }
+
+    private func makeGenericFormatDescription(
+        codecType: CMVideoCodecType,
+        codecName: String
+    ) throws -> CMFormatDescription {
+        guard let track, let width = track.width, let height = track.height,
+              width > 0, height > 0 else {
+            throw DecodeError.unsupportedFormat("\(codecName) track has invalid dimensions")
+        }
+
+        var formatDescription: CMVideoFormatDescription?
+        let status = CMVideoFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            codecType: codecType,
+            width: Int32(width),
+            height: Int32(height),
+            extensions: nil,
+            formatDescriptionOut: &formatDescription
+        )
+        guard status == noErr, let formatDescription else {
+            throw DecodeError.formatDescriptionFailed(status)
+        }
+        return formatDescription
     }
 
     private func makeAV1FormatDescription(_ av1: AV1Configuration) throws -> CMFormatDescription {
@@ -279,8 +316,10 @@ public final class VTDecoder: VideoDecoding {
             kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: true,
         ]
         if case .av1 = config {
-            // AV1 support in Rift is deliberately hardware-only. Never fall
+            // New codec routes are deliberately hardware-only. Never fall
             // back to a software decoder that could stall playback.
+            decoderSpecification[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
+        } else if case .mjpeg = config {
             decoderSpecification[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
         }
 
@@ -292,6 +331,9 @@ public final class VTDecoder: VideoDecoding {
         switch config {
         case .hevc: pixelFormat = Int(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange)
         case .avc:  pixelFormat = Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        // JPEG/MJPEG conventionally carries full-range samples. Preserve that
+        // range instead of compressing it into video-range NV12.
+        case .mjpeg: pixelFormat = Int(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
         case .av1(let av1):
             pixelFormat = Int(av1.usesHighBitDepth
                 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange

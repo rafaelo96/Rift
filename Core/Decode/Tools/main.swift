@@ -191,7 +191,7 @@ while decoded < 10 && readPackets < 500 {
     totalMs += ms
     print(String(format: "  frame %2d decoded in %7.2f ms  packet PTS %.3f -> output PTS %.3f (keyframe=%@)",
                  decoded, ms, packet.pts, decodedFrame.pts, packet.isKeyframe ? "yes" : "no"))
-    if !video.codecExtradata.isEmpty && decoded == 1 {
+    if decoded == 1 {
         dumpBufferMetadata(buffer)
         dumpPlaneStats(buffer, label: "frame 1", sampleRegions: true)
         if saveHDRtoPNG(buffer, to: URL(fileURLWithPath: outputToneMappedPNG)) {
