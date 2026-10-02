@@ -118,6 +118,22 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
 
 ## Notas de implementación actuales (post-reconexión UI, 2025-09-02)
 
+- **AVI legacy sin PTS (H.264 + B-frames, ej. `06.BlchSKhKt…avi`)**: AVI no
+  guarda PTS de video en paquetes (solo contador de orden de decodificación),
+  libavformat no puede derivarlos para H.264 (demux.c: "We skip H264
+  currently") y FFmpeg 8 mantiene `AVStream.need_parsing` privado. Además
+  **VTDecompressionSession entrega los frames en orden de decodificación**
+  (no reordena por POC): los PTS correctos deben existir ANTES de decodificar
+  para que el FramePool (que ordena por pts) produzca el orden de display.
+  Fix: `Core/Demux` detecta container "avi" + H.264, corre un
+  `AVCodecParser` (solo metadatos, no decodifica píxeles) en el shim C, y
+  asigna `pts = rank(POC/2) × intervalo` con 1 paquete de lag en una cola
+  FIFO pequeña (el picture completa al llegar el siguiente chunk). Los resets
+  de POC en IDR se curan solo al completar keyframes (una regresión de POC
+  dentro del GOP es normal en B-pyramid). Sin el fix, el video se reproduce en
+  orden de decode = saltos locales ("tirones") con audio intacto. Diagnóstico del
+  parser: env var `RIFT_DEMUX_DEBUG=1`. Trade-off aceptado: CFR (VFR en AVI
+  legacy es prácticamente inexistente).
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).
