@@ -28,11 +28,26 @@ RiftDemuxCtx *rift_demux_open(const char *path,
                               char *error_buffer, size_t error_buffer_size) {
     if (error_buffer && error_buffer_size) error_buffer[0] = '\0';
 
-    AVFormatContext *fmt = NULL;
+    AVFormatContext *fmt = avformat_alloc_context();
+    if (!fmt) {
+        if (error_buffer && error_buffer_size) {
+            snprintf(error_buffer, error_buffer_size, "out of memory");
+        }
+        return NULL;
+    }
+
+    /* Ask libavformat to derive missing presentation timestamps before
+     * packets leave Demux. This is essential for legacy AVI/H.264 streams:
+     * DTS follows decode order, while B-frames must retain a distinct PTS so
+     * VideoToolbox can present their decoded images in display order. */
+    fmt->flags |= AVFMT_FLAG_GENPTS;
     int err = avformat_open_input(&fmt, path, NULL, NULL);
     if (err < 0) {
         if (error_buffer && error_buffer_size) {
             av_strerror(err, error_buffer, (int)error_buffer_size);
+        }
+        if (fmt) {
+            avformat_close_input(&fmt);
         }
         return NULL;
     }
@@ -184,11 +199,10 @@ int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
 
     memset(out, 0, sizeof(*out));
     out->stream_index = (int32_t)ctx->pkt->stream_index;
-    /* Some legacy containers (notably AVI with H.264) expose only DTS even
-     * though packets are timestamped in presentation order. Preserve native
-     * timestamps whenever present and use the other timestamp only when one
-     * is genuinely AV_NOPTS_VALUE. This keeps modern MP4/MKV behavior intact
-     * while avoiding a stream of artificial zero PTS values. */
+    /* AVFMT_FLAG_GENPTS reconstructs presentation timestamps when the
+     * container omits them. Preserve native/generated timestamps whenever
+     * present; the opposite timestamp remains a final bounded fallback for
+     * formats where libavformat cannot derive either timeline. */
     const int64_t presentation_ts =
         ctx->pkt->pts != AV_NOPTS_VALUE ? ctx->pkt->pts : ctx->pkt->dts;
     const int64_t decoding_ts =
