@@ -957,8 +957,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             let t = CMTime(seconds: currentTime, preferredTimescale: 600)
             sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: t)
         }
-        // Start display loop on first play
-        if isPlaying { startDisplayLoop() }
+        // Start display only after Frame+ has finished its one-shot warm-up.
+        if isPlaying, framePlusAdmissionTask == nil { startDisplayLoop() }
         updateTimePolling()
     }
     private func updateTimePolling() {
@@ -1078,6 +1078,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         displayTask?.cancel()
         displayTask = nil
+        framePlusAdmissionTask?.cancel()
+        await framePlusAdmissionTask?.value
+        framePlusAdmissionTask = nil
         audioTask?.cancel()
         currentTime = target
         persistCurrentSession(force: true)
@@ -1173,6 +1176,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         decodeTask?.cancel(); decodeTask = nil
         audioTask?.cancel(); audioTask = nil
         displayTask?.cancel(); displayTask = nil
+        framePlusAdmissionTask?.cancel(); framePlusAdmissionTask = nil
         seekTask?.cancel(); seekTask = nil; pendingSeekTarget = nil
         consumerTimer?.invalidate(); consumerTimer = nil
         currentTimeTimer?.invalidate(); currentTimeTimer = nil
@@ -1674,6 +1678,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         pendingSeekActivation = nil
         displayTask?.cancel()
         displayTask = nil
+        framePlusAdmissionTask?.cancel()
+        framePlusAdmissionTask = nil
         // Un seek en vuelo del video anterior no debe ejecutarse sobre el nuevo
         // demuxer (seek a timestamp viejo en archivo nuevo).
         seekTask?.cancel(); seekTask = nil; pendingSeekTarget = nil
@@ -1827,7 +1833,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.conversionProgress = 1.0
         self.persistCurrentSession(force: true)
         self.restoreExternalSubtitles(for: url)
-        self.startDecodeLoop()
+        self.startDecodeLoop(minimumVideoPTS: self.currentTime > 0 ? self.currentTime : nil)
         // Subtítulos: cargar la primera pista en background (paralelo
         // al video) vía cache, sin bloquear el primer frame.
         if let subTrack {
@@ -1858,6 +1864,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     // MARK: - 3a: Decode + FramePool con backpressure real + consumidor simulado
     private var displayTask: Task<Void, Never>?
+    /// Warm-up and admission run before advancing the shared presentation clock.
+    private var framePlusAdmissionTask: Task<Void, Never>?
     private var firstPts: Double?
 
     // MARK: - 3a/3b: Decode + FramePool con backpressure real
@@ -1973,8 +1981,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                                 self.startDisplayLoop(resumeAt: activation.target)
                             }
                         }
-                    } else if pool.count == 1 && callDisplayLoopOnFirstFrame {
-                        self.startDisplayLoop()
+                    } else if callDisplayLoopOnFirstFrame,
+                              self.displayTask == nil,
+                              self.framePlusAdmissionTask == nil {
+                        if self.interpolationMode == .disabled, pool.count == 1 {
+                            self.startDisplayLoop()
+                        } else if self.interpolationMode != .disabled,
+                                  pool.count == min(4, pool.capacity) {
+                            self.startDisplayLoopAfterFramePlusAdmission()
+                        }
                     }
                     return true
                 }
@@ -2560,6 +2575,62 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                    log: benchLog, type: .error)
         }
         return measured
+    }
+
+    /// Warms the active Metal configuration while the shared clock is stopped,
+    /// then selects the bounded work plane from measured pair cost. Playback
+    /// starts only after the final configuration has allocated its resources.
+    private func startDisplayLoopAfterFramePlusAdmission(resumeAt: Double? = nil) {
+        guard framePlusAdmissionTask == nil, interpolationMode != .disabled else { return }
+        let generation = playbackGeneration
+        framePlusAdmissionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.framePlusAdmissionTask = nil }
+
+            let pairBudgetMS = self.sourcePeriod * 1_000 / Double(max(self.playbackRate, 0.25))
+            var selectedCostMS = 0.0
+
+            // At most two profiles are tried: balanced, then economy. The
+            // first pair per profile is allocation/JIT warm-up and is excluded.
+            for _ in 0..<2 {
+                guard !Task.isCancelled, self.playbackGeneration == generation,
+                      let pool = self.framePool else { return }
+                let pairs = Array(pool.consecutivePairs().prefix(3))
+                guard pairs.count >= 2 else { return }
+                let tValues: [Float] = self.scheduler?.mode == .interpolated48
+                    ? [0.5]
+                    : [1.0 / 3.0, 2.0 / 3.0]
+
+                var stableCosts: [Double] = []
+                for (index, pair) in pairs.enumerated() {
+                    let result = await self.interpolatePair(
+                        i0: pair.0,
+                        i1: pair.1,
+                        tValues: tValues
+                    )
+                    guard !Task.isCancelled, self.playbackGeneration == generation else { return }
+                    if index > 0, !result.buffers.buffers.isEmpty {
+                        stableCosts.append(result.totalMS)
+                    }
+                }
+                guard !stableCosts.isEmpty else { return }
+                selectedCostMS = stableCosts.sorted()[stableCosts.count / 2]
+
+                // Keep 15% headroom for decode, enqueue and short scene bursts.
+                if self.interpolationQuality > 0, selectedCostMS > pairBudgetMS * 0.85 {
+                    self.changeInterpolationQuality(to: self.interpolationQuality - 1)
+                    continue
+                }
+                break
+            }
+
+            guard !Task.isCancelled, self.playbackGeneration == generation else { return }
+            os_log("Frame+ admission: quality=%d median=%.2fms budget=%.2fms",
+                   log: self.benchLog, type: .info,
+                   self.interpolationQuality, selectedCostMS, pairBudgetMS)
+            self.resetInterpolationCounters()
+            self.startDisplayLoop(resumeAt: resumeAt ?? self.currentTime)
+        }
     }
 
     private func startDisplayLoop(resumeAt: Double? = nil) {
