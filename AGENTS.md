@@ -127,8 +127,8 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   para que el FramePool (que ordena por pts) produzca el orden de display.
   Fix: `Core/Demux` detecta container "avi" + H.264, corre un
   `AVCodecParser` (solo metadatos, no decodifica píxeles) en el shim C, y
-  asigna `pts = rank(POC/2) × intervalo` con 1 paquete de lag en una cola
-  FIFO pequeña (el picture completa al llegar el siguiente chunk). Los resets
+  marca cada chunk AVI como access unit completa y asigna
+  `pts = rank(POC/2) × intervalo` al mismo paquete. Los resets
   de POC en IDR se curan solo al completar keyframes (una regresión de POC
   dentro del GOP es normal en B-pyramid). Sin el fix, el video se reproduce en
   orden de decode = saltos locales ("tirones") con audio intacto. Diagnóstico del

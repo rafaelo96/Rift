@@ -12,13 +12,6 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 
-typedef struct RiftQNode {
-    struct RiftQNode *next;
-    AVPacket *pkt;      /* owned reference; freed on dequeue */
-    int64_t   rank;     /* display rank for video packets, -1 = pending */
-    int       is_video;
-} RiftQNode;
-
 struct RiftDemuxCtx {
     AVFormatContext *fmt;
     AVPacket        *pkt;
@@ -28,10 +21,9 @@ struct RiftDemuxCtx {
      * ("We skip H264 currently", demux.c) and FFmpeg 8 keeps AVStream parsing
      * private, so this shim runs its own AVCodecParser — a metadata-only
      * parse of slice headers, no pixel decoding — to recover each picture's
-     * display rank from its POC (output_picture_number). A picture's rank is
-     * only known once the NEXT picture's start has been seen, so video
-     * packets are delayed by one packet in a small in-order FIFO (audio
-     * packets interleaved in between queue behind them). */
+     * display rank from its POC (output_picture_number). AVI chunks already
+     * delimit complete access units, so the parser is configured to report
+     * the rank for the current packet without buffering another packet. */
     AVCodecParserContext *parser;
     AVCodecContext       *parser_ctx;
     int                   parser_stream;    /* stream index using the parser, -1 = none */
@@ -40,9 +32,6 @@ struct RiftDemuxCtx {
     int64_t               poc_max_rank;     /* highest absolute display rank assigned, -1 = none */
     double                first_video_seconds; /* dts of first video pkt after open/seek */
     int                   have_first_video;
-    RiftQNode            *queue_head, *queue_tail;
-    RiftQNode            *queue_last_video; /* newest queued video awaiting rank */
-    int                   eof;
 };
 
 static double ts_to_seconds(int64_t ts, const AVRational tb) {
@@ -114,6 +103,10 @@ RiftDemuxCtx *rift_demux_open(const char *path,
             if (par->codec_id != AV_CODEC_ID_H264) continue;
             AVCodecParserContext *parser = av_parser_init(par->codec_id);
             if (!parser) continue;
+            /* AVI chunks already delimit complete H.264 access units. Without
+             * this flag the parser may buffer multiple chunks and cannot map
+             * one presentation rank to each packet deterministically. */
+            parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
             AVCodecContext *pctx = avcodec_alloc_context3(NULL);
             if (!pctx || avcodec_parameters_to_context(pctx, par) < 0) {
                 av_parser_close(parser);
@@ -263,18 +256,17 @@ static void fill_packet_out(RiftDemuxCtx *ctx, AVPacket *pkt, int64_t rank,
     out->data = pkt->data;
 }
 
-/* Feed a video packet's bytes to the POC parser. A picture is only complete
- * once the next one starts, so the rank returned here belongs to the PREVIOUS
- * video packet — the caller stores it in the queued node. */
-static void parser_feed(RiftDemuxCtx *ctx, const uint8_t *data, int size,
-                        int64_t dts, int64_t pos, RiftQNode *pending_video) {
+/* Feed one complete AVI/H.264 access unit to the parser and return its
+ * absolute presentation rank. */
+static int64_t parser_rank(RiftDemuxCtx *ctx, const uint8_t *data, int size,
+                           int64_t dts, int64_t pos) {
     while (size > 0) {
         uint8_t *ob = NULL;
         int ol = 0;
         int used = av_parser_parse2(ctx->parser, ctx->parser_ctx, &ob, &ol,
                                     data, size, AV_NOPTS_VALUE, dts, pos);
         if (used < 0) break;
-        if (ol > 0 && pending_video && pending_video->rank < 0) {
+        if (ol > 0) {
             /* output_picture_number is the picture order count (field units,
              * i.e. 2 per frame in frame-coded content). Translate to an
              * absolute display rank, healing POC resets at IDR boundaries by
@@ -289,52 +281,19 @@ static void parser_feed(RiftDemuxCtx *ctx, const uint8_t *data, int size,
                 ctx->poc_base += ctx->poc_max_rank + 1 - rank;
                 rank = half_poc + ctx->poc_base;
             }
-            pending_video->rank = rank;
             if (rank > ctx->poc_max_rank) ctx->poc_max_rank = rank;
             if (getenv("RIFT_DEMUX_DEBUG")) {
-                fprintf(stderr, "[poc] picture poc=%lld -> rank=%lld (prev rank fed packet)\n",
+                fprintf(stderr, "[poc] picture poc=%lld -> rank=%lld\n",
                         (long long)ctx->parser->output_picture_number,
                         (long long)rank);
             }
+            return rank;
         }
         if (used == 0) break;
         data += used;
         size -= used;
     }
-}
-
-static int queue_push(RiftDemuxCtx *ctx, AVPacket *pkt, int is_video,
-                      RiftQNode **out_node) {
-    RiftQNode *node = (RiftQNode *)calloc(1, sizeof(*node));
-    if (!node) return -1;
-    node->pkt = av_packet_alloc();
-    if (!node->pkt || av_packet_ref(node->pkt, pkt) < 0) {
-        if (node->pkt) av_packet_free(&node->pkt);
-        free(node);
-        return -1;
-    }
-    node->rank = is_video ? -1 : 0;
-    node->is_video = is_video;
-    if (ctx->queue_tail) {
-        ctx->queue_tail->next = node;
-    } else {
-        ctx->queue_head = node;
-    }
-    ctx->queue_tail = node;
-    if (out_node) *out_node = node;
-    return 0;
-}
-
-static void queue_flush(RiftDemuxCtx *ctx) {
-    RiftQNode *n = ctx->queue_head;
-    while (n) {
-        RiftQNode *next = n->next;
-        if (n->pkt) av_packet_free(&n->pkt);
-        free(n);
-        n = next;
-    }
-    ctx->queue_head = ctx->queue_tail = NULL;
-    ctx->queue_last_video = NULL;
+    return -1;
 }
 
 int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
@@ -342,85 +301,26 @@ int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
         return -1;
     }
 
-    /* Fast path: containers with native PTS are untouched (zero queueing). */
-    if (ctx->parser_stream < 0) {
-        av_packet_unref(ctx->pkt);
-        int err = av_read_frame(ctx->fmt, ctx->pkt);
-        if (err < 0) {
-            return err == AVERROR_EOF ? 0 : -1;
-        }
-        fill_packet_out(ctx, ctx->pkt, -1, out);
-        return 1;
-    }
+    av_packet_unref(ctx->pkt);
+    int err = av_read_frame(ctx->fmt, ctx->pkt);
+    if (err < 0) return err == AVERROR_EOF ? 0 : -1;
 
-    /* Legacy path: feed the POC parser to recover true display order. Video
-     * packets wait one packet in the queue until their rank is known. */
-    for (;;) {
-        if (ctx->queue_head &&
-            (!ctx->queue_head->is_video || ctx->queue_head->rank >= 0)) {
-            RiftQNode *node = ctx->queue_head;
-            ctx->queue_head = node->next;
-            if (!ctx->queue_head) ctx->queue_tail = NULL;
-            if (ctx->queue_last_video == node) ctx->queue_last_video = NULL;
-            /* Copy into ctx->pkt so `out->data` obeys the existing contract
-             * (valid until the next call on this context). */
-            av_packet_unref(ctx->pkt);
-            if (av_packet_ref(ctx->pkt, node->pkt) < 0) {
-                av_packet_free(&node->pkt);
-                free(node);
-                return -1;
-            }
-            int64_t rank = node->is_video ? node->rank : -1;
-            av_packet_free(&node->pkt);
-            free(node);
-            fill_packet_out(ctx, ctx->pkt, rank, out);
-            return 1;
-        }
-        if (ctx->eof) {
-            return 0;
-        }
-
-        av_packet_unref(ctx->pkt);
-        int err = av_read_frame(ctx->fmt, ctx->pkt);
-        if (err < 0) {
-            if (err != AVERROR_EOF) {
-                return -1;
-            }
-            ctx->eof = 1;
-            /* Parser and EOF flush: the final picture completes here. */
-            if (ctx->queue_last_video && ctx->queue_last_video->rank < 0) {
-                uint8_t *ob = NULL;
-                int ol = 0;
-                av_parser_parse2(ctx->parser, ctx->parser_ctx, &ob, &ol,
-                                 NULL, 0, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-                ctx->queue_last_video->rank = ctx->poc_max_rank + 1;
-                ctx->poc_max_rank = ctx->queue_last_video->rank;
-            }
-            continue;
-        }
-
-        int is_video = (ctx->pkt->stream_index == ctx->parser_stream);
+    int64_t rank = -1;
+    if (ctx->pkt->stream_index == ctx->parser_stream) {
         AVStream *st = ctx->fmt->streams[ctx->pkt->stream_index];
-        RiftQNode *node = NULL;
-        if (queue_push(ctx, ctx->pkt, is_video, &node) < 0) return -1;
-        if (is_video && node) {
-            if (!ctx->have_first_video) {
-                ctx->have_first_video = 1;
-                const int64_t d = ctx->pkt->dts != AV_NOPTS_VALUE
-                    ? ctx->pkt->dts : ctx->pkt->pts;
-                ctx->first_video_seconds = ts_to_seconds(d, st->time_base);
-            }
-            /* Parsing this packet completes the PREVIOUS picture. */
-            if (getenv("RIFT_DEMUX_DEBUG") && ctx->queue_last_video) {
-                fprintf(stderr, "[feed] video packet dts=%.3f; completing rank of previous video node\n",
-                        ts_to_seconds(ctx->pkt->dts, st->time_base));
-            }
-            parser_feed(ctx, ctx->pkt->data, ctx->pkt->size,
-                        ctx->pkt->dts != AV_NOPTS_VALUE ? ctx->pkt->dts : 0,
-                        ctx->pkt->pos, ctx->queue_last_video);
-            ctx->queue_last_video = node;
+        if (!ctx->have_first_video) {
+            ctx->have_first_video = 1;
+            const int64_t d = ctx->pkt->dts != AV_NOPTS_VALUE
+                ? ctx->pkt->dts : ctx->pkt->pts;
+            ctx->first_video_seconds = ts_to_seconds(d, st->time_base);
         }
+        rank = parser_rank(ctx, ctx->pkt->data, ctx->pkt->size,
+                           ctx->pkt->dts != AV_NOPTS_VALUE ? ctx->pkt->dts : 0,
+                           ctx->pkt->pos);
+        if (rank < 0) return -1;
     }
+    fill_packet_out(ctx, ctx->pkt, rank, out);
+    return 1;
 }
 
 int rift_demux_seek(RiftDemuxCtx *ctx, double seconds) {
@@ -449,21 +349,19 @@ int rift_demux_seek(RiftDemuxCtx *ctx, double seconds) {
                             AVSEEK_FLAG_BACKWARD);
     }
     if (err >= 0) {
-        /* Drop queued packets and stale POC state: the parser's picture
-         * assembly and the rank base must restart at the seek target. */
-        queue_flush(ctx);
+        /* Stale parser/POC state must not cross the seek boundary. */
         if (ctx->parser) {
             enum AVCodecID id =
                 ctx->fmt->streams[ctx->parser_stream]->codecpar->codec_id;
             AVCodecParserContext *fresh_parser = av_parser_init(id);
             if (!fresh_parser) return -1;
+            fresh_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
             av_parser_close(ctx->parser);
             ctx->parser = fresh_parser;
         }
         ctx->poc_base = 0;
         ctx->poc_max_rank = -1;
         ctx->have_first_video = 0;
-        ctx->eof = 0;
     }
     return err < 0 ? -1 : 0;
 }
@@ -472,7 +370,6 @@ void rift_demux_close(RiftDemuxCtx *ctx) {
     if (!ctx) {
         return;
     }
-    queue_flush(ctx);
     if (ctx->parser) {
         av_parser_close(ctx->parser);
     }

@@ -83,11 +83,13 @@ if let video = info.tracks.first(where: { $0.kind == .video }) {
 
 // 2. Pull 20 packets, printing memory every 5.
 print("\n--- reading 20 packets (compressed, not decoded) ---")
+var packetsRead = 0
 for i in 0..<20 {
     guard let packet = try? demuxer.nextPacket() else {
         print("  EOF earlier than expected at packet \(i)")
         break
     }
+    packetsRead += 1
     let isKey = packet.isKeyframe ? "K" : " "
     print(String(format: "  [%2d] s%d %@ pts=%10.3f dts=%10.3f size=%6d bytes",
                  i, packet.streamIndex, isKey, packet.pts, packet.dts, packet.data.count))
@@ -95,6 +97,10 @@ for i in 0..<20 {
         let mb = Double(physicalFootprintBytes()) / 1_048_576.0
         print(String(format: "  --- RSS after %2d packets: %.1f MB", i + 1, mb))
     }
+}
+if info.duration > 2, packetsRead < 20 {
+    print("FAIL: demux stalled after \(packetsRead) packet(s)")
+    exit(4)
 }
 
 // 3. Seek to the middle of the file, then confirm the next packet is a
