@@ -929,12 +929,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 droppedURL = nil
             }
 
-            guard droppedURL != nil else { return }
+            guard let droppedURL, droppedURL.isFileURL else { return }
 
             Task { @MainActor in
-                // TODO(Core): la referencia llamaba `state.loadVideo(droppedURL)`.
-                // La carga/decodificación del video pertenece a Core/Demux +
-                // Core/Decode; aquí solo se acepta el drop y se marca el hueco.
+                (state as? RiftPlayerState)?.replacePlaylist(with: [droppedURL])
+                AppDelegate.bringPlayerWindowToFront()
             }
         }
 
