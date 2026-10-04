@@ -84,8 +84,9 @@ int rift_demux_chapter_info(RiftDemuxCtx *ctx, int index, RiftChapterInfoC *out)
  * Returns 1 on success, 0 on end-of-stream, negative on error. */
 int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out);
 
-/* Repositions to the keyframe closest to `seconds` without reading the
- * packets before it (uses the container index). Returns 0 on success. */
+/* Repositions to a decodable keyframe at or before `seconds`. Indexed
+ * containers use their index; MPEG-TS performs a bounded packet scan because
+ * byte-position seeking can otherwise land in the middle of a GOP. */
 int rift_demux_seek(RiftDemuxCtx *ctx, double seconds);
 
 void rift_demux_close(RiftDemuxCtx *ctx);

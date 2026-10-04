@@ -170,8 +170,8 @@ public protocol Demuxing: AnyObject {
     /// Returns the next compressed packet (video or audio) or `nil` at EOF.
     func nextPacket() throws -> CompressedPacket?
 
-    /// Repositions reading to the keyframe closest to `time` (seconds),
-    /// without reading any packet before it.
+    /// Repositions reading to a decodable keyframe at or before `time`.
+    /// Containers without a reliable seek index may perform bounded preroll.
     func seek(to time: Double) throws
 
     func close()

@@ -15,6 +15,7 @@
 struct RiftDemuxCtx {
     AVFormatContext *fmt;
     AVPacket        *pkt;
+    int              packet_pending; /* pkt already filled by seek preroll */
 
     /* Legacy containers (AVI with B-frame codecs) carry no video PTS at all,
      * only decode-order DTS. libavformat refuses to derive PTS for H.264
@@ -301,9 +302,14 @@ int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
         return -1;
     }
 
-    av_packet_unref(ctx->pkt);
-    int err = av_read_frame(ctx->fmt, ctx->pkt);
-    if (err < 0) return err == AVERROR_EOF ? 0 : -1;
+    int err = 0;
+    if (ctx->packet_pending) {
+        ctx->packet_pending = 0;
+    } else {
+        av_packet_unref(ctx->pkt);
+        err = av_read_frame(ctx->fmt, ctx->pkt);
+        if (err < 0) return err == AVERROR_EOF ? 0 : -1;
+    }
 
     int64_t rank = -1;
     if (ctx->pkt->stream_index == ctx->parser_stream) {
@@ -321,6 +327,60 @@ int rift_demux_next_packet(RiftDemuxCtx *ctx, RiftPacketC *out) {
     }
     fill_packet_out(ctx, ctx->pkt, rank, out);
     return 1;
+}
+
+static int seek_stream_backward(RiftDemuxCtx *ctx, int video, int64_t target) {
+    int err = av_seek_frame(ctx->fmt, video, target, AVSEEK_FLAG_BACKWARD);
+    if (err < 0) {
+        AVStream *st = ctx->fmt->streams[video];
+        int64_t global_target = av_rescale_q(target, st->time_base, AV_TIME_BASE_Q);
+        err = av_seek_frame(ctx->fmt, -1, global_target, AVSEEK_FLAG_BACKWARD);
+    }
+    return err;
+}
+
+/* MPEG-TS usually has no seek index. Its demuxer estimates a byte position,
+ * which can land in the middle of an H.264 GOP even with AVSEEK_FLAG_BACKWARD.
+ * VideoToolbox cannot start from such a packet because the reference frames
+ * are absent. Search progressively earlier (bounded to 32 seconds), retaining
+ * the first keyframe found as the next public packet. No payload is decoded,
+ * copied to disk, or accumulated in memory. */
+static int seek_mpegts_to_keyframe(RiftDemuxCtx *ctx, int video,
+                                   int64_t target) {
+    AVStream *st = ctx->fmt->streams[video];
+    const int64_t one_second = av_rescale_q(AV_TIME_BASE, AV_TIME_BASE_Q,
+                                            st->time_base);
+    int64_t lookback = one_second;
+
+    for (;;) {
+        int64_t candidate = target > lookback ? target - lookback : 0;
+        av_packet_unref(ctx->pkt);
+        if (seek_stream_backward(ctx, video, candidate) < 0) return -1;
+
+        int video_packets = 0;
+        while (video_packets < 100000) {
+            av_packet_unref(ctx->pkt);
+            int err = av_read_frame(ctx->fmt, ctx->pkt);
+            if (err < 0) break;
+            if (ctx->pkt->stream_index != video) continue;
+            video_packets++;
+
+            int64_t packet_ts = ctx->pkt->dts != AV_NOPTS_VALUE
+                ? ctx->pkt->dts : ctx->pkt->pts;
+            if ((ctx->pkt->flags & AV_PKT_FLAG_KEY) &&
+                (packet_ts == AV_NOPTS_VALUE || packet_ts <= target || candidate == 0)) {
+                ctx->packet_pending = 1;
+                return 0;
+            }
+            if (packet_ts != AV_NOPTS_VALUE && packet_ts > target) break;
+        }
+
+        if (candidate == 0 || lookback >= 32 * one_second) break;
+        lookback *= 2;
+        if (lookback > 32 * one_second) lookback = 32 * one_second;
+    }
+    av_packet_unref(ctx->pkt);
+    return -1;
 }
 
 int rift_demux_seek(RiftDemuxCtx *ctx, double seconds) {
@@ -341,13 +401,13 @@ int rift_demux_seek(RiftDemuxCtx *ctx, double seconds) {
         av_rescale_q((int64_t)(seconds * (double)AV_TIME_BASE),
                      AV_TIME_BASE_Q, st->time_base);
 
-    int err = av_seek_frame(ctx->fmt, video, target, AVSEEK_FLAG_BACKWARD);
-    if (err < 0) {
-        /* Generic seek across streams as a last resort. */
-        err = av_seek_frame(ctx->fmt, -1,
-                            (int64_t)(seconds * (double)AV_TIME_BASE),
-                            AVSEEK_FLAG_BACKWARD);
-    }
+    ctx->packet_pending = 0;
+    av_packet_unref(ctx->pkt);
+    const int is_mpegts = ctx->fmt->iformat && ctx->fmt->iformat->name &&
+        strcmp(ctx->fmt->iformat->name, "mpegts") == 0;
+    int err = is_mpegts
+        ? seek_mpegts_to_keyframe(ctx, video, target)
+        : seek_stream_backward(ctx, video, target);
     if (err >= 0) {
         /* Stale parser/POC state must not cross the seek boundary. */
         if (ctx->parser) {

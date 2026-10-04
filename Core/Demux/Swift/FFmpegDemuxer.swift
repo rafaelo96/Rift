@@ -8,7 +8,7 @@ import CDemuxShim
 ///
 /// Container access only — never decodes. `av_read_frame` pulls one packet at
 /// a time from the demuxer's internal IO buffer (bounded, streaming); seeking
-/// uses the container index/cues so nothing before the target is read.
+/// uses container indexes when available and bounded preroll for MPEG-TS.
 public final class FFmpegDemuxer: Demuxing {
     private var ctx: OpaquePointer?
 

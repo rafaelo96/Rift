@@ -6,7 +6,7 @@
 // Validates the measurable success criteria:
 //   - open reads only headers/index (expect < 1 s on a multi-GB file)
 //   - memory stays flat while pulling packets (RSS printed every 5 packets)
-//   - seek(to: mid) jumps to the closest keyframe without reading from the start
+//   - seek(to: mid) leaves the first video packet on a decodable keyframe
 //
 // Depends only on Core/Demux — no UI/, no Contracts/.
 
@@ -103,8 +103,8 @@ if info.duration > 2, packetsRead < 20 {
     exit(4)
 }
 
-// 3. Seek to the middle of the file, then confirm the next packet is a
-//    keyframe near the target — proof we did NOT read from the start.
+// 3. Seek to the middle of the file, then confirm the first video packet is a
+//    keyframe. MPEG-TS may require bounded preroll when no index is available.
 let target = info.duration / 2.0
 print(String(format: "\n--- seek(to: %.2f s = mid) ---", target))
 do {
@@ -114,7 +114,9 @@ do {
     exit(2)
 }
 
-for _ in 0..<5 {
+let videoStreamIndex = info.tracks.first(where: { $0.kind == .video })?.streamIndex
+var sawPostSeekVideo = false
+for _ in 0..<20 {
     guard let packet = try? demuxer.nextPacket() else {
         print("  EOF right after seek")
         break
@@ -123,6 +125,18 @@ for _ in 0..<5 {
     let isKey = packet.isKeyframe ? "K" : " "
     print(String(format: "  s%d %@ pts=%10.3f gapToTarget=%+8.3f s",
                  packet.streamIndex, isKey, packet.pts, gap))
+    if packet.streamIndex == videoStreamIndex {
+        sawPostSeekVideo = true
+        if !packet.isKeyframe {
+            print("FAIL: first video packet after seek is not a keyframe")
+            exit(5)
+        }
+        break
+    }
+}
+if !sawPostSeekVideo {
+    print("FAIL: no video packet found after seek")
+    exit(6)
 }
 
 // 4. Close and report final memory (should match the first reading).
