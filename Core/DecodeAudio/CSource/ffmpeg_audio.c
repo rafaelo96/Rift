@@ -159,6 +159,37 @@ int rift_audio_decode_packet(RiftAudioDecCtx *ctx,
             pcmsrc = (const float *)ctx->frame->data[0];
             out->pcm = pcmsrc;
             out->pcm_bytes = (size_t)out->nb_samples * out->channels * sizeof(float);
+        } else if (ctx->frame->format == AV_SAMPLE_FMT_S16 ||
+                   ctx->frame->format == AV_SAMPLE_FMT_S32) {
+            /* Packed integer PCM: FLAC commonly outputs s32 and PCM audio
+             * commonly outputs s16. Convert the already-interleaved samples
+             * into the same float32 contract used by every other codec. */
+            int chs = out->channels;
+            int nsamples = out->nb_samples;
+            size_t floats_needed = (size_t)nsamples * chs;
+            if (ctx->interleave_buf_size < floats_needed) {
+                free(ctx->interleave_buf);
+                ctx->interleave_buf = malloc(floats_needed * sizeof(float));
+                ctx->interleave_buf_size = floats_needed;
+            }
+            if (!ctx->interleave_buf) {
+                av_strerror(ENOMEM, ctx->last_error, sizeof(ctx->last_error));
+                return -ENOMEM;
+            }
+            float *dst = ctx->interleave_buf;
+            if (ctx->frame->format == AV_SAMPLE_FMT_S16) {
+                const int16_t *src = (const int16_t *)ctx->frame->data[0];
+                for (size_t i = 0; i < floats_needed; i++) {
+                    dst[i] = src[i] / 32768.0f;
+                }
+            } else {
+                const int32_t *src = (const int32_t *)ctx->frame->data[0];
+                for (size_t i = 0; i < floats_needed; i++) {
+                    dst[i] = src[i] / 2147483648.0f;
+                }
+            }
+            out->pcm = ctx->interleave_buf;
+            out->pcm_bytes = floats_needed * sizeof(float);
         } else if (ctx->frame->format == AV_SAMPLE_FMT_FLTP || ctx->frame->format == AV_SAMPLE_FMT_S16P || ctx->frame->format == AV_SAMPLE_FMT_S32P) {
             /* planar: de-plane into scratch */
             int chs = out->channels;

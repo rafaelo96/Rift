@@ -2,7 +2,7 @@ import Foundation
 import Demux
 import CDecodeAudioShim
 
-/// Decodifica paquetes EAC3 a PCM float32 interleavado usando libavcodec.
+/// Decodifica paquetes de audio a PCM float32 interleavado usando libavcodec.
 /// Interfaz isolada: recibe CompressedPacket (de Core/Demux) y entrega
 /// (pcmBytes, ptsSeconds, channels) por frame. Sin CoreMedia, sin UI.
 public final class AudioDecoder {
