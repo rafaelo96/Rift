@@ -111,6 +111,12 @@ public final class VTDecoder: VideoDecoding {
             } catch let error as AVCConfigurationError {
                 throw DecodeError.malformedH264Sample(error.description)
             }
+        } else if case .hevc(let hevc) = config {
+            do {
+                sampleData = try hevc.videoToolboxSample(from: packet.data)
+            } catch let error as HEVCConfigurationError {
+                throw DecodeError.malformedHEVCSample(error.description)
+            }
         } else {
             sampleData = packet.data
         }
