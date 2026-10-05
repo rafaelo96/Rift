@@ -1826,6 +1826,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             self.audioRenderer = ar
             // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
             self.scheduler?.synchronizer.addRenderer(ar)
+            // El arranque inicial debe establecer la misma base temporal que un
+            // seek antes de encolar audio. Un synchronizer recién creado todavía
+            // no tiene anclada la posición del contenido; entregar buffers en ese
+            // estado puede dejarlos fuera de su timeline hasta el primer seek.
+            self.scheduler?.synchronizer.setRate(
+                0,
+                time: CMTime(seconds: self.currentTime, preferredTimescale: 600),
+                atHostTime: CMClockGetTime(CMClockGetHostTimeClock())
+            )
             self.startAudioLoop(url: url, trackStreamIndex: aTrack.streamIndex, codecName: aTrack.codecName, startTime: self.currentTime, extradata: aTrack.codecExtradata, sampleRate: aTrack.sampleRate ?? 0, channels: aTrack.channelCount ?? 0)
         }
         self.availableTracks = {
@@ -2165,6 +2174,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 var framesEnqueued = 0
                 var framesSkippedBeforeStart = 0
                 var failures = 0
+                var loggedFirstSignal = false
+                Self.audioLog("audioLoop START: startPTS=\(startPTS) clock=\(sync.currentTime().seconds) rate=\(sync.rate)")
 
                 while !Task.isCancelled {
                     guard let packet = try? audioDemuxer.nextPacket() else { break }
@@ -2204,8 +2215,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
                         renderer.enqueue(prepared.sampleBuffer)
                         framesEnqueued += 1
+                        if framesEnqueued == 1 {
+                            Self.audioLog("audioLoop FIRST: pts=\(presentationPTS) duration=\(frameDuration) rms=\(prepared.rms) peak=\(prepared.peak) clock=\(sync.currentTime().seconds) rate=\(sync.rate)")
+                        }
+                        if !loggedFirstSignal, prepared.rms > 0.00001 {
+                            loggedFirstSignal = true
+                            Self.audioLog("audioLoop SIGNAL: pts=\(presentationPTS) rms=\(prepared.rms) peak=\(prepared.peak)")
+                        }
                     }
                 }
+                Self.audioLog("audioLoop END: enqueued=\(framesEnqueued) skipped=\(framesSkippedBeforeStart) failures=\(failures)")
             } catch {
                 Self.audioLog("audioLoop FAILED: \(error)")
             }
