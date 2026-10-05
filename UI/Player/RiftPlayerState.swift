@@ -384,6 +384,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var notReadySamples: Int = 0
     /// Count of enqueuePaced invocations requested this window (before success/drop).
     private var framesRequestedForEnqueue: Int = 0
+    // MARK: - Session format / wrap-failure diagnostics (RIFT_DIAGNOSTICS=1)
+    /// True tras registrar (una sola vez por sesión) el formato real del primer
+    /// CVPixelBuffer admitido en el pool — evidencia de qué FourCC fluye por el pipeline.
+    private var loggedSessionFormat = false
+    /// Fallos de creación de CMFormatDescription/CMSampleBuffer en el display loop.
+    /// SIN recuperación: el frame se descarta exactamente como antes; solo se
+    /// cuenta, se loguea el primero por sesión y el total sale en [RIFT-DIAG].
+    private var sampleBufferWrapFailures = 0
+    private var loggedFirstWrapFailure = false
+    /// Frames descartados en la rama nativa (Frame+ off) por llegar atrasados al reloj.
+    private var nativeStaleDrops = 0
     // MARK: - Stage timing diagnostics (reserve/pace/interp/enqueueLoop breakdown)
     private var stagePairs: Int = 0
     private var stageReserveMS: Double = 0
@@ -1194,6 +1205,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         demuxer = nil; decoder = nil; framePool = nil; scheduler = nil; renderer = nil
         compensator = nil
         lastShownFrames.removeAll()
+        // Instrumentación de sesión (RIFT_DIAGNOSTICS=1): reset por cierre.
+        loggedSessionFormat = false
+        sampleBufferWrapFailures = 0
+        loggedFirstWrapFailure = false
+        nativeStaleDrops = 0
         isInterpolating = false
         isFramePlusPreparing = false
         isArtificialInterpolationActive = false
@@ -1690,6 +1706,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         statusMessage = "Opening \(url.lastPathComponent)..."
         conversionProgress = 0.1
         hasVideo = false
+        // Instrumentación de sesión (RIFT_DIAGNOSTICS=1): reset por apertura.
+        loggedSessionFormat = false
+        sampleBufferWrapFailures = 0
+        loggedFirstWrapFailure = false
+        nativeStaleDrops = 0
         startFramePlusCalibrationForNewVideo()
         resetInterpolationCounters()
         // EMA temporal: nuevo contenido → descartar la historia de vectores de
@@ -1962,6 +1983,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     self.totalDecoded = decoded
                     pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
+                    self.logDecodedFormatOnce(decodedFrame.pixelBuffer)
                     if Self.detailedDiagnostics {
                         let key = RiftPlayerState.timelineKey(decodedFrame.pts)
                         self.frameTimelines[key] = FrameTimeline(
@@ -2318,14 +2340,58 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     // MARK: - Delivery diagnostics (soap-opera investigation)
 
+    /// Registra UNA sola vez por sesión de reproducción (gate RIFT_DIAGNOSTICS=1)
+    /// el códec declarado por el track junto con el formato FourCC REAL del
+    /// CVPixelBuffer que entrega Core/Decode — sin logs por frame.
+    private func logDecodedFormatOnce(_ buffer: CVPixelBuffer) {
+        guard !loggedSessionFormat else { return }
+        loggedSessionFormat = true
+        guard Self.detailedDiagnostics else { return }
+        let track = videoTrack
+        let fps = track?.frameRate.map { String(format: "%.3f", $0) } ?? "-"
+        let line = "[RIFT-SESSION] codec=\(track?.codecName ?? "?") tag=\(track?.codecTag ?? "-") "
+            + "dims=\(CVPixelBufferGetWidth(buffer))x\(CVPixelBufferGetHeight(buffer)) "
+            + "bufferFourCC=\(Self.pixelFormatFourCC(CVPixelBufferGetPixelFormatType(buffer))) "
+            + "planes=\(CVPixelBufferGetPlaneCount(buffer)) fps=\(fps)\n"
+        RiftPlayerState.writeDiagLog(line)
+        os_log("%{public}@", log: benchLog, type: .info, line)
+    }
+
+    private static func pixelFormatFourCC(_ format: OSType) -> String {
+        // FourCC MSB-first, como lo escribe Apple en sus cabeceras ('x422','b64a'):
+        // el byte alto del OSType es el primer carácter.
+        let bytes: [UInt8] = [
+            UInt8(truncatingIfNeeded: format >> 24),
+            UInt8(truncatingIfNeeded: format >> 16),
+            UInt8(truncatingIfNeeded: format >> 8),
+            UInt8(truncatingIfNeeded: format),
+        ]
+        return String(bytes: bytes, encoding: .ascii) ?? String(format: "0x%08x", format)
+    }
+
+    /// Cuenta (sin recuperar) un fallo de sampleBuffer(from:) en el display loop.
+    /// Loguea solo el PRIMER fallo de la sesión; el total acumulado por sesión
+    /// se reporta en el [RIFT-DIAG] periódico — nunca un log por frame.
+    private func noteSampleBufferWrapFailure(context: String, pts: Double) {
+        sampleBufferWrapFailures += 1
+        guard !loggedFirstWrapFailure else { return }
+        loggedFirstWrapFailure = true
+        let line = "[RIFT-WRAP-FAIL] context=\(context) pts=\(String(format: "%.3f", pts)) "
+            + "total=\(sampleBufferWrapFailures) "
+            + "(CMFormatDescription/CMSampleBuffer creation returned nil)\n"
+        RiftPlayerState.writeDiagLog(line)
+        os_log("%{public}@", log: benchLog, type: .error, line)
+    }
+
     /// Emit a [RIFT-DIAG] log once per second with ready/notReady/dropped counters.
     /// Resets counters after each emission so each line represents a 1s window.
+    /// wrapFailures/nativeStaleDrops son TOTALES de la sesión (reset en open/close).
     private func logDiagIfDue() {
         let now = CFAbsoluteTimeGetCurrent()
         guard now - lastDiagLogTime >= 1.0 else { return }
         lastDiagLogTime = now
         let total = framesEnqueuedReady + framesEnqueuedNotReady + framesDroppedTimeout
-        let line = "[RIFT-DIAG] requested=\(framesRequestedForEnqueue) enqueued=\(total) ready=\(framesEnqueuedReady) notReady=\(framesEnqueuedNotReady) dropped=\(framesDroppedTimeout)\n"
+        let line = "[RIFT-DIAG] requested=\(framesRequestedForEnqueue) enqueued=\(total) ready=\(framesEnqueuedReady) notReady=\(framesEnqueuedNotReady) dropped=\(framesDroppedTimeout) wrapFailures=\(sampleBufferWrapFailures) nativeStaleDrops=\(nativeStaleDrops)\n"
         RiftPlayerState.writeDiagLog(line)
         framesRequestedForEnqueue = 0
         framesEnqueuedReady = 0
@@ -2742,7 +2808,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                                 self.markDisplayImmediately(sbuf)
                             }
                             await self.enqueuePaced(rend, sbuf)
+                        } else if Self.detailedDiagnostics {
+                            self.noteSampleBufferWrapFailure(context: "native", pts: f.pts)
                         }
+                    } else if Self.detailedDiagnostics {
+                        // Frame atrasado descartado por la red de seguridad de la
+                        // Fijación C — solo diagnóstico; el descarte ya era el comportamiento.
+                        nativeStaleDrops += 1
                     }
                 } else {
                     let tStageStart = DispatchTime.now().uptimeNanoseconds
@@ -2928,6 +3000,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             }
                             previousEnqueuedPTS = first.pts
                             lastEnqueuedInvocationID = interpInvocationID
+                        } else if Self.detailedDiagnostics {
+                            self.noteSampleBufferWrapFailure(context: "gapFallback", pts: first.pts)
                         }
                         pool.consumePair()
                         await self.coordinator.signal()
@@ -3076,6 +3150,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             }
                             previousEnqueuedPTS = o.pts
                             lastEnqueuedInvocationID = interpInvocationID
+                        } else if Self.detailedDiagnostics {
+                            self.noteSampleBufferWrapFailure(context: "interpOutputs", pts: o.pts)
                         }
                     }
                     if Task.isCancelled || self.playbackGeneration != generation { break }
