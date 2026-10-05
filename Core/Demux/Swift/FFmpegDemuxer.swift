@@ -36,6 +36,7 @@ public final class FFmpegDemuxer: Demuxing {
                 streamIndex: Int(raw.stream_index),
                 kind: TrackKind(rawValue: Int(raw.kind)) ?? .other,
                 codecName: raw.codec_name.map { String(cString: $0) } ?? "?",
+                codecTag: Self.codecTagString(raw.codec_tag),
                 streamTitle: raw.stream_title.map { String(cString: $0) },
                 streamLanguage: raw.stream_language.map { String(cString: $0) },
                 width: raw.width > 0 ? Int(raw.width) : nil,
@@ -70,6 +71,18 @@ public final class FFmpegDemuxer: Demuxing {
             tracks: tracks,
             chapters: chapters
         )
+    }
+
+    private static func codecTagString(_ tag: UInt32) -> String? {
+        guard tag != 0 else { return nil }
+        let bytes: [UInt8] = [
+            UInt8(truncatingIfNeeded: tag),
+            UInt8(truncatingIfNeeded: tag >> 8),
+            UInt8(truncatingIfNeeded: tag >> 16),
+            UInt8(truncatingIfNeeded: tag >> 24),
+        ]
+        guard bytes.allSatisfy({ (0x20...0x7e).contains($0) }) else { return nil }
+        return String(bytes: bytes, encoding: .ascii)
     }
 
     public func nextPacket() throws -> CompressedPacket? {

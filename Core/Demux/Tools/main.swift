@@ -67,18 +67,24 @@ for track in info.tracks {
     extra.append("ct=\(track.colorTransfer.map(String.init) ?? "-")")
     extra.append("cp=\(track.colorPrimaries.map(String.init) ?? "-")")
     extra.append("extradata=\(track.codecExtradata.count)B")
+    let codec = track.codecTag.map { "\(track.codecName) [\($0)]" } ?? track.codecName
     print(String(format: "  [%d] %@ %@ %@",
-                 track.streamIndex, kind, track.codecName, extra.joined(separator: ", ")))
+                 track.streamIndex, kind, codec, extra.joined(separator: ", ")))
 }
 
-// Success criterion for this task: the video track must expose non-empty
-// codec extradata (VPS/SPS/PPS for HEVC) for a future CMFormatDescription.
+// Codecs that carry their decoder configuration out-of-band must expose it.
+// Intra-frame codecs such as ProRes and MJPEG legitimately have no extradata.
 if let video = info.tracks.first(where: { $0.kind == .video }) {
-    if video.codecExtradata.isEmpty {
+    let codecsRequiringExtradata = ["h264", "hevc", "av1"]
+    if codecsRequiringExtradata.contains(video.codecName), video.codecExtradata.isEmpty {
         print("FAIL: video track has EMPTY codecExtradata")
         exit(3)
     }
-    print(String(format: "video extradata : %d bytes (non-empty ✓)", video.codecExtradata.count))
+    if video.codecExtradata.isEmpty {
+        print("video extradata : not required for \(video.codecName) ✓")
+    } else {
+        print(String(format: "video extradata : %d bytes (non-empty ✓)", video.codecExtradata.count))
+    }
 }
 
 // 2. Pull 20 packets, printing memory every 5.

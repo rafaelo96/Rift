@@ -160,6 +160,7 @@ int rift_demux_track_info(RiftDemuxCtx *ctx, int index, RiftTrackInfoC *out) {
 
     const char *name = avcodec_get_name(par->codec_id);
     out->codec_name = name ? name : "?";
+    out->codec_tag = par->codec_tag;
 
     /* Stream title (raw "title" metadata, e.g. the language label of a
      * subtitle track). NULL if the stream has no such tag. */

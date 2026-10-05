@@ -17,6 +17,9 @@ public struct TrackInfo: Equatable {
     public let streamIndex: Int
     public let kind: TrackKind
     public let codecName: String
+    /// Raw container codec FourCC (for example `apco` for ProRes Proxy).
+    /// Nil when the container exposes no codec tag. Demux does not interpret it.
+    public let codecTag: String?
     /// Raw stream title metadata ("title" tag), e.g. the language label of a
     /// subtitle track. Nil when the container exposes none.
     public let streamTitle: String?
@@ -48,6 +51,7 @@ public struct TrackInfo: Equatable {
         streamIndex: Int,
         kind: TrackKind,
         codecName: String,
+        codecTag: String? = nil,
         streamTitle: String?,
         streamLanguage: String?,
         width: Int?,
@@ -63,6 +67,7 @@ public struct TrackInfo: Equatable {
         self.streamIndex = streamIndex
         self.kind = kind
         self.codecName = codecName
+        self.codecTag = codecTag
         self.streamTitle = streamTitle
         self.streamLanguage = streamLanguage
         self.width = width
