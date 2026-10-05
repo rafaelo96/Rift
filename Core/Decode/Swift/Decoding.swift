@@ -5,7 +5,7 @@ import Demux
 // MARK: - VideoDecoding
 //
 // Surface of Core/Decode. Consumes Core/Demux output (CompressedPacket +
-// TrackInfo with hvcC extradata) and produces one CVPixelBuffer per decoded
+// TrackInfo with codec metadata) and produces one CVPixelBuffer per decoded
 // video packet via VTDecompressionSession (hardware). Decoding is streaming:
 // one access unit at a time, nothing accumulated on disk or in memory.
 
@@ -80,7 +80,7 @@ public struct DecodedVideoFrame {
 /// Implementations decode with hardware (VTDecompressionSession) and never
 /// transcode nor write anything to disk.
 public protocol VideoDecoding: AnyObject {
-    /// Parses `track.codecExtradata` (hvcC) and creates the hardware session.
+    /// Interprets the track's codec configuration and creates the hardware session.
     /// Must be called before decoding; may be called again to switch tracks.
     func prepare(track: TrackInfo) throws
 

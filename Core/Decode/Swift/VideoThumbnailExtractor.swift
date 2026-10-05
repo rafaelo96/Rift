@@ -3,6 +3,7 @@ import CoreImage
 import CoreVideo
 import Demux
 import Foundation
+import VideoToolbox
 
 /// A small, display-ready image extracted near a timeline position.
 /// The image is downscaled before leaving Core/Decode so the UI cache remains
@@ -105,6 +106,46 @@ public actor VideoThumbnailExtractor {
     }
 
     private func makeThumbnailImage(from pixelBuffer: CVPixelBuffer) -> CGImage? {
+        if let image = makeThumbnailImageWithCoreImage(from: pixelBuffer) {
+            return image
+        }
+
+        // Core Image cannot ingest VideoToolbox's high-bit-depth packed ARGB
+        // output for ProRes 4444 directly. Convert only this small thumbnail
+        // surface; playback keeps the original 16-bit decoded pixel buffer.
+        let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let scale = min(320.0 / Double(max(sourceWidth, 1)),
+                        180.0 / Double(max(sourceHeight, 1)), 1)
+        let width = max(Int(Double(sourceWidth) * scale), 1)
+        let height = max(Int(Double(sourceHeight) * scale), 1)
+        var converted: CVPixelBuffer?
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+        ]
+        guard CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &converted
+        ) == kCVReturnSuccess, let converted else {
+            return nil
+        }
+        var transferSession: VTPixelTransferSession?
+        guard VTPixelTransferSessionCreate(
+            allocator: kCFAllocatorDefault,
+            pixelTransferSessionOut: &transferSession
+        ) == noErr,
+              let transferSession,
+              VTPixelTransferSessionTransferImage(transferSession, from: pixelBuffer, to: converted) == noErr else {
+            return nil
+        }
+        return makeThumbnailImageWithCoreImage(from: converted)
+    }
+
+    private func makeThumbnailImageWithCoreImage(from pixelBuffer: CVPixelBuffer) -> CGImage? {
         let source = CIImage(cvPixelBuffer: pixelBuffer)
         let maximumSize = CGSize(width: 320, height: 180)
         let scale = min(

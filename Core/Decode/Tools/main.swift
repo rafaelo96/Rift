@@ -137,12 +137,25 @@ guard let video = info.tracks.first(where: { $0.kind == .video }) else {
     exit(1)
 }
 print("video: \(video.width ?? 0)x\(video.height ?? 0) \(video.codecName) "
+    + "tag=\(video.codecTag ?? "-") "
     + "ct=\(video.colorTransfer.map(String.init) ?? "-") "
     + "cp=\(video.colorPrimaries.map(String.init) ?? "-")")
 print("extradata : \(video.codecExtradata.count) bytes (\(video.codecName))")
-let hardwareCodecType = video.codecName.lowercased() == "av1"
-    ? kCMVideoCodecType_AV1
-    : kCMVideoCodecType_HEVC
+let hardwareCodecType: CMVideoCodecType = switch video.codecName.lowercased() {
+case "av1": kCMVideoCodecType_AV1
+case "h264", "avc": kCMVideoCodecType_H264
+case "mjpeg": kCMVideoCodecType_JPEG
+case "prores": switch video.codecTag?.lowercased() {
+    case "apco": kCMVideoCodecType_AppleProRes422Proxy
+    case "apcs": kCMVideoCodecType_AppleProRes422LT
+    case "apcn": kCMVideoCodecType_AppleProRes422
+    case "apch": kCMVideoCodecType_AppleProRes422HQ
+    case "ap4h": kCMVideoCodecType_AppleProRes4444
+    case "ap4x": kCMVideoCodecType_AppleProRes4444XQ
+    default: 0
+}
+default: kCMVideoCodecType_HEVC
+}
 print("VT hardware decode supported (\(video.codecName.uppercased())): "
     + "\(VTIsHardwareDecodeSupported(hardwareCodecType))")
 

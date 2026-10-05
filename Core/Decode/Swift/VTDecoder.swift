@@ -23,6 +23,7 @@ public final class VTDecoder: VideoDecoding {
         case hevc(HEVCConfiguration)
         case av1(AV1Configuration)
         case mjpeg
+        case proRes(codecType: CMVideoCodecType, pixelFormat: OSType, name: String)
     }
 
     private var session: VTDecompressionSession?
@@ -82,8 +83,22 @@ public final class VTDecoder: VideoDecoding {
                 throw DecodeError.hardwareDecoderUnavailable("MJPEG")
             }
             config = .mjpeg
+        case "prores":
+            guard let proRes = Self.proResConfiguration(for: track.codecTag) else {
+                throw DecodeError.unsupportedFormat(
+                    "ProRes track has unknown or missing codec tag \(track.codecTag ?? "nil")"
+                )
+            }
+            guard VTIsHardwareDecodeSupported(proRes.codecType) else {
+                throw DecodeError.hardwareDecoderUnavailable(proRes.name)
+            }
+            config = .proRes(
+                codecType: proRes.codecType,
+                pixelFormat: proRes.pixelFormat,
+                name: proRes.name
+            )
         default:
-            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc/av1/mjpeg")
+            throw DecodeError.unsupportedFormat("codec \(track.codecName) is not h264/hevc/av1/mjpeg/prores")
         }
 
         self.config = config
@@ -193,6 +208,41 @@ public final class VTDecoder: VideoDecoding {
             return try makeAV1FormatDescription(av1)
         case .mjpeg:
             return try makeGenericFormatDescription(codecType: kCMVideoCodecType_JPEG, codecName: "MJPEG")
+        case .proRes(let codecType, _, let name):
+            return try makeGenericFormatDescription(codecType: codecType, codecName: name)
+        }
+    }
+
+    private static func proResConfiguration(
+        for codecTag: String?
+    ) -> (codecType: CMVideoCodecType, pixelFormat: OSType, name: String)? {
+        switch codecTag?.lowercased() {
+        case "apco":
+            return (kCMVideoCodecType_AppleProRes422Proxy,
+                    kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+                    "ProRes 422 Proxy")
+        case "apcs":
+            return (kCMVideoCodecType_AppleProRes422LT,
+                    kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+                    "ProRes 422 LT")
+        case "apcn":
+            return (kCMVideoCodecType_AppleProRes422,
+                    kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+                    "ProRes 422")
+        case "apch":
+            return (kCMVideoCodecType_AppleProRes422HQ,
+                    kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+                    "ProRes 422 HQ")
+        case "ap4h":
+            return (kCMVideoCodecType_AppleProRes4444,
+                    kCVPixelFormatType_64ARGB,
+                    "ProRes 4444")
+        case "ap4x":
+            return (kCMVideoCodecType_AppleProRes4444XQ,
+                    kCVPixelFormatType_64ARGB,
+                    "ProRes 4444 XQ")
+        default:
+            return nil
         }
     }
 
@@ -327,6 +377,8 @@ public final class VTDecoder: VideoDecoding {
             decoderSpecification[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
         } else if case .mjpeg = config {
             decoderSpecification[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
+        } else if case .proRes = config {
+            decoderSpecification[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
         }
 
         let width = max(track.width ?? 0, 16)
@@ -340,6 +392,8 @@ public final class VTDecoder: VideoDecoding {
         // JPEG/MJPEG conventionally carries full-range samples. Preserve that
         // range instead of compressing it into video-range NV12.
         case .mjpeg: pixelFormat = Int(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
+        case .proRes(_, let proResPixelFormat, _):
+            pixelFormat = Int(proResPixelFormat)
         case .av1(let av1):
             pixelFormat = Int(av1.usesHighBitDepth
                 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
