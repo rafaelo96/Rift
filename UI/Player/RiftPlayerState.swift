@@ -137,10 +137,14 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
         completion()
     }
 
-    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+    func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         state?.beginPictureInPictureSubtitlePresentation()
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        // Keep the inline view unchanged until AVKit finishes its transition.
+        state?.isPictureInPictureActive = true
         state?.resizePictureInPictureSourceLayer()
-        state?.suppressBrokenPictureInPictureHostOverlay()
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
@@ -149,6 +153,7 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        state?.restorePictureInPictureSourceLayer()
         state?.endPictureInPictureSubtitlePresentation()
         state?.statusMessage = "Picture in Picture unavailable: \(error.localizedDescription)"
     }
@@ -1272,13 +1277,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if controller.isPictureInPictureActive {
             controller.stopPictureInPicture()
         } else {
-            beginPictureInPictureSubtitlePresentation()
             controller.startPictureInPicture()
         }
     }
 
     fileprivate func beginPictureInPictureSubtitlePresentation() {
-        isPictureInPictureActive = true
         renderer?.pictureInPictureSubtitle = { [weak self] time in
             self?.subtitleText(at: time)
         }
@@ -1316,24 +1319,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// No enlazamos símbolos privados: solo ocultamos la vista vacía si el
     /// sistema la crea para este flujo concreto.
     fileprivate func suppressBrokenPictureInPictureHostOverlay() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            let pipWindows = NSApplication.shared.windows.filter {
-                String(describing: type(of: $0)).contains("PIPPanel")
-            }
-            for window in pipWindows {
-                guard let rootView = window.contentView else { continue }
-                Self.hideBrokenPictureInPictureHost(in: rootView)
-            }
-        }
+        guard pictureInPictureController?.isPictureInPictureActive == true,
+              let rootView = pictureInPicturePanel()?.contentView else { return }
+        Self.hideBrokenPictureInPictureHost(in: rootView)
     }
 
     /// AVKit Tahoe refleja la capa de muestras a escala 1:1. Mantener la capa
     /// fuente sincronizada con el panel PiP hace que esa copia coincida con el
     /// destino también después de que el usuario lo redimensione.
     fileprivate func resizePictureInPictureSourceLayer() {
-        DispatchQueue.main.async { [weak self] in
-            self?.synchronizePictureInPictureSourceLayer()
-        }
+        synchronizePictureInPictureSourceLayer()
     }
 
     fileprivate func restorePictureInPictureSourceLayer() {
@@ -1342,13 +1337,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             pictureInPictureResizeObserver = nil
         }
         if let frame = pictureInPictureSourceFrame {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             renderer?.displayLayer.frame = frame
+            CATransaction.commit()
         }
         pictureInPictureSourceFrame = nil
     }
 
     private func synchronizePictureInPictureSourceLayer() {
-        guard let layer = renderer?.displayLayer,
+        guard isPictureInPictureActive,
+              pictureInPictureController?.isPictureInPictureActive == true,
+              let layer = renderer?.displayLayer,
               let panel = pictureInPicturePanel(),
               let contentView = panel.contentView else {
             return
@@ -1359,8 +1359,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if pictureInPictureSourceFrame == nil {
             pictureInPictureSourceFrame = layer.frame
         }
+        // The mirrored layer and host visibility must change in the same commit,
+        // without a second implicit animation after AVKit's transition.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         layer.frame = CGRect(origin: .zero, size: targetSize)
         suppressBrokenPictureInPictureHostOverlay()
+        CATransaction.commit()
     }
 
     private func pictureInPicturePanel() -> NSWindow? {
