@@ -137,6 +137,37 @@ private func pbInfo(_ pb: CVPixelBuffer) -> String {
     return s
 }
 
+private func pixelBuffersEqual(_ lhs: CVPixelBuffer, _ rhs: CVPixelBuffer) -> Bool {
+    guard CVPixelBufferGetPixelFormatType(lhs) == CVPixelBufferGetPixelFormatType(rhs),
+          CVPixelBufferGetWidth(lhs) == CVPixelBufferGetWidth(rhs),
+          CVPixelBufferGetHeight(lhs) == CVPixelBufferGetHeight(rhs),
+          CVPixelBufferGetPlaneCount(lhs) == CVPixelBufferGetPlaneCount(rhs) else { return false }
+    CVPixelBufferLockBaseAddress(lhs, .readOnly)
+    CVPixelBufferLockBaseAddress(rhs, .readOnly)
+    defer {
+        CVPixelBufferUnlockBaseAddress(rhs, .readOnly)
+        CVPixelBufferUnlockBaseAddress(lhs, .readOnly)
+    }
+    let planes = CVPixelBufferGetPlaneCount(lhs)
+    for plane in 0..<planes {
+        let lhsBPR = CVPixelBufferGetBytesPerRowOfPlane(lhs, plane)
+        let rhsBPR = CVPixelBufferGetBytesPerRowOfPlane(rhs, plane)
+        let height = CVPixelBufferGetHeightOfPlane(lhs, plane)
+        guard lhsBPR == rhsBPR,
+              height == CVPixelBufferGetHeightOfPlane(rhs, plane),
+              let lhsBase = CVPixelBufferGetBaseAddressOfPlane(lhs, plane),
+              let rhsBase = CVPixelBufferGetBaseAddressOfPlane(rhs, plane) else { return false }
+        if memcmp(lhsBase, rhsBase, lhsBPR * height) != 0 { return false }
+    }
+    return true
+}
+
+private func propagatedAttachmentsEqual(_ lhs: CVPixelBuffer, _ rhs: CVPixelBuffer) -> Bool {
+    let a = CVBufferCopyAttachments(lhs, .shouldPropagate) as NSDictionary? ?? [:]
+    let b = CVBufferCopyAttachments(rhs, .shouldPropagate) as NSDictionary? ?? [:]
+    return a.isEqual(to: b as! [AnyHashable: Any])
+}
+
 private func attachmentDict(_ pb: CVPixelBuffer, _ mode: CVAttachmentMode) -> [String: Any] {
     guard let d = CVBufferCopyAttachments(pb, mode) as NSDictionary? else { return [:] }
     var out: [String: Any] = [:]
@@ -417,9 +448,9 @@ private func dumpGeomDiagnostic(I0: CVPixelBuffer, I1: CVPixelBuffer, interp: CV
     }
 }
 
-// MARK: - Luma extraction (plane0 of 420YpCbCr10BiPlanar, 10 bit in high bits
-// of each 16-bit word) scaled to the 480p work plane with vImage. Linear
-// resampling is SAD-safe: both frames go through the exact same transform.
+// MARK: - Luma extraction (plane 0 of 10-bit bi-planar 4:2:0 or 4:2:2,
+// stored in the high bits of each 16-bit word) scaled to the 480p work plane.
+// Linear resampling is SAD-safe: both frames use the same transform.
 
 private func scaledLuma(_ buffer: CVPixelBuffer) -> Data? {
     guard CVPixelBufferIsPlanar(buffer), CVPixelBufferGetPlaneCount(buffer) >= 1 else { return nil }
@@ -756,7 +787,10 @@ private func artifactExtractLuma(_ buffer: CVPixelBuffer, workWidth: Int, workHe
     let bpr = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
     guard sw > 0, sh > 0, let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else { return nil }
     let fmt = CVPixelBufferGetPixelFormatType(buffer)
-    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+        || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
+        || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
     let n = workWidth * workHeight
     var dst = Data(count: n * MemoryLayout<UInt16>.stride)
     if is10 {
@@ -933,7 +967,10 @@ private func artifactFullLumaU8(_ pb: CVPixelBuffer) -> [UInt8]? {
     let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
     guard let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) else { return nil }
     let fmt = CVPixelBufferGetPixelFormatType(pb)
-    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+        || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
+        || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
     var out = [UInt8](repeating: 0, count: w * h)
     if is10 {
         for y in 0..<h {
@@ -961,7 +998,10 @@ private func artifactChromaU8(_ pb: CVPixelBuffer) -> [UInt8]? {
     let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 1)
     guard let base = CVPixelBufferGetBaseAddressOfPlane(pb, 1) else { return nil }
     let fmt = CVPixelBufferGetPixelFormatType(pb)
-    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    let is10 = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
+        || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
+        || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
     var out = [UInt8](repeating: 0, count: cw * ch * 2)
     if is10 {
         for y in 0..<ch {
@@ -1502,10 +1542,19 @@ while frames.count < pairCount + 1 && readPackets < 100_000 {
     // so the contact sheet and artifact report use the requested PTS.
     guard decodedFrame.pts + 0.001 >= seekTime else { continue }
     let buf = decodedFrame.pixelBuffer
-    guard let luma = scaledLuma(buf) else { continue }
-    frames.append(luma)
-    frameBuffers.append(buf)
-    frameTimes.append(decodedFrame.pts)
+    if let luma = scaledLuma(buf) {
+        frames.append(luma)
+        frameBuffers.append(buf)
+        frameTimes.append(decodedFrame.pts)
+    } else if envInt("MV_PRORES_CHECK", 0) == 1,
+              CVPixelBufferGetPixelFormatType(buf) == kCVPixelFormatType_64ARGB {
+        // Retain packed ProRes 4444 frames only for the explicit rejection
+        // check. Production interpolation must not silently drop alpha or
+        // reduce 16-bit ARGB to a supported planar format.
+        frames.append(Data())
+        frameBuffers.append(buf)
+        frameTimes.append(decodedFrame.pts)
+    }
 }
 decoder.close()
 demuxer.close()
@@ -1513,6 +1562,76 @@ demuxer.close()
 guard frames.count >= pairCount + 1 else {
     print("FAIL: only \(frames.count) planes decoded (need \(pairCount + 1))")
     exit(2)
+}
+
+if envInt("MV_PRORES_CHECK", 0) == 1 {
+    let sourceFormat = CVPixelBufferGetPixelFormatType(frameBuffers[0])
+    if sourceFormat == kCVPixelFormatType_64ARGB {
+        let engine = try MotionCompensator(config: InterpolationConfig(
+            usesBidirectionalSafetyCheck: false,
+            usesCatastrophicSafetyCheck: false
+        ))
+        let result = engine.interpolatePair(
+            I0: frameBuffers[0], I1: frameBuffers[1], tValues: [0.5]
+        )
+        guard result.pixelBuffers.isEmpty else {
+            print("FAIL: ProRes 4444 must not silently discard alpha or bit depth")
+            exit(7)
+        }
+        print("PRORES CHECK: b64a rejected without lossy conversion ✓")
+        print("\nOK — MVProbe ProRes format check finished")
+        exit(0)
+    }
+
+    guard sourceFormat == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
+            || sourceFormat == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange else {
+        print("FAIL: MV_PRORES_CHECK expected x422/xf22 or b64a, got \(pixFmtName(sourceFormat))")
+        exit(7)
+    }
+
+    let engine = try MotionCompensator(config: InterpolationConfig(
+        usesBidirectionalSafetyCheck: false,
+        usesCatastrophicSafetyCheck: false
+    ))
+    let result = engine.interpolatePair(
+        I0: frameBuffers[0], I1: frameBuffers[1], tValues: [0, 0.5, 1]
+    )
+    guard result.pixelBuffers.count == 3 else {
+        print("FAIL: x422 interpolation returned \(result.pixelBuffers.count) outputs, expected 3")
+        exit(7)
+    }
+    let t0 = result.pixelBuffers[0]
+    let midpoint = result.pixelBuffers[1]
+    let t1 = result.pixelBuffers[2]
+    guard pixelBuffersEqual(t0, frameBuffers[0]), pixelBuffersEqual(t1, frameBuffers[1]) else {
+        print("FAIL: x422 temporal endpoints are not byte-identical to their sources")
+        exit(7)
+    }
+    guard propagatedAttachmentsEqual(t0, frameBuffers[0]),
+          propagatedAttachmentsEqual(midpoint, frameBuffers[0]),
+          propagatedAttachmentsEqual(t1, frameBuffers[1]) else {
+        print("FAIL: x422 output attachments differ from their source")
+        exit(7)
+    }
+    guard CVPixelBufferGetPixelFormatType(midpoint) == sourceFormat,
+          CVPixelBufferGetWidth(midpoint) == CVPixelBufferGetWidth(frameBuffers[0]),
+          CVPixelBufferGetHeight(midpoint) == CVPixelBufferGetHeight(frameBuffers[0]),
+          CVPixelBufferGetPlaneCount(midpoint) == 2,
+          CVPixelBufferGetHeightOfPlane(midpoint, 1) == CVPixelBufferGetHeight(midpoint) else {
+        print("FAIL: midpoint did not preserve x422 geometry")
+        exit(7)
+    }
+    guard !pixelBuffersEqual(midpoint, frameBuffers[0]),
+          !pixelBuffersEqual(midpoint, frameBuffers[1]) else {
+        print("FAIL: x422 midpoint is a repeated source frame")
+        exit(7)
+    }
+    print("PRORES CHECK: t=0 and t=1 byte-identical ✓")
+    print("PRORES CHECK: midpoint is a new x422 frame ✓")
+    print("PRORES CHECK: 10-bit 4:2:2 geometry and attachments preserved ✓")
+    print(String(format: "PRORES CHECK: ME %.3f ms, warp %.3f ms", result.meMS, result.warpMS))
+    print("\nOK — MVProbe ProRes format check finished")
+    exit(0)
 }
 
 let pyramidSpec: [LevelSpec]

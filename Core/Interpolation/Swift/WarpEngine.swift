@@ -241,7 +241,9 @@ func interpolatePixelBufferPair(
     let metalLumaFormat: MTLPixelFormat
     switch pixelFormat {
     case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
-         kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+         kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+         kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,
+         kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange:
         metalLumaFormat = .r16Uint
     case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
          kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
@@ -271,6 +273,7 @@ func interpolatePixelBufferPair(
 
     let cwCh = CVPixelBufferGetWidthOfPlane(I0, 1)
     let chCh = CVPixelBufferGetHeightOfPlane(I0, 1)
+    let chromaSubsampleY = max(h / max(chCh, 1), 1)
     let chromaIs10 = isChroma10Bit(I0)
     let chromaFormat: MTLPixelFormat = chromaIs10 ? .rg16Uint : .rg8Uint
     let inputChroma0 = wrapPlaneTexture(I0, plane: 1, format: chromaFormat, w: cwCh, h: chCh, cache: cache)
@@ -284,6 +287,17 @@ func interpolatePixelBufferPair(
     var warpTotal = 0.0
     let upscaleTotal = 0.0
     for t in tValues {
+        // Exact temporal endpoints must preserve every source byte and
+        // attachment. They also avoid needless GPU work in diagnostics and
+        // callers that request a closed interval.
+        if t <= 0 {
+            buffers.append(I0)
+            continue
+        }
+        if t >= 1 {
+            buffers.append(I1)
+            continue
+        }
         guard let out = acquireOutputBuffer(w: w, h: h, pixelFormat: pixelFormat) else {
             return ([], warpTotal, upscaleTotal)
         }
@@ -295,7 +309,8 @@ func interpolatePixelBufferPair(
             tex0: nativeLuma0, tex1: nativeLuma1, mv: mvBuf, outTex: texOut,
             workWidth: workWidth, workHeight: workHeight,
             gridW: gridW, gridH: gridH, blockSize: blockSize,
-            t: t, occThresh: occThresh, chroma: false, fmt10: is10Bit
+            t: t, occThresh: occThresh, chroma: false, fmt10: is10Bit,
+            chromaSubsampleY: 1
         )
 
         if let nativeChroma0 = inputChroma0.1, let nativeChroma1 = inputChroma1.1 {
@@ -311,7 +326,8 @@ func interpolatePixelBufferPair(
                 workWidth: workWidth, workHeight: workHeight,
                 gridW: gridW, gridH: gridH, blockSize: blockSize,
                 t: noChromaWarp ? 0 : t, occThresh: occThresh,
-                chroma: true, fmt10: chromaIs10
+                chroma: true, fmt10: chromaIs10,
+                chromaSubsampleY: chromaSubsampleY
             )
         }
 
@@ -390,7 +406,8 @@ func interpolatePixelBufferPair(
         t: Float,
         occThresh: Float,
         chroma: Bool,
-        fmt10: Bool
+        fmt10: Bool,
+        chromaSubsampleY: Int
     ) -> Double {
         let width = outTex.width
         let height = outTex.height
@@ -407,6 +424,7 @@ func interpolatePixelBufferPair(
             workW: UInt32(workWidth), workH: UInt32(workHeight),
             gridW: UInt32(gridW), gridH: UInt32(gridH),
             blockSize: UInt32(blockSize), fmt10: fmt10 ? 1 : 0,
+            chromaSubsampleY: UInt32(chromaSubsampleY),
             t: t, occThresh: occThresh
         )
         enc.setBytes(&uniforms, length: MemoryLayout<NativeWarpUniforms>.stride, index: 1)
@@ -455,6 +473,8 @@ func interpolatePixelBufferPair(
         let fmt = CVPixelBufferGetPixelFormatType(pb)
         return fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
             || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+            || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
+            || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
     }
 
     /// Construye la textura Metal del plano 1 (CbCr) completo de `pb`, desde su
@@ -691,6 +711,7 @@ private struct NativeWarpUniforms {
     var gridH: UInt32
     var blockSize: UInt32
     var fmt10: UInt32
+    var chromaSubsampleY: UInt32
     var t: Float
     var occThresh: Float
 }

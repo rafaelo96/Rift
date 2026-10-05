@@ -789,9 +789,10 @@ public final class MotionCompensator {
     //
     // Extrae el plano 0 (luma) del CVPixelBuffer de entrada y lo baja a
     // (workWidth × workHeight) en UInt16. Soporta el formato planar BiPlanar
-    // 10-bit usado por VTDecoder (kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
-    // / 'x420'). Para 8-bit (kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
-    // se preserva la escala histórica (value<<8).
+    // 10-bit usado por VTDecoder (P010/x420 y ProRes x422). Ambos almacenan
+    // cada muestra de luma en los bits altos de UInt16. Para 8-bit
+    // (kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) se preserva la escala
+    // histórica (value<<8).
     //
     // Downscale con vImage (precompilado: rápido en debug Y release) en vez de
     // loops Swift — en debug los loops costaban ~900ms/par y mataban el
@@ -816,6 +817,8 @@ public final class MotionCompensator {
         let fmt = CVPixelBufferGetPixelFormatType(buffer)
         let is10Bit = fmt == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
             || fmt == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+            || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
+            || fmt == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
 
         let dw = config.workWidth
         let dh = config.workHeight

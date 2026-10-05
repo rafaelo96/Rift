@@ -31,6 +31,7 @@ struct NativeWarpUniforms {
     uint gridH;
     uint blockSize;
     uint fmt10;
+    uint chromaSubsampleY;
     float t;
     float occThresh;
 };
@@ -149,14 +150,17 @@ kernel void warpBlendChromaNative(
         return;
     }
 
-    // One chroma texel represents a 2x2 native-luma region.
+    // One chroma texel represents 2x2 native-luma pixels for 4:2:0 and 2x1
+    // for 4:2:2. The vertical factor is supplied by the source plane geometry.
     float2 chromaP = float2(gid);
-    float2 nativeLumaP = chromaP * 2.0 + 0.5;
-    float2 nativeLumaSize = float2(float(u.outW * 2), float(u.outH * 2));
+    float chromaScaleY = float(max(u.chromaSubsampleY, 1u));
+    float2 chromaToLuma = float2(2.0, chromaScaleY);
+    float2 nativeLumaP = chromaP * chromaToLuma + 0.5;
+    float2 nativeLumaSize = float2(float(u.outW * 2), float(u.outH) * chromaScaleY);
     float2 nativeToWork = float2(float(u.workW), float(u.workH)) / nativeLumaSize;
     float2 workP = (nativeLumaP + 0.5) * nativeToWork - 0.5;
     float2 flowWork = sampleMVBilinear(mv, workP, u.gridW, u.gridH, u.blockSize);
-    float2 flowChroma = (flowWork / nativeToWork) * 0.5;
+    float2 flowChroma = (flowWork / nativeToWork) / chromaToLuma;
     float2 p0 = chromaP - u.t * flowChroma;
     float2 p1 = chromaP + (1.0 - u.t) * flowChroma;
     float2 v0 = sampleBilinearNative2(tex0, p0, int(u.outW), int(u.outH));
