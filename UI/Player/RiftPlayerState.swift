@@ -218,6 +218,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var externalSubtitlePathByVideoPath: [String: String] = [:]
     private var externalSubtitleURL: URL?
     private var pictureInPictureController: AVPictureInPictureController?
+    private var floatingPictureInPicture: FloatingPictureInPictureController?
     private var pictureInPictureCoordinator: PictureInPictureCoordinator?
     private var pictureInPictureSourceFrame: CGRect?
     private var pictureInPictureResizeObserver: NSObjectProtocol?
@@ -1024,7 +1025,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // inflaba el conteo sin cota con seeks repetidos y se elimina.
         // El display loop se crea de nuevo al recibir el preroll valido; nunca
         // conserva PTS ni buffers del segmento anterior.
-        startDecodeLoop(minimumVideoPTS: target)
+        startDecodeLoop(callDisplayLoopOnFirstFrame: false, minimumVideoPTS: target)
     }
     func seek(by delta: Double) { seek(to: currentTime + delta) }
     func setVolume(_ v: Double) {
@@ -1060,6 +1061,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: time)
     }
     func closeVideo() {
+        closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
         clearResumeSession()
         clearTimelineThumbnail()
@@ -1270,15 +1272,30 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     func togglePictureInPicture() {
-        guard let controller = pictureInPictureController, controller.isPictureInPicturePossible else {
+        if floatingPictureInPicture != nil {
+            closeFloatingPictureInPicture()
+            return
+        }
+        guard let layer = renderer?.displayLayer else {
             statusMessage = "Picture in Picture is not available for this video"
             return
         }
-        if controller.isPictureInPictureActive {
-            controller.stopPictureInPicture()
-        } else {
-            controller.startPictureInPicture()
-        }
+        let width = CGFloat(videoTrack?.width ?? 16)
+        let height = CGFloat(videoTrack?.height ?? 9)
+        let floating = FloatingPictureInPictureController(
+            state: self, displayLayer: layer, aspectRatio: width / max(height, 1)
+        )
+        floatingPictureInPicture = floating
+        beginPictureInPictureSubtitlePresentation()
+        isPictureInPictureActive = true
+        floating.show()
+    }
+
+    func closeFloatingPictureInPicture() {
+        guard let floating = floatingPictureInPicture else { return }
+        floating.dismiss()
+        floatingPictureInPicture = nil
+        endPictureInPictureSubtitlePresentation()
     }
 
     fileprivate func beginPictureInPictureSubtitlePresentation() {
@@ -1295,23 +1312,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func configurePictureInPicture() {
-        guard #available(macOS 12.0, *),
-              AVPictureInPictureController.isPictureInPictureSupported(),
-              let displayLayer = renderer?.displayLayer else {
-            isPictureInPictureAvailable = false
-            return
-        }
-        let coordinator = PictureInPictureCoordinator()
-        coordinator.state = self
-        let contentSource = AVPictureInPictureController.ContentSource(
-            sampleBufferDisplayLayer: displayLayer,
-            playbackDelegate: coordinator
-        )
-        let controller = AVPictureInPictureController(contentSource: contentSource)
-        controller.delegate = coordinator
-        pictureInPictureCoordinator = coordinator
-        pictureInPictureController = controller
-        isPictureInPictureAvailable = controller.isPictureInPicturePossible
+        // The floating window shares the existing display layer and synchronizer.
+        isPictureInPictureAvailable = renderer != nil
     }
 
     /// macOS Tahoe añade un host CALayer vacío encima del renderer de muestras
@@ -1495,6 +1497,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
+        closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
         clearTimelineThumbnail()
         resetSubtitleSession()
@@ -1798,6 +1801,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                             self.pendingSeekActivation = nil
                             if activation.shouldResume {
                                 self.startDisplayLoop(resumeAt: activation.target)
+                            } else if let renderer = self.renderer {
+                                // Show the seek destination without starting the playback clock.
+                                self.enqueueForDisplay(
+                                    rend: renderer, pixelBuffer: decodedFrame.pixelBuffer,
+                                    pts: CMTime(seconds: decodedFrame.pts, preferredTimescale: 600),
+                                    duration: CMTime(seconds: 1 / max(self.sourceFrameRate ?? 24, 1),
+                                                     preferredTimescale: 600)
+                                )
                             }
                         }
                     } else if pool.count == 1 && callDisplayLoopOnFirstFrame {
