@@ -87,17 +87,22 @@ private class HDRDisplayNSView: NSView {
     required init?(coder: NSCoder) { super.init(coder: coder); wantsLayer = true; layer = CALayer() }
     override func layout() {
         super.layout()
-        displayLayer?.frame = bounds
+        if let displayLayer, displayLayer.superlayer === layer {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            displayLayer.frame = bounds
+            CATransaction.commit()
+        }
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let l = displayLayer {
+        if let l = displayLayer, l.superlayer === layer {
             l.frame = bounds
         }
     }
 }
 
-private struct HDRDisplayView: NSViewRepresentable {
+struct HDRDisplayView: NSViewRepresentable {
     var displayLayer: AVSampleBufferDisplayLayer?
     var videoGravity: AVLayerVideoGravity
 
@@ -392,7 +397,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     @ViewBuilder
     private var videoContentView: some View {
         if let rift = state as? RiftPlayerState, let dl = rift.displayLayer {
-            HDRDisplayView(displayLayer: dl, videoGravity: presentationMode.videoGravity)
+            HDRDisplayView(displayLayer: rift.isPictureInPictureActive ? nil : dl,
+                           videoGravity: presentationMode.videoGravity)
                 .overlay {
                     if rift.isPictureInPictureActive {
                         pictureInPicturePlaceholder
