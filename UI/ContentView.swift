@@ -60,12 +60,18 @@ private struct PlayerView: NSViewRepresentable {
 private class HDRDisplayNSView: NSView {
     var videoGravity: AVLayerVideoGravity = .resizeAspect {
         didSet {
-            displayLayer?.videoGravity = videoGravity
+            if displayLayer?.superlayer === layer {
+                displayLayer?.videoGravity = videoGravity
+            }
         }
     }
 
     var displayLayer: AVSampleBufferDisplayLayer? {
         didSet {
+            guard oldValue !== displayLayer else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            defer { CATransaction.commit() }
             if let old = oldValue, old.superlayer === self.layer {
                 old.removeFromSuperlayer()
             }
@@ -74,6 +80,7 @@ private class HDRDisplayNSView: NSView {
                 l.videoGravity = videoGravity
                 l.needsDisplayOnBoundsChange = true
                 l.isOpaque = true
+                l.frame = bounds
                 needsLayout = true
             }
         }
