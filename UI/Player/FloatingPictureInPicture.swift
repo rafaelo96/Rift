@@ -7,6 +7,56 @@ private final class FloatingVideoPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Captures video-area drags without intercepting the SwiftUI controls above it.
+private struct FloatingWindowDragSurface: NSViewRepresentable {
+    let revealControls: () -> Void
+
+    func makeNSView(context: Context) -> DragView {
+        DragView(revealControls: revealControls)
+    }
+
+    func updateNSView(_ nsView: DragView, context: Context) {
+        nsView.revealControls = revealControls
+    }
+
+    final class DragView: NSView {
+        var revealControls: () -> Void
+        private var dragStart: NSPoint?
+        private var windowOrigin: NSPoint?
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        init(revealControls: @escaping () -> Void) {
+            self.revealControls = revealControls
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            dragStart = window.convertPoint(toScreen: event.locationInWindow)
+            windowOrigin = window.frame.origin
+            revealControls()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let window, let dragStart, let windowOrigin else { return }
+            let cursor = window.convertPoint(toScreen: event.locationInWindow)
+            window.setFrameOrigin(NSPoint(
+                x: windowOrigin.x + cursor.x - dragStart.x,
+                y: windowOrigin.y + cursor.y - dragStart.y
+            ))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            dragStart = nil
+            windowOrigin = nil
+        }
+    }
+}
+
 /// Moves the existing renderer between windows; no second decoder or frame queue.
 @MainActor
 final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
@@ -109,9 +159,10 @@ private struct FloatingVideoContent: View {
 
     var body: some View {
         ZStack {
-            Color.black.onTapGesture { hovering = true }
+            Color.black
             HDRDisplayView(displayLayer: displayLayer, videoGravity: .resizeAspect)
                 .allowsHitTesting(false)
+            FloatingWindowDragSurface { hovering = true }
             VStack {
                 HStack {
                     control("xmark", label: "Close Picture in Picture") {
