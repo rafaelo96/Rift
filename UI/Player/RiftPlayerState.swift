@@ -234,6 +234,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         didSet { UserDefaults.standard.set(reopenLastVideoOnLaunch, forKey: "rift.reopenLastVideoOnLaunch") }
     }
     private var floatingPictureInPicture: FloatingPictureInPictureController?
+    private var resumePlaybackDialog: ResumePlaybackDialog?
+    private var resumePlaybackRequestID = UUID()
     private var pictureInPictureCoordinator: PictureInPictureCoordinator?
     private var pictureInPictureSourceFrame: CGRect?
     private var pictureInPictureResizeObserver: NSObjectProtocol?
@@ -1204,6 +1206,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: time)
     }
     func closeVideo() {
+        cancelResumePlaybackDialog()
         closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
         clearResumeSession()
@@ -1722,29 +1725,43 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         timelineThumbnail = nil
     }
 
+    private func cancelResumePlaybackDialog() {
+        resumePlaybackRequestID = UUID()
+        let previous = resumePlaybackDialog
+        resumePlaybackDialog = nil
+        previous?.dismiss()
+    }
+
     func loadVideo(_ url: URL) {
+        cancelResumePlaybackDialog()
         // Capture the latest position before reopening the currently playing file.
         persistCurrentSession(force: true)
         let rememberedPosition = recentVideos.first(where: { $0.path == url.path })?.resumePosition ?? 0
-        var startTime = rememberedPosition
         if rememberedPosition >= 5, ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false {
             let savedDuration = recentVideos.first(where: { $0.path == url.path })?.duration
-            switch ResumePlaybackDialog.runModal(
+            let requestID = resumePlaybackRequestID
+            resumePlaybackDialog = ResumePlaybackDialog.present(
                 url: url, position: rememberedPosition, duration: savedDuration,
                 positionText: ResumePlaybackDialog.timeText(rememberedPosition),
                 durationText: savedDuration.flatMap { $0.isFinite && $0 > 0 ? ResumePlaybackDialog.timeText($0) : nil },
                 extractor: timelineThumbnailExtractor,
                 parent: NSApp.mainWindow ?? NSApp.keyWindow
-            ) {
-            case .alertFirstButtonReturn: break
-            case .alertSecondButtonReturn: startTime = 0
-            default: return
+            ) { [weak self] response in
+                guard let self, self.resumePlaybackRequestID == requestID else { return }
+                self.resumePlaybackDialog = nil
+                switch response {
+                case .alertFirstButtonReturn: self.loadVideo(url, restoringAt: rememberedPosition)
+                case .alertSecondButtonReturn: self.loadVideo(url, restoringAt: 0)
+                default: break
+                }
             }
+            return
         }
-        loadVideo(url, restoringAt: startTime)
+        loadVideo(url, restoringAt: rememberedPosition)
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
+        cancelResumePlaybackDialog()
         closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
         clearTimelineThumbnail()

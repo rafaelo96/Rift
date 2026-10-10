@@ -6,9 +6,21 @@ private final class ResumePlaybackPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-/// Presentation only: returns the same responses as the original NSAlert.
+/// Presentation only. Never nests a modal run loop inside a MainActor task.
 @MainActor
-enum ResumePlaybackDialog {
+final class ResumePlaybackDialog: NSObject, NSWindowDelegate {
+    private var panel: NSPanel?
+    private var isFinishing = false
+    private var completed = false
+    private let completion: (NSApplication.ModalResponse) -> Void
+
+    private init(completion: @escaping (NSApplication.ModalResponse) -> Void) {
+        self.completion = completion
+        super.init()
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
     static func timeText(_ seconds: Double) -> String {
         guard seconds.isFinite else { return "—" }
         return Duration.seconds(max(0, seconds).rounded(.down)).formatted(
@@ -16,10 +28,12 @@ enum ResumePlaybackDialog {
         )
     }
 
-    static func runModal(url: URL, position: Double, duration: Double?,
+    static func present(url: URL, position: Double, duration: Double?,
                          positionText: String, durationText: String?,
                          extractor: VideoThumbnailExtractor,
-                         parent: NSWindow?) -> NSApplication.ModalResponse {
+                         parent: NSWindow?,
+                         completion: @escaping (NSApplication.ModalResponse) -> Void) -> ResumePlaybackDialog {
+        let dialog = ResumePlaybackDialog(completion: completion)
         let visible = (parent?.screen ?? NSScreen.main)?.visibleFrame
             ?? CGRect(x: 0, y: 0, width: 1280, height: 800)
         let width = min(480, max(280, visible.width - 40))
@@ -27,7 +41,7 @@ enum ResumePlaybackDialog {
             url: url, position: position, duration: duration,
             positionText: positionText, durationText: durationText,
             extractor: extractor,
-            respond: { NSApp.stopModal(withCode: $0) }
+            respond: { [weak dialog] in dialog?.finish($0) }
         )
         let host = NSHostingView(rootView: content.frame(width: width))
         let height = host.fittingSize.height
@@ -42,6 +56,12 @@ enum ResumePlaybackDialog {
         panel.hasShadow = true
         panel.level = .modalPanel
         panel.contentView = host
+        panel.delegate = dialog
+        dialog.panel = panel
+        if let parent {
+            NotificationCenter.default.addObserver(dialog, selector: #selector(parentClosed),
+                name: NSWindow.willCloseNotification, object: parent)
+        }
         let center = parent.flatMap { $0.isVisible && !$0.isMiniaturized ? $0.frame : nil } ?? visible
         panel.setFrameOrigin(CGPoint(
             x: min(max(center.midX - width / 2, visible.minX), visible.maxX - width),
@@ -49,18 +69,52 @@ enum ResumePlaybackDialog {
         ))
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         panel.alphaValue = reduceMotion ? 1 : 0
-        panel.makeKeyAndOrderFront(nil)
+        if let parent, parent.isVisible, !parent.isMiniaturized, parent.attachedSheet == nil {
+            // AppKit handles modality without blocking Swift concurrency or UI updates.
+            parent.beginSheet(panel) { [dialog] response in
+                dialog.complete(response)
+            }
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+        }
         if !reduceMotion {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.14
                 panel.animator().alphaValue = 1
             }
         }
-        let response = NSApp.runModal(for: panel)
-        panel.orderOut(nil)
-        panel.contentView = nil
-        panel.close()
-        return response
+        return dialog
+    }
+
+    func dismiss() { finish(.alertThirdButtonReturn) }
+
+    @objc private func parentClosed(_ notification: Notification) { dismiss() }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        dismiss()
+        return false
+    }
+
+    private func finish(_ response: NSApplication.ModalResponse) {
+        guard !isFinishing, !completed, let panel else { return }
+        isFinishing = true
+        if let parent = panel.sheetParent {
+            parent.endSheet(panel, returnCode: response)
+        } else {
+            complete(response)
+        }
+    }
+
+    private func complete(_ response: NSApplication.ModalResponse) {
+        guard !completed else { return }
+        completed = true
+        NotificationCenter.default.removeObserver(self)
+        panel?.delegate = nil
+        panel?.orderOut(nil)
+        panel?.contentView = nil
+        panel?.close()
+        panel = nil
+        completion(response)
     }
 }
 
