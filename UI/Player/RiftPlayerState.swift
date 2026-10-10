@@ -216,10 +216,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private static let playlistKey = "rift.playback.playlist.v1"
     private static let markersKey = "rift.playback.markers.v1"
     private static let externalSubtitlesKey = "rift.playback.external-subtitles.v1"
+    private static let trackPreferencesKey = "rift.playback.tracks.v1"
     private static let recentVideoLimit = 10
     private var lastPersistedPlaybackPosition: Double = -1
     private var markersByPath: [String: [PlaybackMarker]] = [:]
     private var externalSubtitlePathByVideoPath: [String: String] = [:]
+    private var trackPreferencesByPath: [String: PlaybackTrackPreferences] = [:]
     private var externalSubtitleURL: URL?
     private var pictureInPictureController: AVPictureInPictureController?
     @Published var automaticPiPOnMinimize = UserDefaults.standard.object(forKey: "automaticPiPOnMinimize") as? Bool ?? true {
@@ -638,6 +640,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         restorePlaylist()
         restoreMarkers()
         restoreExternalSubtitleAssociations()
+        trackPreferencesByPath = decode([String: PlaybackTrackPreferences].self, forKey: Self.trackPreferencesKey) ?? [:]
 
         let env = ProcessInfo.processInfo.environment
         if let requestedSuperResolution = env["RIFT_AUTO_SUPERRES"].flatMap(SuperResolutionPreference.init(rawValue:)) {
@@ -1377,15 +1380,28 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
     func selectAudioTrack(_ streamIndex: Int) {
-        guard streamIndex != selectedAudioTrackIndex else { return }
+        guard streamIndex != selectedAudioTrackIndex,
+              let url = sourceURL, let track = audioTrackInfos[streamIndex] else { return }
         selectedAudioTrackIndex = streamIndex
-        guard let url = sourceURL, let track = audioTrackInfos[streamIndex] else { return }
+        var preferences = trackPreferencesByPath[url.path] ?? PlaybackTrackPreferences()
+        preferences.audioStreamIndex = streamIndex
+        trackPreferencesByPath[url.path] = preferences
+        encode(trackPreferencesByPath, forKey: Self.trackPreferencesKey)
         audioTrack = track
         // Reiniciar el audio con la pista elegida (mismo patrón que seek): el
         // audioRenderer ya está en el synchronizer, solo se relanza el loop.
         startAudioLoop(url: url, trackStreamIndex: track.streamIndex, codecName: track.codecName, startTime: currentTime, extradata: track.codecExtradata, sampleRate: track.sampleRate ?? 0, channels: track.channelCount ?? 0)
     }
+    private func rememberSubtitleSelection(_ selection: PlaybackTrackPreferences.SubtitleSelection) {
+        guard let sourceURL else { return }
+        var preferences = trackPreferencesByPath[sourceURL.path] ?? PlaybackTrackPreferences()
+        preferences.subtitles = selection
+        trackPreferencesByPath[sourceURL.path] = preferences
+        encode(trackPreferencesByPath, forKey: Self.trackPreferencesKey)
+    }
+
     func selectPipelineTrack(_ t: MediaTrack?) {
+        rememberSubtitleSelection(t.map { .embedded($0.index) } ?? .off)
         selectedSubtitleTrack = t
         externalSubtitleURL = nil
         externalSubtitleName = nil
@@ -1405,6 +1421,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         subtitleCues = subtitleCueCache[streamIndex] ?? []
         updateActiveSubtitle(at: currentTime)
         ensureSubtitleCues(url: url, streamIndex: streamIndex) {
+            guard self.selectedSubtitleTrack?.index == streamIndex,
+                  self.externalSubtitleURL == nil else { return }
             self.subtitleCues = self.subtitleCueCache[streamIndex] ?? []
             self.updateActiveSubtitle(at: self.currentTime)
         }
@@ -1433,6 +1451,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         } else if let fallbackTrack = availableTracks.first(where: { $0.kind == .subtitle }) {
             selectPipelineTrack(fallbackTrack)
         } else {
+            rememberSubtitleSelection(.off)
             subtitleCues = []
             currentSubtitleText = nil
         }
@@ -1461,6 +1480,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         selectedSubtitleTrack = nil
         updateActiveSubtitle(at: currentTime)
         if persistAssociation, let sourceURL {
+            rememberSubtitleSelection(.external)
             externalSubtitlePathByVideoPath[sourceURL.path] = url.path
             encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
         }
@@ -1703,8 +1723,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     func loadVideo(_ url: URL) {
+        // Capture the latest position before reopening the currently playing file.
+        persistCurrentSession(force: true)
         let rememberedPosition = recentVideos.first(where: { $0.path == url.path })?.resumePosition ?? 0
-        loadVideo(url, restoringAt: rememberedPosition)
+        var startTime = rememberedPosition
+        if rememberedPosition >= 5, ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false {
+            let alert = NSAlert()
+            alert.messageText = "¿Continuar reproducción?"
+            alert.informativeText = "\(url.lastPathComponent)\nÚltima posición: \(formattedTime(rememberedPosition))"
+            alert.addButton(withTitle: "Continuar")
+            alert.addButton(withTitle: "Empezar de nuevo")
+            alert.addButton(withTitle: "Cancelar")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn: break
+            case .alertSecondButtonReturn: startTime = 0
+            default: return
+            }
+        }
+        loadVideo(url, restoringAt: startTime)
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
@@ -1837,10 +1873,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
         applyVisualAdjustments()
         self.configurePictureInPicture()
-        // Audio: guardar todas las pistas reales y arrancar la primera.
+        // Resolve the saved choice against this file's current stream indices.
+        let trackPreferences = trackPreferencesByPath[url.path] ?? PlaybackTrackPreferences()
         let audioTracksAll = info.tracks.filter { $0.kind == .audio }
         self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
-        if let aTrack = audioTracksAll.first {
+        if let index = trackPreferences.audioIndex(available: audioTracksAll.map(\.streamIndex)),
+           let aTrack = self.audioTrackInfos[index] {
             self.audioTrack = aTrack
             self.selectedAudioTrackIndex = aTrack.streamIndex
             let ar = AVSampleBufferAudioRenderer()
@@ -1875,24 +1913,29 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: label, languageCode: t.streamLanguage)
             }
         }()
-        // Al cargar, la primera pista de subtítulos queda seleccionada
-        // (se muestran por defecto), reflejando el estado en el popover.
-        if let subTrack {
-            self.selectedSubtitleTrack = self.availableTracks.first { $0.kind == .subtitle && $0.index == subTrack.streamIndex }
+        let subtitleIndex = trackPreferences.subtitleIndex(
+            available: self.availableTracks.filter { $0.kind == .subtitle }.map(\.index),
+            defaultIndex: subTrack?.streamIndex
+        )
+        self.selectedSubtitleTrack = self.availableTracks.first {
+            $0.kind == .subtitle && $0.index == subtitleIndex
         }
+        self.subtitleTrack = info.tracks.first { $0.streamIndex == subtitleIndex }
         self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: Self.audioLabel(for: t), language: t.streamLanguage) }
         self.hasVideo = true
         self.statusMessage = "Ready"
         self.conversionProgress = 1.0
         self.persistCurrentSession(force: true)
-        self.restoreExternalSubtitles(for: url)
+        if trackPreferences.shouldRestoreExternalSubtitles {
+            self.restoreExternalSubtitles(for: url)
+        }
         self.startDecodeLoop(minimumVideoPTS: self.currentTime > 0 ? self.currentTime : nil)
-        // Subtítulos: cargar la primera pista en background (paralelo
-        // al video) vía cache, sin bloquear el primer frame.
-        if let subTrack {
-            self.ensureSubtitleCues(url: url, streamIndex: subTrack.streamIndex) {
-                guard self.externalSubtitleURL == nil else { return }
-                self.subtitleCues = self.subtitleCueCache[subTrack.streamIndex] ?? []
+        // Load the resolved embedded track only when external subtitles are absent.
+        if self.externalSubtitleURL == nil, let selectedTrack = self.selectedSubtitleTrack {
+            self.ensureSubtitleCues(url: url, streamIndex: selectedTrack.index) {
+                guard self.externalSubtitleURL == nil,
+                      self.selectedSubtitleTrack?.index == selectedTrack.index else { return }
+                self.subtitleCues = self.subtitleCueCache[selectedTrack.index] ?? []
                 self.updateActiveSubtitle(at: self.currentTime)
             }
         }
