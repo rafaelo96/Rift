@@ -1728,13 +1728,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let rememberedPosition = recentVideos.first(where: { $0.path == url.path })?.resumePosition ?? 0
         var startTime = rememberedPosition
         if rememberedPosition >= 5, ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false {
-            let alert = NSAlert()
-            alert.messageText = "¿Continuar reproducción?"
-            alert.informativeText = "\(url.lastPathComponent)\nÚltima posición: \(formattedTime(rememberedPosition))"
-            alert.addButton(withTitle: "Continuar")
-            alert.addButton(withTitle: "Empezar de nuevo")
-            alert.addButton(withTitle: "Cancelar")
-            switch alert.runModal() {
+            let savedDuration = recentVideos.first(where: { $0.path == url.path })?.duration
+            switch ResumePlaybackDialog.runModal(
+                url: url, position: rememberedPosition, duration: savedDuration,
+                positionText: ResumePlaybackDialog.timeText(rememberedPosition),
+                durationText: savedDuration.flatMap { $0.isFinite && $0 > 0 ? ResumePlaybackDialog.timeText($0) : nil },
+                extractor: timelineThumbnailExtractor,
+                parent: NSApp.mainWindow ?? NSApp.keyWindow
+            ) {
             case .alertFirstButtonReturn: break
             case .alertSecondButtonReturn: startTime = 0
             default: return
