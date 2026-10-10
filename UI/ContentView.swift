@@ -345,6 +345,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             for url in pendingURLs {
                 (state as? RiftPlayerState)?.loadVideo(url)
             }
+            (state as? RiftPlayerState)?.restoreLastSessionIfAvailable()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 interactiveReady = true
             }

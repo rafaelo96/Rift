@@ -109,6 +109,7 @@ private struct PlaybackPreferences: Codable {
     let interpolationMode: String
     let audioSyncOffset: Double?
     let superResolutionMode: String?
+    let playbackRate: Float?
 }
 
 @MainActor
@@ -171,6 +172,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         didSet {
             guard playbackRate != oldValue else { return }
             applyPlaybackRateToSynchronizer()
+            persistPlaybackPreferences()
         }
     }
     @Published var hasVideo = false
@@ -220,6 +222,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var externalSubtitlePathByVideoPath: [String: String] = [:]
     private var externalSubtitleURL: URL?
     private var pictureInPictureController: AVPictureInPictureController?
+    @Published var automaticPiPOnMinimize = UserDefaults.standard.object(forKey: "automaticPiPOnMinimize") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(automaticPiPOnMinimize, forKey: "automaticPiPOnMinimize") }
+    }
+    @Published var automaticPiPOnAppSwitch = UserDefaults.standard.bool(forKey: "automaticPiPOnAppSwitch") {
+        didSet { UserDefaults.standard.set(automaticPiPOnAppSwitch, forKey: "automaticPiPOnAppSwitch") }
+    }
+    @Published var reopenLastVideoOnLaunch = UserDefaults.standard.object(forKey: "rift.reopenLastVideoOnLaunch") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(reopenLastVideoOnLaunch, forKey: "rift.reopenLastVideoOnLaunch") }
+    }
     private var floatingPictureInPicture: FloatingPictureInPictureController?
     private var pictureInPictureCoordinator: PictureInPictureCoordinator?
     private var pictureInPictureSourceFrame: CGRect?
@@ -261,7 +272,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var measuredPlaybackRate: Float = 1
     /// Preferencia del usuario, separada del tier activo. Una degradación
     /// automática a 48/24 no debe convertirse en su nueva configuración.
-    private var requestedInterpolationMode: InterpolationMode = .disabled
+    @Published private(set) var requestedInterpolationMode: InterpolationMode = .disabled
     /// Number of interpolated pairs to skip before the budget gate activates.
     private let interpolationWarmupPairs = 5
 
@@ -730,7 +741,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     func restoreLastSessionIfAvailable() {
-        guard !hasVideo,
+        guard reopenLastVideoOnLaunch, !hasVideo, sourceURL == nil,
               ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false,
               let record = decode(RecentVideo.self, forKey: Self.resumeSessionKey),
               FileManager.default.fileExists(atPath: record.path) else {
@@ -750,6 +761,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             .flatMap(SuperResolutionPreference.init(rawValue:)) ?? .off
         superResolutionMode = restoredSuperResolution == .off ? .off : .strong
         updateVisualEnhancements()
+        if let rate = preferences.playbackRate, [Float(0.5), 1, 1.5, 2].contains(rate) {
+            playbackRate = rate
+        }
     }
 
     private func restoreRecentVideos() {
@@ -774,7 +788,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 volume: volume,
                 interpolationMode: requestedInterpolationMode.rawValue,
                 audioSyncOffset: audioSyncOffset,
-                superResolutionMode: superResolutionMode.rawValue
+                superResolutionMode: superResolutionMode.rawValue,
+                playbackRate: playbackRate
             ),
             forKey: Self.preferencesKey
         )

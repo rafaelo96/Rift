@@ -56,6 +56,10 @@ struct RiftApp: App {
                 }
             }
         }
+        Settings {
+            RiftSettingsView(state: state)
+        }
+
     }
 }
 
