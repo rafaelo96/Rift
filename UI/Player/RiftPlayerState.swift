@@ -240,9 +240,59 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var reopenLastVideoOnLaunch = UserDefaults.standard.object(forKey: "rift.reopenLastVideoOnLaunch") as? Bool ?? true {
         didSet { UserDefaults.standard.set(reopenLastVideoOnLaunch, forKey: "rift.reopenLastVideoOnLaunch") }
     }
+    @Published var openingBehavior = PlaybackOpeningBehavior(rawValue: UserDefaults.standard.string(forKey: "rift.openingBehavior") ?? "ask") ?? .ask {
+        didSet { UserDefaults.standard.set(openingBehavior.rawValue, forKey: "rift.openingBehavior") }
+    }
+    @Published var rememberTrackSelections = UserDefaults.standard.object(forKey: "rift.rememberTrackSelections") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(rememberTrackSelections, forKey: "rift.rememberTrackSelections") }
+    }
+    @Published var subtitlesEnabledByDefault = UserDefaults.standard.object(forKey: "rift.subtitlesEnabledByDefault") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(subtitlesEnabledByDefault, forKey: "rift.subtitlesEnabledByDefault") }
+    }
+    @Published var subtitleFontSize = min(max(UserDefaults.standard.object(forKey: "rift.subtitleFontSize") as? Double ?? 28, 16), 48) {
+        didSet { UserDefaults.standard.set(subtitleFontSize, forKey: "rift.subtitleFontSize") }
+    }
+    @Published var subtitleBottomInset = min(max(UserDefaults.standard.object(forKey: "rift.subtitleBottomInset") as? Double ?? 58, 20), 140) {
+        didSet { UserDefaults.standard.set(subtitleBottomInset, forKey: "rift.subtitleBottomInset") }
+    }
+    @Published var subtitleBackgroundOpacity = min(max(UserDefaults.standard.object(forKey: "rift.subtitleBackgroundOpacity") as? Double ?? 0.72, 0), 1) {
+        didSet { UserDefaults.standard.set(subtitleBackgroundOpacity, forKey: "rift.subtitleBackgroundOpacity") }
+    }
+    @Published var subtitleDelay = min(max(UserDefaults.standard.double(forKey: "rift.subtitleDelay"), -10), 10) {
+        didSet {
+            UserDefaults.standard.set(subtitleDelay, forKey: "rift.subtitleDelay")
+            updateActiveSubtitle(at: currentTime)
+            renderer?.refreshSubtitlePresentation()
+        }
+    }
+    private let mediaBookmarks = LocalMediaBookmarks()
+    private var currentVideoAccess: LocalMediaAccess?
+    private var currentSubtitleAccess: LocalMediaAccess?
+
+    private func resolveMediaAccess(_ requested: URL) -> LocalMediaAccess {
+        let lease = mediaBookmarks.access(requested)
+        if requested.path != lease.url.path {
+            if let record = recentVideos.first(where: { $0.path == requested.path }) {
+                updateRecentVideos(with: RecentVideo(path: lease.url.path, lastOpened: record.lastOpened,
+                    playbackPosition: record.playbackPosition, duration: record.duration))
+                recentVideos.removeAll { $0.path == requested.path }
+                encode(recentVideos, forKey: Self.recentVideosKey)
+            }
+            if let tracks = trackPreferencesByPath[requested.path] {
+                trackPreferencesByPath[lease.url.path] = tracks
+                encode(trackPreferencesByPath, forKey: Self.trackPreferencesKey)
+            }
+            if let subtitles = externalSubtitlePathByVideoPath[requested.path] {
+                externalSubtitlePathByVideoPath[lease.url.path] = subtitles
+                encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
+            }
+        }
+        return lease
+    }
     private var floatingPictureInPicture: FloatingPictureInPictureController?
     private var resumePlaybackDialog: ResumePlaybackDialog?
     private var resumePlaybackRequestID = UUID()
+    private var videoOpenRequestID = UUID()
     private var pictureInPictureCoordinator: PictureInPictureCoordinator?
     private var pictureInPictureSourceFrame: CGRect?
     private var pictureInPictureResizeObserver: NSObjectProtocol?
@@ -755,12 +805,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func restoreLastSessionIfAvailable() {
         guard reopenLastVideoOnLaunch, !hasVideo, sourceURL == nil,
               ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false,
-              let record = decode(RecentVideo.self, forKey: Self.resumeSessionKey),
-              FileManager.default.fileExists(atPath: record.path) else {
+              let record = decode(RecentVideo.self, forKey: Self.resumeSessionKey) else {
             return
         }
 
-        loadVideo(record.url, restoringAt: record.resumePosition)
+        loadVideo(record.url)
     }
 
     private func restorePlaybackPreferences() {
@@ -833,6 +882,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         recentVideos = []
         UserDefaults.standard.removeObject(forKey: Self.recentVideosKey)
     }
+
+    func saveSessionBeforeTermination() { persistCurrentSession(force: true) }
 
     func replacePlaylist(with urls: [URL]) {
         let items = deduplicatedPlaylistItems(from: urls)
@@ -1080,8 +1131,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func subtitleText(at time: Double) -> String? {
-        subtitleCues.first { cue in
-            cue.start <= time && time < cue.end
+        let adjustedTime = time - subtitleDelay
+        return subtitleCues.first { cue in
+            cue.start <= adjustedTime && adjustedTime < cue.end
         }?.text
     }
     func seek(to time: Double) {
@@ -1213,6 +1265,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: time)
     }
     func closeVideo() {
+        videoOpenRequestID = UUID()
         cancelResumePlaybackDialog()
         closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
@@ -1260,6 +1313,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isPictureInPictureAvailable = false
         isPictureInPictureActive = false
         hasVideo = false; isPlaying = false
+        currentVideoAccess = nil
+        currentSubtitleAccess = nil
         controlsHideTimer?.invalidate()
         controlsHideTimer = nil
     }
@@ -1394,7 +1449,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
               let url = sourceURL, let track = audioTrackInfos[streamIndex] else { return }
         selectedAudioTrackIndex = streamIndex
         var preferences = trackPreferencesByPath[url.path] ?? PlaybackTrackPreferences()
-        preferences.audioStreamIndex = streamIndex
+        if rememberTrackSelections { preferences.audioStreamIndex = streamIndex }
         trackPreferencesByPath[url.path] = preferences
         encode(trackPreferencesByPath, forKey: Self.trackPreferencesKey)
         audioTrack = track
@@ -1403,7 +1458,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         startAudioLoop(url: url, trackStreamIndex: track.streamIndex, codecName: track.codecName, startTime: currentTime, extradata: track.codecExtradata, sampleRate: track.sampleRate ?? 0, channels: track.channelCount ?? 0)
     }
     private func rememberSubtitleSelection(_ selection: PlaybackTrackPreferences.SubtitleSelection) {
-        guard let sourceURL else { return }
+        guard rememberTrackSelections, let sourceURL else { return }
         var preferences = trackPreferencesByPath[sourceURL.path] ?? PlaybackTrackPreferences()
         preferences.subtitles = selection
         trackPreferencesByPath[sourceURL.path] = preferences
@@ -1469,16 +1524,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     private func restoreExternalSubtitles(for videoURL: URL) {
         guard let path = externalSubtitlePathByVideoPath[videoURL.path] else { return }
-        let subtitleURL = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: subtitleURL.path) else {
-            externalSubtitlePathByVideoPath.removeValue(forKey: videoURL.path)
-            encode(externalSubtitlePathByVideoPath, forKey: Self.externalSubtitlesKey)
+        let access = mediaBookmarks.access(URL(fileURLWithPath: path))
+        let subtitleURL = access.url
+        guard FileManager.default.isReadableFile(atPath: subtitleURL.path) else {
+            statusMessage = "No se encuentran los subtítulos externos. Vuelve a seleccionarlos."
             return
         }
         loadExternalSubtitles(from: subtitleURL, persistAssociation: false)
     }
 
-    private func loadExternalSubtitles(from url: URL, persistAssociation: Bool) {
+    private func loadExternalSubtitles(from requestedURL: URL, persistAssociation: Bool) {
+        let access = mediaBookmarks.access(requestedURL)
+        currentSubtitleAccess = access
+        let url = access.url
         let cues = Self.readExternalSubtitleCues(url: url)
         guard !cues.isEmpty else {
             statusMessage = "No readable subtitles in \(url.lastPathComponent)"
@@ -1739,12 +1797,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         previous?.dismiss()
     }
 
-    func loadVideo(_ url: URL) {
+    func loadVideo(_ requestedURL: URL) {
+        let access = resolveMediaAccess(requestedURL)
+        let url = access.url
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            statusMessage = "No se puede acceder a \(requestedURL.lastPathComponent). Vuelve a seleccionarlo con Abrir video…"
+            return
+        }
+        videoOpenRequestID = UUID()
         cancelResumePlaybackDialog()
         // Capture the latest position before reopening the currently playing file.
         persistCurrentSession(force: true)
         let rememberedPosition = recentVideos.first(where: { $0.path == url.path })?.resumePosition ?? 0
-        if rememberedPosition >= 5, ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false {
+        if openingBehavior == .ask, rememberedPosition >= 5, ProcessInfo.processInfo.environment["RIFT_AUTO_OPEN"]?.isEmpty != false {
             let savedDuration = recentVideos.first(where: { $0.path == url.path })?.duration
             let requestID = resumePlaybackRequestID
             resumePlaybackDialog = ResumePlaybackDialog.present(
@@ -1753,7 +1818,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 durationText: savedDuration.flatMap { $0.isFinite && $0 > 0 ? ResumePlaybackDialog.timeText($0) : nil },
                 extractor: timelineThumbnailExtractor,
                 parent: NSApp.mainWindow ?? NSApp.keyWindow
-            ) { [weak self] response in
+            ) { [weak self, access] response in
+                defer { withExtendedLifetime(access) {} }
                 guard let self, self.resumePlaybackRequestID == requestID else { return }
                 self.resumePlaybackDialog = nil
                 switch response {
@@ -1764,10 +1830,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             }
             return
         }
-        loadVideo(url, restoringAt: rememberedPosition)
+        loadVideo(url, restoringAt: openingBehavior == .restart ? 0 : rememberedPosition)
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
+        let access = resolveMediaAccess(url)
+        let requestID = UUID()
+        videoOpenRequestID = requestID
+        os_log("OPEN begin %{public}@ id=%{public}@", log: benchLog, type: .info, url.lastPathComponent, requestID.uuidString)
         cancelResumePlaybackDialog()
         closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
@@ -1802,7 +1872,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if isInterpolating { compensator = nil } else { compensator?.resetTemporalState() }
         // Limpiar log de diagnóstico audio por corrida (no append).
         try? FileManager.default.removeItem(atPath: "/tmp/rift_audio.log")
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .userInitiated) { [weak self, access] in
+            defer { withExtendedLifetime(access) {} }
             let d = FFmpegDemuxer()
             do {
                 let info = try d.open(url: url)
@@ -1811,7 +1882,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try d.seek(to: startTime)
                 }
                 guard let v = info.tracks.first(where: { $0.kind == .video }) else {
-                    await MainActor.run { self?.statusMessage = "No video track" }
+                    d.close()
+                    await MainActor.run {
+                        guard let self, self.videoOpenRequestID == requestID else { return }
+                        self.statusMessage = "No video track"
+                    }
                     return
                 }
                 let dec = VTDecoder()
@@ -1837,13 +1912,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         info: info,
                         subTrack: subTrack,
                         url: url,
-                        startTime: startTime
+                        startTime: startTime, requestID: requestID, access: access
                     )
                 }
             } catch {
                 await MainActor.run {
-                    self?.statusMessage = "Open failed: \(error)"
-                    self?.conversionProgress = 0
+                    guard let self, self.videoOpenRequestID == requestID else { return }
+                    self.statusMessage = "Open failed: \(error.localizedDescription)"
+                    self.conversionProgress = 0
                 }
             }
         }
@@ -1856,11 +1932,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// (wait no maneja cancelación) y los frames del pool viejo jamás devolvían
     /// su permit, dejando al decode nuevo sin cupo y al pool sin llenarse.
     @MainActor
-    private func installNewPipeline(demuxer d: FFmpegDemuxer, decoder dec: VTDecoder, videoTrack v: TrackInfo, info: ContainerInfo, subTrack: TrackInfo?, url: URL, startTime: Double) async {
+    private func installNewPipeline(demuxer d: FFmpegDemuxer, decoder dec: VTDecoder, videoTrack v: TrackInfo, info: ContainerInfo, subTrack: TrackInfo?, url: URL, startTime: Double, requestID: UUID, access: LocalMediaAccess) async {
+        guard videoOpenRequestID == requestID else {
+            os_log("OPEN discard obsolete id=%{public}@", log: benchLog, type: .info, requestID.uuidString)
+            dec.close(); d.close(); return
+        }
         self.decodeTask?.cancel()
         await self.coordinator.reset()
+        guard videoOpenRequestID == requestID else { dec.close(); d.close(); return }
         self.framePool?.flush()
         self.decodeTask = nil
+        os_log("OPEN install %{public}@ id=%{public}@", log: benchLog, type: .info, url.lastPathComponent, requestID.uuidString)
+        currentVideoAccess = access
+        currentSubtitleAccess = nil
         self.demuxer = d
         self.decoder = dec
         self.videoTrack = v
@@ -1899,7 +1983,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         applyVisualAdjustments()
         self.configurePictureInPicture()
         // Resolve the saved choice against this file's current stream indices.
-        let trackPreferences = trackPreferencesByPath[url.path] ?? PlaybackTrackPreferences()
+        let trackPreferences = rememberTrackSelections
+            ? trackPreferencesByPath[url.path] ?? PlaybackTrackPreferences()
+            : PlaybackTrackPreferences()
         let audioTracksAll = info.tracks.filter { $0.kind == .audio }
         self.audioTrackInfos = Dictionary(uniqueKeysWithValues: audioTracksAll.map { ($0.streamIndex, $0) })
         if let index = trackPreferences.audioIndex(available: audioTracksAll.map(\.streamIndex)),
@@ -1940,7 +2026,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }()
         let subtitleIndex = trackPreferences.subtitleIndex(
             available: self.availableTracks.filter { $0.kind == .subtitle }.map(\.index),
-            defaultIndex: subTrack?.streamIndex
+            defaultIndex: subtitlesEnabledByDefault ? subTrack?.streamIndex : nil
         )
         self.selectedSubtitleTrack = self.availableTracks.first {
             $0.kind == .subtitle && $0.index == subtitleIndex
@@ -1951,7 +2037,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.statusMessage = "Ready"
         self.conversionProgress = 1.0
         self.persistCurrentSession(force: true)
-        if trackPreferences.shouldRestoreExternalSubtitles {
+        if rememberTrackSelections && trackPreferences.shouldRestoreExternalSubtitles {
             self.restoreExternalSubtitles(for: url)
         }
         self.startDecodeLoop(minimumVideoPTS: self.currentTime > 0 ? self.currentTime : nil)

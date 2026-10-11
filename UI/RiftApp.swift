@@ -14,7 +14,7 @@ struct RiftApp: App {
     @StateObject private var state = RiftPlayerState()
 
     var body: some Scene {
-        WindowGroup("Rift") {
+        Window("Rift", id: "player") {
             ContentView<RiftPlayerState>(state: state)
                 .frame(minWidth: 780, minHeight: 480)
                 .onAppear {
@@ -66,7 +66,8 @@ struct RiftApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var pendingOpenURLs: [URL] = []
-    private static var fallbackWindow: NSWindow?
+    private static var playerAcceptsOpenURLs = false
+    static weak var playerState: RiftPlayerState?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let lang = UserDefaults.standard.stringArray(forKey: "AppleLanguages")?.first,
@@ -76,12 +77,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         Self.bringPlayerWindowToFront()
-        Self.createFallbackWindowIfNeeded()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         Self.enqueueOpenURLs(urls)
         Self.bringPlayerWindowToFront()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        Self.playerState?.saveSessionBeforeTermination()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -90,13 +94,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     static func takePendingOpenURLs() -> [URL] {
+        playerAcceptsOpenURLs = true
         defer { pendingOpenURLs.removeAll() }
         return pendingOpenURLs
     }
 
     @MainActor
     private static func enqueueOpenURLs(_ urls: [URL]) {
-        pendingOpenURLs.append(contentsOf: urls)
+        guard playerAcceptsOpenURLs else {
+            pendingOpenURLs.append(contentsOf: urls)
+            return
+        }
         NotificationCenter.default.post(name: .riftOpenURLs, object: nil, userInfo: ["urls": urls])
     }
 
@@ -124,8 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            if let window = NSApp.windows.first {
+            if let window = playerState?.pictureInPicturePlayerWindow
+                ?? NSApp.windows.first(where: { $0.title == "Rift" && !($0 is NSPanel) }) {
                 configureTranslucentAppearance(for: window)
+                if window.isMiniaturized { window.deminiaturize(nil) }
                 window.makeKeyAndOrderFront(nil)
             }
             NSApp.activate(ignoringOtherApps: true)
@@ -139,32 +149,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.hasShadow = true
     }
 
-    @MainActor
-    private static func createFallbackWindowIfNeeded() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            guard NSApp.windows.isEmpty, fallbackWindow == nil else { return }
-
-            if let existingWindow = NSApp.windows.first(where: { $0.contentViewController?.view is RiftPreviewView }) {
-                existingWindow.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                return
-            }
-
-            let rootView = RiftPreviewView()
-            let hostingController = NSHostingController(rootView: rootView)
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1120, height: 680),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = NSLocalizedString("Rift", comment: "")
-            configureTranslucentAppearance(for: window)
-            window.contentViewController = hostingController
-            window.center()
-            window.makeKeyAndOrderFront(nil)
-            fallbackWindow = window
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
 }

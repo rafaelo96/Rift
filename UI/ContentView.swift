@@ -341,11 +341,14 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         .onAppear {
             state.startHideTimer()
             setupKeyboardMonitor()
+            AppDelegate.playerState = state as? RiftPlayerState
             let pendingURLs = AppDelegate.takePendingOpenURLs()
             for url in pendingURLs {
                 (state as? RiftPlayerState)?.loadVideo(url)
             }
-            (state as? RiftPlayerState)?.restoreLastSessionIfAvailable()
+            if pendingURLs.isEmpty {
+                (state as? RiftPlayerState)?.restoreLastSessionIfAvailable()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 interactiveReady = true
             }
@@ -461,6 +464,16 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             .popover(isPresented: $showPlaybackOptions, arrowEdge: .top) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
+                if let message = (state as? RiftPlayerState)?.statusMessage,
+                   message != "Ready" {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 480)
+                        .accessibilityLabel(message)
+                }
+
                 Button {
                     (state as? RiftPlayerState)?.openVideo()
                 } label: {
@@ -906,7 +919,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             Spacer()
 
             Text(text)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.system(size: (state as? RiftPlayerState)?.subtitleFontSize ?? 28, weight: .semibold))
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
                 .foregroundStyle(.white)
@@ -915,11 +928,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .padding(.vertical, 9)
                 .background {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.black.opacity(0.72))
+                        .fill(.black.opacity((state as? RiftPlayerState)?.subtitleBackgroundOpacity ?? 0.72))
                 }
                 .frame(maxWidth: 920)
                 .padding(.horizontal, 34)
-                .padding(.bottom, state.areControlsVisible ? 154 : 58)
+                .padding(.bottom, max((state as? RiftPlayerState)?.subtitleBottomInset ?? 58, state.areControlsVisible ? 154 : 0))
         }
         .allowsHitTesting(false)
         .animation(controlVisibilityAnimation, value: state.areControlsVisible)

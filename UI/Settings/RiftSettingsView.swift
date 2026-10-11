@@ -9,19 +9,27 @@ struct RiftSettingsView: View {
         TabView {
             playback
                 .tabItem { Label("Reproducción", systemImage: "play.circle") }
+            subtitles
+                .tabItem { Label("Subtítulos", systemImage: "captions.bubble") }
             framePlus
                 .tabItem { Label("Frame+", systemImage: "sparkles.tv") }
             pictureInPicture
                 .tabItem { Label("PiP", systemImage: "pip") }
         }
         .padding(20)
-        .frame(width: 540, height: 390)
+        .frame(width: 580, height: 490)
     }
 
     private var playback: some View {
         Form {
             Section {
                 Toggle("Reabrir el último video al iniciar", isOn: $state.reopenLastVideoOnLaunch)
+                Picker("Al abrir un video conocido", selection: $state.openingBehavior) {
+                    Text("Preguntar").tag(PlaybackOpeningBehavior.ask)
+                    Text("Continuar automáticamente").tag(PlaybackOpeningBehavior.resume)
+                    Text("Empezar desde el principio").tag(PlaybackOpeningBehavior.restart)
+                }
+                Toggle("Recordar audio y subtítulos por archivo", isOn: $state.rememberTrackSelections)
                 Picker("Velocidad", selection: $state.playbackRate) {
                     Text("0,5×").tag(Float(0.5))
                     Text("1× (normal)").tag(Float(1))
@@ -48,9 +56,50 @@ struct RiftSettingsView: View {
             }
             Button("Restablecer reproducción") {
                 state.reopenLastVideoOnLaunch = true
+                state.openingBehavior = .ask
+                state.rememberTrackSelections = true
                 state.playbackRate = 1
                 state.setVolume(0.68)
                 state.setAudioSyncOffset(0)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var subtitles: some View {
+        Form {
+            Section {
+                Toggle("Activar subtítulos al abrir un video nuevo", isOn: $state.subtitlesEnabledByDefault)
+                Slider(value: $state.subtitleFontSize, in: 16...48, step: 1) {
+                    Text("Tamaño: \(Int(state.subtitleFontSize)) pt")
+                }
+                Slider(value: $state.subtitleBottomInset, in: 20...140, step: 1) {
+                    Text("Distancia desde abajo: \(Int(state.subtitleBottomInset)) pt")
+                }
+                Slider(value: $state.subtitleBackgroundOpacity, in: 0...1, step: 0.05) {
+                    Text("Fondo: \(Int(state.subtitleBackgroundOpacity * 100)) %")
+                }
+            } footer: {
+                Text("La apariencia se aplica al reproductor y a pantalla completa. Los controles visibles reservan espacio para no cubrir los subtítulos. Las elecciones guardadas por archivo tienen prioridad sobre la activación predeterminada.")
+            }
+            Section {
+                HStack {
+                    Text("Desfase")
+                    TextField("Segundos", value: Binding(get: { state.subtitleDelay }, set: { value in
+                        if value.isFinite { state.subtitleDelay = min(max(value, -10), 10) }
+                    }), format: .number.precision(.fractionLength(2)))
+                        .frame(width: 75)
+                    Stepper("s", value: $state.subtitleDelay, in: -10...10, step: 0.1)
+                }
+            } footer: {
+                Text("Un valor positivo retrasa los subtítulos. Se aplica también en PiP.")
+            }
+            Button("Restablecer subtítulos") {
+                state.subtitlesEnabledByDefault = true
+                state.subtitleFontSize = 28
+                state.subtitleBottomInset = 58
+                state.subtitleBackgroundOpacity = 0.72
+                state.subtitleDelay = 0
             }
         }
         .formStyle(.grouped)
