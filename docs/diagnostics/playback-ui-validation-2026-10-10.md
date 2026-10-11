@@ -43,9 +43,31 @@ The original intermittent black-screen incident cannot be uniquely attributed
 from the available evidence. The two demonstrated UI causes were corrected;
 this is not proof that every black-screen cause is eliminated.
 
-Full end-to-end track restoration after process restart and repeated real PiP
-return/close cycles still need a stable GUI test session. Harness results should
-not be represented as completion of those manual checks.
+## Follow-up GUI validation — 2026-10-11
+
+- Selected English audio and English embedded subtitles using the real menus,
+  quit Rift normally (the process exited), then launched the installed app.
+  The resume sheet offered 26:54; Continue resumed at 26:54 with moving image.
+  English subtitles were visible. After another opening, the Audio menu showed
+  English checked, and the Subtitles menu showed English checked. Preferences
+  on disk also contained audio stream 2 and embedded subtitle stream 4.
+- Restored the original Spanish audio and Spanish subtitles through the menus;
+  subsequent screenshots displayed Spanish cues.
+- Actual minimization activated automatic PiP (PiP placeholder and exit icon in
+  the main player). Raising the main window restored moving image and subtitles.
+- Manual PiP: observed real video in the floating panel at 31:08; clicked its
+  Restore button; the main window returned at 31:13 with Pause available and
+  moving video. Opened PiP again and clicked its Close button; the main window
+  returned at 31:28 with Play available (paused). Left playback paused.
+- Native menu automation was recovered by invoking Cancel on the root menu;
+  nested Cancel actions could be ambiguous. Rebinding after a sheet closes and
+  coordinate clicks on controls resolved other stale-element failures.
+
+The automation tool cannot select the non-key automatic panel while the source
+window is minimized. The exact Restore/Close button paths in that combined
+state remain verified by the native controller harness, not by an end-to-end
+GUI click. Manual panel button paths and automatic activation/restoration were
+verified separately above. No new production code was needed for these checks.
 
 Bookmark access is verified in the local build, not an App Store sandbox build.
 Subtitle appearance preferences affect the main/fullscreen overlay; PiP uses
