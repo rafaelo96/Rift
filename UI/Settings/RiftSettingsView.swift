@@ -106,13 +106,22 @@ struct RiftSettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             Section {
-                HStack {
-                    Text("Desfase")
-                    TextField("Segundos", value: Binding(get: { state.subtitleDelay }, set: { value in
-                        if value.isFinite { state.subtitleDelay = min(max(value, -10), 10) }
-                    }), format: .number.precision(.fractionLength(2)))
-                        .frame(width: 75)
-                    Stepper("s", value: $state.subtitleDelay, in: -10...10, step: 0.1)
+                LabeledContent("Desfase") {
+                    HStack(spacing: 8) {
+                        TextField("Desfase en segundos", value: Binding(get: { state.subtitleDelay }, set: { value in
+                            if value.isFinite { state.subtitleDelay = min(max(value, -10), 10) }
+                        }), format: .number.precision(.fractionLength(2)))
+                            .labelsHidden()
+                            .monospacedDigit()
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 85)
+                        Text("s")
+                            .fixedSize()
+                        Stepper("Ajustar desfase", value: $state.subtitleDelay, in: -10...10, step: 0.1)
+                            .labelsHidden()
+                            .fixedSize()
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
             } footer: {
                 Text("Un valor positivo retrasa los subtítulos. Se aplica también en PiP.")
