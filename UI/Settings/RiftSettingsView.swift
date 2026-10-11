@@ -76,11 +76,34 @@ struct RiftSettingsView: View {
                 Slider(value: $state.subtitleBottomInset, in: 20...140, step: 1) {
                     Text("Distancia desde abajo: \(Int(state.subtitleBottomInset)) pt")
                 }
+                ColorPicker("Color del texto", selection: Binding(
+                    get: { SubtitleColors.color(state.subtitleTextColorHex) },
+                    set: { state.subtitleTextColorHex = SubtitleColors.hex($0) }), supportsOpacity: false)
+                Picker("Fondo", selection: $state.subtitleBackgroundStyle) {
+                    Text("Liquid Glass").tag(SubtitleBackgroundStyle.liquidGlass)
+                    Text("Color").tag(SubtitleBackgroundStyle.color)
+                }
+                if state.subtitleBackgroundStyle == .color {
+                    ColorPicker("Color del fondo", selection: Binding(
+                        get: { SubtitleColors.color(state.subtitleBackgroundColorHex) },
+                        set: { state.subtitleBackgroundColorHex = SubtitleColors.hex($0) }), supportsOpacity: false)
+                }
                 Slider(value: $state.subtitleBackgroundOpacity, in: 0...1, step: 0.05) {
-                    Text("Fondo: \(Int(state.subtitleBackgroundOpacity * 100)) %")
+                    Text("Opacidad del fondo: \(Int(state.subtitleBackgroundOpacity * 100)) %")
                 }
             } footer: {
-                Text("La apariencia se aplica al reproductor y a pantalla completa. Los controles visibles reservan espacio para no cubrir los subtítulos. Las elecciones guardadas por archivo tienen prioridad sobre la activación predeterminada.")
+                Text("La apariencia se aplica al reproductor, a pantalla completa y a PiP. Los controles visibles reservan espacio para no cubrir los subtítulos. Las elecciones guardadas por archivo tienen prioridad sobre la activación predeterminada.")
+            }
+            Section("Vista previa") {
+                SubtitleCaption(text: "Así se verán tus subtítulos", fontSize: state.subtitleFontSize,
+                    textColor: SubtitleColors.color(state.subtitleTextColorHex),
+                    backgroundStyle: state.subtitleBackgroundStyle,
+                    backgroundColor: SubtitleColors.color(state.subtitleBackgroundColorHex),
+                    backgroundOpacity: state.subtitleBackgroundOpacity)
+                    .frame(maxWidth: .infinity)
+                    .padding(12)
+                    .background(LinearGradient(colors: [.indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             Section {
                 HStack {
@@ -96,6 +119,9 @@ struct RiftSettingsView: View {
             }
             Button("Restablecer subtítulos") {
                 state.subtitlesEnabledByDefault = true
+                state.subtitleBackgroundStyle = .liquidGlass
+                state.subtitleTextColorHex = "FFFFFF"
+                state.subtitleBackgroundColorHex = "000000"
                 state.subtitleFontSize = 28
                 state.subtitleBottomInset = 58
                 state.subtitleBackgroundOpacity = 0.72

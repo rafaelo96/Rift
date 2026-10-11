@@ -918,18 +918,12 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         VStack {
             Spacer()
 
-            Text(text)
-                .font(.system(size: (state as? RiftPlayerState)?.subtitleFontSize ?? 28, weight: .semibold))
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .foregroundStyle(.white)
-                .shadow(color: .black, radius: 3, x: 0, y: 1)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.black.opacity((state as? RiftPlayerState)?.subtitleBackgroundOpacity ?? 0.72))
-                }
+            SubtitleCaption(text: text,
+                fontSize: (state as? RiftPlayerState)?.subtitleFontSize ?? 28,
+                textColor: SubtitleColors.color((state as? RiftPlayerState)?.subtitleTextColorHex ?? "FFFFFF"),
+                backgroundStyle: (state as? RiftPlayerState)?.subtitleBackgroundStyle ?? .liquidGlass,
+                backgroundColor: SubtitleColors.color((state as? RiftPlayerState)?.subtitleBackgroundColorHex ?? "000000"),
+                backgroundOpacity: (state as? RiftPlayerState)?.subtitleBackgroundOpacity ?? 0.72)
                 .frame(maxWidth: 920)
                 .padding(.horizontal, 34)
                 .padding(.bottom, max((state as? RiftPlayerState)?.subtitleBottomInset ?? 58, state.areControlsVisible ? 154 : 0))

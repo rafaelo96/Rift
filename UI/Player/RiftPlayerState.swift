@@ -255,6 +255,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var subtitleBottomInset = min(max(UserDefaults.standard.object(forKey: "rift.subtitleBottomInset") as? Double ?? 58, 20), 140) {
         didSet { UserDefaults.standard.set(subtitleBottomInset, forKey: "rift.subtitleBottomInset") }
     }
+    @Published var subtitleBackgroundStyle = SubtitleBackgroundStyle(rawValue: UserDefaults.standard.string(forKey: "rift.subtitleBackgroundStyle") ?? "liquidGlass") ?? .liquidGlass {
+        didSet { UserDefaults.standard.set(subtitleBackgroundStyle.rawValue, forKey: "rift.subtitleBackgroundStyle") }
+    }
+    @Published var subtitleTextColorHex = UserDefaults.standard.string(forKey: "rift.subtitleTextColor") ?? "FFFFFF" {
+        didSet { UserDefaults.standard.set(subtitleTextColorHex, forKey: "rift.subtitleTextColor") }
+    }
+    @Published var subtitleBackgroundColorHex = UserDefaults.standard.string(forKey: "rift.subtitleBackgroundColor") ?? "000000" {
+        didSet { UserDefaults.standard.set(subtitleBackgroundColorHex, forKey: "rift.subtitleBackgroundColor") }
+    }
     @Published var subtitleBackgroundOpacity = min(max(UserDefaults.standard.object(forKey: "rift.subtitleBackgroundOpacity") as? Double ?? 0.72, 0), 1) {
         didSet { UserDefaults.standard.set(subtitleBackgroundOpacity, forKey: "rift.subtitleBackgroundOpacity") }
     }
@@ -1569,7 +1578,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             state: self, displayLayer: layer, aspectRatio: width / max(height, 1)
         )
         floatingPictureInPicture = floating
-        beginPictureInPictureSubtitlePresentation()
+        beginPictureInPictureSubtitlePresentation(composited: false)
         isPictureInPictureActive = true
         floating.show()
     }
@@ -1581,9 +1590,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         endPictureInPictureSubtitlePresentation()
     }
 
-    fileprivate func beginPictureInPictureSubtitlePresentation() {
-        renderer?.pictureInPictureSubtitle = { [weak self] time in
-            self?.subtitleText(at: time)
+    fileprivate func beginPictureInPictureSubtitlePresentation(composited: Bool = true) {
+        if composited {
+            renderer?.pictureInPictureSubtitle = { [weak self] time in self?.subtitleText(at: time) }
+        } else {
+            // Our floating window presents native SwiftUI captions above the video.
+            renderer?.pictureInPictureSubtitle = nil
         }
         renderer?.refreshSubtitlePresentation()
     }

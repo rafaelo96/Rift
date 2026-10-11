@@ -225,6 +225,24 @@ private struct FloatingVideoContent: View {
             HDRDisplayView(displayLayer: displayLayer, videoGravity: .resizeAspect)
                 .allowsHitTesting(false)
             FloatingWindowDragSurface { hovering = true }
+            if let text = state.currentSubtitleText, !text.isEmpty {
+                GeometryReader { geometry in
+                    VStack {
+                        Spacer(minLength: 0)
+                        SubtitleCaption(text: text,
+                            fontSize: max(12, state.subtitleFontSize * min(geometry.size.width / 780, 1)),
+                            textColor: SubtitleColors.color(state.subtitleTextColorHex),
+                            backgroundStyle: state.subtitleBackgroundStyle,
+                            backgroundColor: SubtitleColors.color(state.subtitleBackgroundColorHex),
+                            backgroundOpacity: state.subtitleBackgroundOpacity)
+                            .lineLimit(3)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, (hovering || scrubbing || timelineFocused || !state.isPlaying) ? 110 : max(12, state.subtitleBottomInset * geometry.size.height / 480))
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                .allowsHitTesting(false)
+            }
             VStack {
                 HStack {
                     control("xmark", label: "Close Picture in Picture") {
