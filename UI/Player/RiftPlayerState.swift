@@ -163,9 +163,9 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
 
 @MainActor
 final class RiftPlayerState: PlayerStateProviding, ObservableObject {
-    @Published var isPlaying = false
-    @Published var currentTime: Double = 0
-    @Published var duration: Double = 0
+    @Published var isPlaying = false { didSet { updatePlaybackSleepPrevention() } }
+    @Published var currentTime: Double = 0 { didSet { updatePlaybackSleepPrevention() } }
+    @Published var duration: Double = 0 { didSet { updatePlaybackSleepPrevention() } }
     @Published var volume: Double = 0.68
     @Published private(set) var audioSyncOffset: Double = 0
     @Published var playbackRate: Float = 1.0 {
@@ -175,8 +175,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             persistPlaybackPreferences()
         }
     }
-    @Published var hasVideo = false
+    @Published var hasVideo = false { didSet { updatePlaybackSleepPrevention() } }
     @Published var areControlsVisible = true
+    private let playbackSleepPrevention = PlaybackSleepPrevention()
+
+    private func updatePlaybackSleepPrevention() {
+        playbackSleepPrevention.update(hasVideo: hasVideo, isPlaying: isPlaying,
+                                       position: currentTime, duration: duration)
+    }
+
     private var controlsHideTimer: Timer?
     private var isPointerOverControls = false
     private let controlsHideDelay: TimeInterval = 2.0
