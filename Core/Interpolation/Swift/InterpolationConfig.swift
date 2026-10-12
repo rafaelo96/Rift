@@ -20,13 +20,12 @@ public struct InterpolationConfig: Sendable {
     /// 0 desactiva el pase. Ver `mvTemporalEMA` y `MotionSearchEngine`.
     public let temporalGatePx: UInt32
     /// La validación bidireccional evita deformaciones en oclusiones, pero puede
-    /// descartar un par completo y repetir los frames fuente. Los perfiles de
-    /// fluidez la omiten: conservan el guard de campos de movimiento claramente
-    /// rotos y priorizan que el movimiento siga siendo temporalmente continuo.
+    /// descartar un par completo y repetir los frames fuente. Todos los perfiles
+    /// de producción la conservan: un objetivo de fps no justifica presentar
+    /// frames cuyo movimiento no supera esta comprobación de seguridad.
     public let usesBidirectionalSafetyCheck: Bool
     /// El guard de campos catastróficos evita warps extremos. El perfil por
-    /// defecto repite el frame fuente; los perfiles fluidos lo combinan con una
-    /// mezcla temporal sin vectores para no reducir la cadencia.
+    /// defecto y los perfiles fluidos repiten el frame fuente al rechazar un par.
     public let usesCatastrophicSafetyCheck: Bool
     /// Cuando el guard de campo catastrófico detecta movimiento no fiable,
     /// atenúa sus vectores en vez de repetir un frame fuente. Solo corresponde
@@ -62,7 +61,7 @@ public struct InterpolationConfig: Sendable {
 
     public static let `default` = InterpolationConfig()
     public static let fluid = InterpolationConfig(
-        usesBidirectionalSafetyCheck: false,
+        usesBidirectionalSafetyCheck: true,
         usesCatastrophicSafetyCheck: true,
         usesAttenuatedCatastrophicSafetyBlend: false,
         usesUnmatchableEffectSafetyCheck: false
@@ -74,7 +73,7 @@ public struct InterpolationConfig: Sendable {
     public static let fluidHighQuality = InterpolationConfig(
         workWidth: 1536,
         workHeight: 640,
-        usesBidirectionalSafetyCheck: false,
+        usesBidirectionalSafetyCheck: true,
         usesCatastrophicSafetyCheck: true,
         usesAttenuatedCatastrophicSafetyBlend: false,
         usesUnmatchableEffectSafetyCheck: false
@@ -84,7 +83,7 @@ public struct InterpolationConfig: Sendable {
     /// native resolution; selection depends on measured cost, never chip name.
     public static let fluidEconomy = InterpolationConfig(
         workWidth: 768, workHeight: 320,
-        usesBidirectionalSafetyCheck: false,
+        usesBidirectionalSafetyCheck: true,
         usesCatastrophicSafetyCheck: true
     )
 

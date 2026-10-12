@@ -76,3 +76,26 @@ Logs: /tmp/rift-avatar-69-ordered.log y /tmp/rift-avatar-69-source.log.
 La calidad no se certifica por mostrar 59/60 fps. Falta medir presentación real
 y contrastar la política de seguridad existente en esta misma escena. No
 reabrir la investigación de motion blur/bokeh como si fuera un bug nuevo.
+
+## Corrección de seguridad aplicada
+
+A/B en escena 69 s: default rechazó seis de seis pares del contact y devolvió
+fuentes limpias; fluid anterior generaba warps dañados. Se habilita la misma
+comprobación bidireccional existente en fluid, fluidHighQuality y fluidEconomy.
+No se cambian umbrales, shaders ni el fallback. No se introduce mezcla regional.
+
+Verificación: seis PNG del contact fluid corregido coinciden byte a byte con
+el contact default seguro. Pares ordenados por PTS y dos salidas por par.
+100 pares fluid desde 69 s: media total 22.304 ms, p95 23.859 ms.
+100 pares fluid desde 3600 s: media 17.194 ms, p95 24.832 ms.
+12 pares hq desde 69 s: media 29.565 ms, p95 30.589 ms; todos rechazados por
+seguridad (ME>0, warp=0). Equipo Apple M4; no valida M1 ni thermal throttling.
+
+La mitigación evita los warps rechazados en esta escena y sacrifica incremento
+de fluidez en ellos. No significa síntesis sin artefactos en toda la película,
+ni 60 frames visualmente distintos: conservar fuentes no produce movimiento
+intermedio. Falta medir cadencia realmente presentada en reproducción larga.
+La app release se recompiló para prueba; no se certifica resuelto ese síntoma.
+
+Logs: /tmp/rift-avatar-69-fixed.log, /tmp/rift-avatar-3600-fixed.log,
+/tmp/rift-avatar-69-hq-safe.log. Contact: /tmp/rift-avatar-69-fixed/.
