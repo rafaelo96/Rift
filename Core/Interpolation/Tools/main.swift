@@ -1814,6 +1814,8 @@ if tjitOn {
 print("\n--- measuring \(pairCount) pairs @ \(workWidth)x\(workHeight) ---")
 let centeredExperiment = envInt("MV_CENTERED", 0) == 1
 let centeredWeight = UInt32(clamping: envInt("MV_CENTERED_WEIGHT", 0))
+let centeredTemporal = envInt("MV_CENTERED_TEMPORAL", 0) == 1
+var centeredPrevious: [SIMD2<Int32>]?
 if centeredExperiment {
     do { try checkCenteredRefinement() } catch { fatalError("Centered check failed: \(error)") }
 }
@@ -1849,14 +1851,16 @@ for i in 0..<pairCount {
     if centeredExperiment {
         do {
             let original = engine.downloadMV(level: 0)
-            let refined = try engine.experimentalCenteredRefinement(predictorWeight: centeredWeight)
+            if i == tmaResetAt { centeredPrevious = nil }
+            let refined = try engine.experimentalCenteredRefinement(predictorWeight: centeredWeight, previous: centeredTemporal ? centeredPrevious : nil)
+            centeredPrevious = centeredTemporal ? refined.vectors : nil
             precondition(engine.downloadMV(level: 0) == original)
             let before = centeredResidual(cur, ref, vectors: original, width: workWidth, height: workHeight)
             let after = centeredResidual(cur, ref, vectors: refined.vectors, width: workWidth, height: workHeight)
             precondition(after <= before + 0.01, "Centered GPU pass increased its objective")
             print(String(format: "CENTERED pair=%d extra_ms=%.3f residual_before=%.3f residual_after=%.3f", i, refined.milliseconds, before, after))
             if i == 0 {
-                let folder = "/tmp/rift-centered-weight-\(centeredWeight)"
+                let folder = "/tmp/rift-centered-weight-\(centeredWeight)-temporal-\(centeredTemporal)"
                 try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
                 let centered = warpEngine.interpolate(I0: cur, I1: ref, mv: refined.vectors, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5).0
                 let baseline = warpEngine.interpolate(I0: cur, I1: ref, mv: original, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5).0

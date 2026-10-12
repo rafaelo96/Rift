@@ -133,10 +133,11 @@ public final class MotionSearchEngine {
     private var hasTemporalPrev = false
     private var centeredPSO: MTLComputePipelineState?
     private var centeredOutput: MTLBuffer?
+    private var centeredPrevious: MTLBuffer?
 
     /// Probe-only midpoint refinement after runPair. Never replaces production
     /// vectors or temporal history. Resources remain bounded to one L0 field.
-    public func experimentalCenteredRefinement(predictorWeight: UInt32 = 0) throws -> (vectors: [SIMD2<Int32>], milliseconds: Double) {
+    public func experimentalCenteredRefinement(predictorWeight: UInt32 = 0, previous: [SIMD2<Int32>]? = nil) throws -> (vectors: [SIMD2<Int32>], milliseconds: Double) {
         if centeredPSO == nil {
             let library = try device.makeLibrary(source: centeredRefinementMSL, options: nil)
             guard let function = library.makeFunction(name: "centeredRefine") else {
@@ -146,6 +147,14 @@ public final class MotionSearchEngine {
         }
         let grid = grids[0]
         let count = grid.w * grid.h
+        if let previous = previous {
+            guard previous.count == count else { throw EngineError.pipeline("Temporal predictor grid mismatch") }
+            if centeredPrevious == nil {
+                centeredPrevious = device.makeBuffer(length: count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)
+            }
+            guard let buffer = centeredPrevious else { throw EngineError.pipeline("Temporal predictor allocation failed") }
+            previous.withUnsafeBytes { bytes in memcpy(buffer.contents(), bytes.baseAddress!, bytes.count) }
+        }
         if centeredOutput == nil {
             centeredOutput = device.makeBuffer(length: count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)
         }
@@ -161,6 +170,7 @@ public final class MotionSearchEngine {
         encoder.setTexture(refTex[0], index: 1)
         encoder.setBuffer(input, offset: 0, index: 0)
         encoder.setBuffer(output, offset: 0, index: 1)
+        encoder.setBuffer(previous == nil ? input : centeredPrevious, offset: 0, index: 3)
         encoder.setBytes(&uniforms, length: MemoryLayout<SIMD4<UInt32>>.stride, index: 2)
         encoder.dispatchThreads(MTLSize(width: grid.w, height: grid.h, depth: 1),
                                 threadsPerThreadgroup: MTLSize(width: 8, height: 8, depth: 1))

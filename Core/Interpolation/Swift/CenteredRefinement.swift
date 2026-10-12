@@ -33,6 +33,7 @@ kernel void centeredRefine(texture2d<uint, access::read> a [[texture(0)]],
                            device const int2 *input [[buffer(0)]],
                            device int2 *output [[buffer(1)]],
                            constant uint4 &u [[buffer(2)]],
+                           device const int2 *previous [[buffer(3)]],
                            uint2 gid [[thread_position_in_grid]]) {
     if (gid.x>=u.x || gid.y>=u.y) return;
     uint index=gid.y*u.x+gid.x;
@@ -52,6 +53,9 @@ kernel void centeredRefine(texture2d<uint, access::read> a [[texture(0)]],
         if (cost<bestCost) { best=candidate; bestCost=cost; }
     }
     float zeroCost=centeredCost(a,b,origin,u.z,int2(0))+predictorPenalty(int2(0),original,u.z,u.w);
-    output[index]=zeroCost<bestCost ? int2(0) : best;
+    if (zeroCost<bestCost) { best=int2(0); bestCost=zeroCost; }
+    int2 temporal=previous[index];
+    float temporalCost=centeredCost(a,b,origin,u.z,temporal)+predictorPenalty(temporal,original,u.z,u.w);
+    output[index]=temporalCost<bestCost ? temporal : best;
 }
 """

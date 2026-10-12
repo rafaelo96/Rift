@@ -39,6 +39,12 @@ func checkCenteredRefinement() throws {
     precondition(centeredResidual(source, shifted, vectors: constrained.vectors, width: w, height: h) <= originalCost + 0.01)
     let locked = try engine.experimentalCenteredRefinement(predictorWeight: 65535)
     precondition(locked.vectors == before, "Large predictor penalty failed to preserve original vectors")
+    let temporal = try engine.experimentalCenteredRefinement(previous: refined.vectors)
+    precondition(centeredResidual(source, shifted, vectors: temporal.vectors, width: w, height: h) <= originalCost + 0.01)
+    do {
+        _ = try engine.experimentalCenteredRefinement(previous: [])
+        preconditionFailure("Invalid temporal grid accepted")
+    } catch MotionSearchEngine.EngineError.pipeline { }
     let coherent = refined.vectors.enumerated().filter { index, vector in index%8>0 && index%8<7 && vector == SIMD2<Int32>(4,0) }.count
     precondition(coherent >= 24, "Known translation was not recovered")
     _ = engine.runPair(cur: data(source), ref: data(source))
