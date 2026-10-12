@@ -188,7 +188,7 @@ struct ResumePlaybackDialogView: View {
             if reduceTransparency {
                 Color(nsColor: .windowBackgroundColor)
             } else {
-                Rectangle().fill(.regularMaterial)
+                GlassBackground(cornerRadius: 16)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

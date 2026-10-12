@@ -19,19 +19,20 @@ struct GlassBackground: View {
     var cornerRadius: CGFloat = 16
     var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
     var effectOpacity: Double = 0.16
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         ZStack {
             NativeVisualEffectView(material: .underWindowBackground, blendingMode: blendingMode)
-                .opacity(max(effectOpacity, 0.34))
+                .opacity(reduceTransparency ? 1 : min(max(effectOpacity, 0), 1) * 0.6)
 
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(.black.opacity(0.055))
+                .fill(.black.opacity(reduceTransparency ? 0.18 : 0.025))
 
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.white.opacity(0.065), .white.opacity(0.012), .clear],
+                        colors: [.white.opacity(0.04), .white.opacity(0.008), .clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )

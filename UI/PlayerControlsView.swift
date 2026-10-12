@@ -749,7 +749,7 @@ struct TimelineTrack: View {
         }
         .padding(4)
         .background {
-            GlassBackground(cornerRadius: 9, effectOpacity: 0.34)
+            GlassBackground(cornerRadius: 9, effectOpacity: 0.24)
         }
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
     }
