@@ -282,7 +282,7 @@ private struct FloatingVideoContent: View {
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                 }
                 .padding(12)
-                .background(GlassBackground(cornerRadius: 18))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
             }
             .padding(12)
             .foregroundStyle(.white)
@@ -311,7 +311,7 @@ private struct FloatingVideoContent: View {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .semibold))
                 .frame(width: 32, height: 32)
-                .background(GlassBackground(cornerRadius: 16))
+                .background(.ultraThinMaterial, in: Circle())
         }
         .buttonStyle(.plain)
         .help(label)
