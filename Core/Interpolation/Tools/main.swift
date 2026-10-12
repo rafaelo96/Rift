@@ -1864,7 +1864,12 @@ for i in 0..<pairCount {
                 try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
                 let centered = warpEngine.interpolate(I0: cur, I1: ref, mv: refined.vectors, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5).0
                 let baseline = warpEngine.interpolate(I0: cur, I1: ref, mv: original, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5).0
-                for (name, pixels) in [("source", cur), ("baseline", baseline), ("centered", centered)] {
+                let reverse = try MotionSearchEngine(msl: motionShadersMSL, spec: pyramidSpec, lambdaPx: UInt32(lambdaPx), smoothL0: true, gateL0: true)
+                _ = reverse.runPair(cur: frames[i+1], ref: frames[i])
+                let backward = try reverse.experimentalCenteredRefinement(predictorWeight: centeredWeight)
+                let regional = centeredRegionalFallback(source: cur, generated: centered, forward: refined.vectors, backward: backward.vectors, width: workWidth, height: workHeight)
+                print("CENTERED REGIONS: accepted=\(regional.accepted)/\(refined.vectors.count); reverse-pass cost excluded from per-pair timing")
+                for (name, pixels) in [("source", cur), ("baseline", baseline), ("centered", centered), ("regional", regional.pixels)] {
                     precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) }, width: workWidth, height: workHeight, to: "\(folder)/\(name).png"), "Diagnostic PNG write failed")
                 }
             }

@@ -1,6 +1,24 @@
 import Foundation
 import Interpolation
 
+// Probe-only confidence at midpoint coordinates; rejected blocks copy source.
+// This tests occlusion handling, not the known motion-blur synthesis limitation.
+func centeredRegionalFallback(source: [UInt16], generated: [UInt16], forward: [SIMD2<Int32>], backward: [SIMD2<Int32>], width: Int, height: Int, block: Int = 8) -> (pixels: [UInt16], accepted: Int) {
+    let gridW = (width+block-1)/block, gridH = (height+block-1)/block
+    precondition(source.count == width*height && generated.count == source.count)
+    precondition(forward.count == gridW*gridH && backward.count == forward.count)
+    var output = generated, accepted = 0
+    for by in 0..<gridH { for bx in 0..<gridW {
+        let i = by*gridW+bx
+        let dx = Int(forward[i].x)+Int(backward[i].x), dy = Int(forward[i].y)+Int(backward[i].y)
+        if abs(dx) <= 4 && abs(dy) <= 4 { accepted += 1; continue }
+        for y in by*block..<min(height,(by+1)*block) {
+            for x in bx*block..<min(width,(bx+1)*block) { output[y*width+x] = source[y*width+x] }
+        }
+    } }
+    return (output, accepted)
+}
+
 func centeredResidual(_ a: [UInt16], _ b: [UInt16], vectors: [SIMD2<Int32>], width: Int, height: Int, block: Int = 8) -> Double {
     let gridW = (width + block - 1) / block
     func sample(_ image: [UInt16], _ px: Float, _ py: Float) -> Float {
@@ -21,6 +39,12 @@ func centeredResidual(_ a: [UInt16], _ b: [UInt16], vectors: [SIMD2<Int32>], wid
 
 func checkCenteredRefinement() throws {
     let w = 64, h = 48
+    let regionalSource = [UInt16](repeating: 1, count: 64)
+    let regionalGenerated = [UInt16](repeating: 2, count: 64)
+    let accepted = centeredRegionalFallback(source: regionalSource, generated: regionalGenerated, forward: [SIMD2<Int32>(8,0)], backward: [SIMD2<Int32>(-8,0)], width: 8, height: 8)
+    precondition(accepted.accepted == 1 && accepted.pixels == regionalGenerated)
+    let rejected = centeredRegionalFallback(source: regionalSource, generated: regionalGenerated, forward: [SIMD2<Int32>(8,0)], backward: [.zero], width: 8, height: 8)
+    precondition(rejected.accepted == 0 && rejected.pixels == regionalSource)
     let spec = [LevelSpec(width: w, height: h, blockSize: 8, searchHalfPel: 8, halfPelRefine: true, inheritFactor: 1)]
     let engine = try MotionSearchEngine(msl: motionShadersMSL, spec: spec, lambdaPx: 0, smoothL0: false, gateL0: false)
     let source: [UInt16] = (0..<w*h).map { i in UInt16(((i%w)*73+(i/w)*131+((i%w)*(i/w))*17)%1024) }
