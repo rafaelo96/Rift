@@ -57,8 +57,9 @@ static inline float4 sampleBilinearU16(texture2d<uint, access::read> tex, float2
 
 static inline float2 sampleMVBilinear(device const int2 *mv, float2 p, uint gridW, uint gridH, uint bs) {
     // p in pixel coords, mv grid is blockSize-spaced. Bilinear between block centers.
-    float gx = p.x / float(bs);
-    float gy = p.y / float(bs);
+    // Block samples are centered at (bs-1)/2, not at the block's origin.
+    float gx = clamp((p.x + 0.5f) / float(bs) - 0.5f, 0.0f, float(gridW - 1));
+    float gy = clamp((p.y + 0.5f) / float(bs) - 0.5f, 0.0f, float(gridH - 1));
     int x0 = clamp(int(floor(gx)), 0, int(gridW)-1);
     int y0 = clamp(int(floor(gy)), 0, int(gridH)-1);
     int x1 = clamp(x0 + 1, 0, int(gridW)-1);
