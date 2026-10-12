@@ -134,6 +134,51 @@ public final class MotionSearchEngine {
     private var centeredPSO: MTLComputePipelineState?
     private var centeredOutput: MTLBuffer?
     private var centeredPrevious: MTLBuffer?
+    private var fourPSO: MTLComputePipelineState?
+    private var fourTextures: [MTLTexture] = []
+
+    /// Probe-only constant-velocity support from four equally spaced frames.
+    public func experimentalFourFrameRefinement(before: Data, after: Data) throws -> (vectors: [SIMD2<Int32>], milliseconds: Double) {
+        let level=spec[0], grid=grids[0]
+        guard before.count==level.width*level.height*2 && after.count==before.count else { throw EngineError.pipeline("Four-frame geometry mismatch") }
+        if fourPSO == nil {
+            let library=try device.makeLibrary(source: fourFrameRefinementMSL,options: nil)
+            guard let function=library.makeFunction(name: "fourRefine") else { throw EngineError.pipeline("fourRefine missing") }
+            fourPSO=try device.makeComputePipelineState(function: function)
+        }
+        if fourTextures.isEmpty {
+            let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r16Uint,width: level.width,height: level.height,mipmapped: false)
+            descriptor.storageMode = .shared
+            descriptor.usage = [.shaderRead]
+            guard let a=device.makeTexture(descriptor: descriptor),let b=device.makeTexture(descriptor: descriptor) else { throw EngineError.pipeline("Four-frame allocation failed") }
+            fourTextures=[a,b]
+        }
+        // Reuse the same bounded output allocation as the two-frame experiment.
+        if centeredOutput == nil { centeredOutput=device.makeBuffer(length: grid.w*grid.h*MemoryLayout<SIMD2<Int32>>.stride,options: .storageModeShared) }
+        guard let pipeline=fourPSO,let output=centeredOutput,let input=mvBufferTemporalOut ?? mvBufferSmoothed ?? mvBuffer[0],
+              let command=queue.makeCommandBuffer(),let encoder=command.makeComputeCommandEncoder() else { throw EngineError.pipeline("Four-frame command allocation failed") }
+        let start=DispatchTime.now().uptimeNanoseconds
+        _=timeUpload(before,into: fourTextures[0])
+        _=timeUpload(after,into: fourTextures[1])
+        var uniforms=SIMD4<UInt32>(UInt32(grid.w),UInt32(grid.h),UInt32(level.blockSize),0)
+        encoder.setComputePipelineState(pipeline)
+        encoder.setTexture(curTex[0],index: 0)
+        encoder.setTexture(refTex[0],index: 1)
+        encoder.setTexture(fourTextures[0],index: 2)
+        encoder.setTexture(fourTextures[1],index: 3)
+        encoder.setBuffer(input,offset: 0,index: 0)
+        encoder.setBuffer(output,offset: 0,index: 1)
+        encoder.setBuffer(input,offset: 0,index: 3)
+        encoder.setBytes(&uniforms,length: MemoryLayout<SIMD4<UInt32>>.stride,index: 2)
+        encoder.dispatchThreads(MTLSize(width: grid.w,height: grid.h,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+        encoder.endEncoding()
+        command.commit()
+        command.waitUntilCompleted()
+        guard command.status == .completed else { throw EngineError.pipeline(command.error?.localizedDescription ?? "Four-frame GPU failure") }
+        let count=grid.w*grid.h
+        let pointer=output.contents().bindMemory(to: SIMD2<Int32>.self,capacity: count)
+        return (Array(UnsafeBufferPointer(start: pointer,count: count)),elapsedMS(from: start))
+    }
 
     /// Probe-only midpoint refinement after runPair. Never replaces production
     /// vectors or temporal history. Resources remain bounded to one L0 field.

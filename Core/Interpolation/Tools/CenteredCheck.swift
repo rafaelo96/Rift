@@ -1,6 +1,11 @@
 import Foundation
 import Interpolation
 
+func hasConstantFrameSpacing(_ intervals: [Double]) -> Bool {
+    guard let first=intervals.first,first>0 else { return false }
+    return intervals.allSatisfy { $0>0 && abs($0-first)<0.0011 }
+}
+
 // Probe-only confidence at midpoint coordinates; rejected blocks copy source.
 // This tests occlusion handling, not the known motion-blur synthesis limitation.
 func centeredRegionalFallback(source: [UInt16], generated: [UInt16], forward: [SIMD2<Int32>], backward: [SIMD2<Int32>], width: Int, height: Int, block: Int = 8) -> (pixels: [UInt16], accepted: Int) {
@@ -38,6 +43,10 @@ func centeredResidual(_ a: [UInt16], _ b: [UInt16], vectors: [SIMD2<Int32>], wid
 }
 
 func checkCenteredRefinement() throws {
+    precondition(hasConstantFrameSpacing([0.041,0.042,0.041]))
+    precondition(!hasConstantFrameSpacing([0.041,0.083,0.041]))
+    precondition(!hasConstantFrameSpacing([0,0.041,0.041]))
+    precondition(!hasConstantFrameSpacing([]))
     let w = 64, h = 48
     let regionalSource = [UInt16](repeating: 1, count: 64)
     let regionalGenerated = [UInt16](repeating: 2, count: 64)
@@ -52,6 +61,18 @@ func checkCenteredRefinement() throws {
     func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
     _ = engine.runPair(cur: data(source), ref: data(shifted))
     let before = engine.downloadMV(level: 0)
+    let preceding: [UInt16] = (0..<w*h).map { i in source[(i/w)*w+min(w-1,i%w+2)] }
+    let following: [UInt16] = (0..<w*h).map { i in source[(i/w)*w+max(0,i%w-4)] }
+    let four = try engine.experimentalFourFrameRefinement(before: data(preceding),after: data(following))
+    precondition(engine.downloadMV(level: 0)==before)
+    let coherentFour=four.vectors.enumerated().filter { index, vector in index%8>0 && index%8<7 && vector==SIMD2<Int32>(4,0) }.count
+    precondition(coherentFour>=24,"Four-frame translation not recovered")
+    let fourRepeated=try engine.experimentalFourFrameRefinement(before: data(preceding),after: data(following))
+    precondition(four.vectors==fourRepeated.vectors)
+    do {
+        _=try engine.experimentalFourFrameRefinement(before: Data(),after: Data())
+        preconditionFailure("Invalid four-frame geometry accepted")
+    } catch MotionSearchEngine.EngineError.pipeline { }
     let refined = try engine.experimentalCenteredRefinement()
     precondition(engine.downloadMV(level: 0) == before, "Experimental pass modified production vectors")
     let repeated = try engine.experimentalCenteredRefinement()
@@ -74,5 +95,7 @@ func checkCenteredRefinement() throws {
     _ = engine.runPair(cur: data(source), ref: data(source))
     let staticResult = try engine.experimentalCenteredRefinement()
     precondition(staticResult.vectors.allSatisfy { $0 == .zero }, "Static frame acquired motion")
+    let fourStatic=try engine.experimentalFourFrameRefinement(before: data(source),after: data(source))
+    precondition(fourStatic.vectors.allSatisfy { $0 == .zero })
     print("CENTERED CHECK: translation, static frame, deterministic output and production field preservation passed")
 }

@@ -59,3 +59,27 @@ kernel void centeredRefine(texture2d<uint, access::read> a [[texture(0)]],
     output[index]=temporalCost<bestCost ? temporal : best;
 }
 """
+
+let fourFrameRefinementMSL: String = {
+    let helper = """
+    float fourCost(texture2d<uint, access::read> a, texture2d<uint, access::read> b,
+                   texture2d<uint, access::read> before, texture2d<uint, access::read> after,
+                   uint2 origin, uint block, int2 vector) {
+        float cost=0;
+        float2 d=float2(vector)*0.25f;
+        for (uint y=0;y<block && origin.y+y<a.get_height();++y)
+            for (uint x=0;x<block && origin.x+x<a.get_width();++x) {
+                float2 p=float2(origin+uint2(x,y));
+                float v0=centeredSample(a,p-d), v1=centeredSample(b,p+d);
+                cost+=abs(v0-v1)+abs(centeredSample(before,p-3*d)-v0)+abs(centeredSample(after,p+3*d)-v1);
+            }
+        return cost;
+    }
+
+    """
+    precondition(centeredRefinementMSL.contains("kernel void centeredRefine"))
+    return centeredRefinementMSL
+        .replacingOccurrences(of: "kernel void centeredRefine",with: helper+"kernel void fourRefine")
+        .replacingOccurrences(of: "texture2d<uint, access::read> b [[texture(1)]],",with: "texture2d<uint, access::read> b [[texture(1)]], texture2d<uint, access::read> before [[texture(2)]], texture2d<uint, access::read> after [[texture(3)]],")
+        .replacingOccurrences(of: "centeredCost(a,b,origin,u.z,",with: "fourCost(a,b,before,after,origin,u.z,")
+}()

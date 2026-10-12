@@ -77,6 +77,10 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_FOUR_CHECK",0)==1 {
+    do { try checkCenteredRefinement(); print("OK — four-frame translation, static, determinism and geometry checks"); exit(0) }
+    catch { print("FOUR CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_CONTOUR_CHECK", 0) == 1 {
     do { try checkContourOwnership(); exit(0) }
     catch { print("CONTOUR CHECK FAILED: \(error)"); exit(3) }
@@ -1876,6 +1880,29 @@ for i in 0..<pairCount {
     // Per-pair quality metrics: accumulate the same L0 field the histogram uses.
     let cur: [UInt16] = frames[i].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
     let ref: [UInt16] = frames[i + 1].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
+    if envInt("MV_FOUR",0)==1 && i>0 && i+2<frames.count {
+        do {
+            let intervals = (i-1...i+1).map { frameTimes[$0+1]-frameTimes[$0] }
+            // MKV millisecond timebases alternate 41/42ms at 23.976fps.
+            if hasConstantFrameSpacing(intervals) {
+            let original=engine.downloadMV(level: 0)
+            let refined=try engine.experimentalFourFrameRefinement(before: frames[i-1],after: frames[i+2])
+            precondition(engine.downloadMV(level: 0)==original)
+            let plane=warpEngine.interpolate(I0: cur,I1: ref,mv: refined.vectors,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: 0.5).0
+            precondition(plane.count==cur.count)
+            print("FOUR FRAME: pair=\(i), refine_ms=\(refined.milliseconds)")
+            if i==1 {
+                let folder="/tmp/rift-four-frame"
+                try FileManager.default.createDirectory(atPath: folder,withIntermediateDirectories: true)
+                let two=try engine.experimentalCenteredRefinement()
+                let reference=warpEngine.interpolate(I0: cur,I1: ref,mv: two.vectors,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: 0.5).0
+                for (name,pixels) in [("source",cur),("two",reference),("four",plane)] {
+                    precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/\(name).png"))
+                }
+            }
+            } else { print("FOUR FRAME: skipped unequal PTS intervals \(intervals)") }
+        } catch { fatalError("Four-frame experiment failed: \(error)") }
+    }
     if centeredExperiment {
         do {
             let original = engine.downloadMV(level: 0)
