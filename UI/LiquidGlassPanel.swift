@@ -58,8 +58,10 @@ struct VideoOverlayGlass: View {
         } else if #available(macOS 26.0, *) {
             Color.clear
                 .glassEffect(.regular, in: shape)
+                .opacity(0.85)
         } else {
             shape.fill(.ultraThinMaterial)
+                .opacity(0.85)
                 .overlay(shape.strokeBorder(.white.opacity(0.22), lineWidth: 0.6))
         }
     }
