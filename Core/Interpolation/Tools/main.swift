@@ -77,6 +77,10 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_CONTOUR_CHECK", 0) == 1 {
+    do { try checkContourOwnership(); exit(0) }
+    catch { print("CONTOUR CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_WARP_CHECK", 0) == 1 {
     do {
         try checkWarpMotionContinuity()
@@ -1696,9 +1700,13 @@ do {
     exit(3)
 }
 let warpEngine: WarpEngine
+let contourEngine: WarpEngine?
 do {
     guard MTLCreateSystemDefaultDevice() != nil else { print("WARP INIT FAILED: no Metal device"); exit(3) }
     warpEngine = try WarpEngine(msl: warpShadersMSL)
+    if envInt("MV_CONTOUR_PROJECT",0)==1 || envInt("MV_CONTOUR",0)==1 {
+        contourEngine = try WarpEngine(msl: envInt("MV_CONTOUR_PROJECT",0)==1 ? projectedContourWarpShadersMSL : contourWarpShadersMSL)
+    } else { contourEngine = nil }
 } catch {
     print("WARP INIT FAILED: \(error)")
     exit(3)
@@ -1949,7 +1957,8 @@ for i in 0..<pairCount {
 
     // Warp/blend at t=0.5 (OBMC omitted v1 — known limitation, see header)
     let mvForWarp = engine.downloadMV(level: 0)
-    let (interpPlane, warpMS) = warpEngine.interpolate(I0: cur, I1: ref, mv: mvForWarp, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5)
+    let contourField = envInt("MV_CONTOUR_PROJECT",0)==1 ? projectContourCandidates(mvForWarp,gridW: measureGW,gridH: measureGH,block: measureBS,time: 0.5) : mvForWarp
+    let (interpPlane, warpMS) = (contourEngine ?? warpEngine).interpolate(I0: cur, I1: ref, mv: contourField, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5)
     warpTotal.append(warpMS)
 
     if wcOn {
