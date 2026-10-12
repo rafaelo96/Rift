@@ -1533,7 +1533,8 @@ var frames: [Data] = []
 var frameBuffers: [CVPixelBuffer] = []
 var frameTimes: [Double] = []
 var readPackets = 0
-while frames.count < pairCount + 1 && readPackets < 100_000 {
+// Retain a small reorder tail: VideoToolbox can deliver B-frames in decode order.
+while frames.count < pairCount + 17 && readPackets < 100_000 {
     guard let packet = try? demuxer.nextPacket() else { break }
     readPackets += 1
     guard packet.streamIndex == video.streamIndex else { continue }
@@ -1561,6 +1562,16 @@ demuxer.close()
 
 guard frames.count >= pairCount + 1 else {
     print("FAIL: only \(frames.count) planes decoded (need \(pairCount + 1))")
+    exit(2)
+}
+
+let displayOrder = frameTimes.indices.sorted { frameTimes[$0] < frameTimes[$1] }
+    .prefix(pairCount + 1)
+frames = displayOrder.map { frames[$0] }
+frameBuffers = displayOrder.map { frameBuffers[$0] }
+frameTimes = displayOrder.map { frameTimes[$0] }
+guard zip(frameTimes, frameTimes.dropFirst()).allSatisfy({ $0 < $1 }) else {
+    print("FAIL: diagnostic frames must have strictly increasing presentation times")
     exit(2)
 }
 

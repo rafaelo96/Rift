@@ -1,5 +1,11 @@
 # Avatar / Frame+ — diagnóstico inicial, 2026-10-11
 
+> Corrección posterior: las tres mediciones iniciales usaban frames en orden de
+> decodificación, con PTS no monótonos. Son costes de esos pares artificiales,
+> no representan pares consecutivos de reproducción. Retirar las conclusiones
+> sobre presupuesto y frecuencia de fallback en reproducción basadas en ellas.
+
+
 Alcance: medición aislada de Core/Interpolation, sin modificar motores ni parámetros.
 Equipo real: Apple M4. No generalizar a M1 ni a sesiones térmicas largas.
 Archivo: Avatar.Aang.el.ultimo.maestro.del.aire.2026.WEB-DL.4k.HDR-Dual-Lat.mkv;
@@ -42,3 +48,31 @@ fuente/generado en esa escena y diagnóstico de cadencia presentada en tarea
 separada. Respetar la investigación cerrada en mcfi-motion-blur-bokeh-artifacts.md:
 no reabrir thresholds/blends descartados sin hipótesis y evidencia nuevas.
 No se afirma resuelto el problema ni se modifica el algoritmo.
+
+## Reproducción de la escena reportada: 1:09
+
+La captura del usuario permitió repetir desde 69 s. MVProbe tenía un defecto:
+retenía orden de entrega de VTDecoder, con secuencia 69.07, 69.03, 69.15, 69.11.
+La herramienta ahora recoge 16 frames adicionales, ordena conjuntamente lumas,
+buffers y PTS, conserva los primeros N+1 e impone PTS estrictamente crecientes.
+No se cambió el decoder ni el reproductor; este diagnóstico no demuestra un
+defecto de orden en la app. El tail de 16 es acotado y no garantiza todos los codecs.
+
+Verificación release de 12 pares, perfil fluid, dos salidas: PTS de contact
+69.03, 69.07, 69.11, 69.15, 69.19, 69.24. Media total 24.206 ms, p95 25.265 ms.
+La hoja de contacto solicita t=0.4/0.8; exporta la primera salida de cada par.
+
+Comparación visual del par 0 a t=0.5 mediante MV_ARTIFACT: a_fullres_cur.png
+tiene contornos limpios; a_fullres_interp.png presenta duplicación/deformación
+de bisontes y primer plano. Confirma daño en síntesis de producción fluid en
+esta escena, aunque no identifica aún un cambio algorítmico que lo resuelva.
+Exports de luma diagnóstica, no representan color HDR ni película transcodificada.
+
+Artefactos locales: /tmp/rift-avatar-69-ordered/contact_sheet.png,
+/tmp/rift-avatar-69-source/a_fullres_cur.png,
+/tmp/rift-avatar-69-source/a_fullres_interp.png.
+Logs: /tmp/rift-avatar-69-ordered.log y /tmp/rift-avatar-69-source.log.
+
+La calidad no se certifica por mostrar 59/60 fps. Falta medir presentación real
+y contrastar la política de seguridad existente en esta misma escena. No
+reabrir la investigación de motion blur/bokeh como si fuera un bug nuevo.
