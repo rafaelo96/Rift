@@ -17,3 +17,25 @@ Developer ID signing and notarization. The script uses an ad-hoc signature.
 
 Finder URL delivery uses the existing AppDelegate and ContentView handlers.
 No playback pipeline changes are needed for these associations.
+
+## Self-contained local test package
+
+Build into a fresh destination, then bundle the existing runtime:
+
+```sh
+RIFT_BUILD_CONFIGURATION=release distribution/build-local-app.sh /path/to/Rift.app
+python3 distribution/package-portable.py /path/to/Rift.app
+```
+
+The packager copies the complete non-system library dependency graph into
+Contents/Frameworks, rewrites load paths, checks arm64, raises the declared
+minimum macOS to the actual library requirement and signs libraries plus app.
+It retains the SwiftPM resource bundle in Contents/Resources, the first runtime
+resource lookup location. It fails on unresolved nonportable load paths.
+
+The runtime installed on the development Mac currently requires macOS 27.0.
+Bundling does not make those binaries compatible with older systems. Supporting
+older macOS requires rebuilding FFmpeg and its dependencies for that target.
+This is an ad-hoc-signed test package, not a notarized public release. Public
+release also requires preparation/review of bundled-library licenses and
+corresponding source (the current FFmpeg build reports GPLv3-or-later).
