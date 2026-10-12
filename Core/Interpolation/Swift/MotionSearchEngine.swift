@@ -131,6 +131,48 @@ public final class MotionSearchEngine {
     private var mvBufferTemporalOut: MTLBuffer?
     private var mvBufferTemporalPrev: MTLBuffer?
     private var hasTemporalPrev = false
+    private var centeredPSO: MTLComputePipelineState?
+    private var centeredOutput: MTLBuffer?
+
+    /// Probe-only midpoint refinement after runPair. Never replaces production
+    /// vectors or temporal history. Resources remain bounded to one L0 field.
+    public func experimentalCenteredRefinement() throws -> (vectors: [SIMD2<Int32>], milliseconds: Double) {
+        if centeredPSO == nil {
+            let library = try device.makeLibrary(source: centeredRefinementMSL, options: nil)
+            guard let function = library.makeFunction(name: "centeredRefine") else {
+                throw EngineError.pipeline("centeredRefine missing")
+            }
+            centeredPSO = try device.makeComputePipelineState(function: function)
+        }
+        let grid = grids[0]
+        let count = grid.w * grid.h
+        if centeredOutput == nil {
+            centeredOutput = device.makeBuffer(length: count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)
+        }
+        guard let output = centeredOutput, let pipeline = centeredPSO,
+              let command = queue.makeCommandBuffer(), let encoder = command.makeComputeCommandEncoder(),
+              let input = mvBufferTemporalOut ?? mvBufferSmoothed ?? mvBuffer[0] else {
+            throw EngineError.pipeline("centered refinement resource allocation failed")
+        }
+        var uniforms = SIMD4<UInt32>(UInt32(grid.w), UInt32(grid.h), UInt32(spec[0].blockSize), 0)
+        let start = DispatchTime.now().uptimeNanoseconds
+        encoder.setComputePipelineState(pipeline)
+        encoder.setTexture(curTex[0], index: 0)
+        encoder.setTexture(refTex[0], index: 1)
+        encoder.setBuffer(input, offset: 0, index: 0)
+        encoder.setBuffer(output, offset: 0, index: 1)
+        encoder.setBytes(&uniforms, length: MemoryLayout<SIMD4<UInt32>>.stride, index: 2)
+        encoder.dispatchThreads(MTLSize(width: grid.w, height: grid.h, depth: 1),
+                                threadsPerThreadgroup: MTLSize(width: 8, height: 8, depth: 1))
+        encoder.endEncoding()
+        command.commit()
+        command.waitUntilCompleted()
+        guard command.status == .completed else {
+            throw EngineError.pipeline(command.error?.localizedDescription ?? "centered refinement command failed")
+        }
+        let values = output.contents().bindMemory(to: SIMD2<Int32>.self, capacity: count)
+        return (Array(UnsafeBufferPointer(start: values, count: count)), elapsedMS(from: start))
+    }
 
     /// Block grid dims per level (flat block count = gridW * gridH).
     public var grids: [(w: Int, h: Int)] { spec.map { (($0.width + $0.blockSize - 1) / $0.blockSize,

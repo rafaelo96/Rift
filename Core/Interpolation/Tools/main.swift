@@ -1812,6 +1812,10 @@ if tjitOn {
 }
 
 print("\n--- measuring \(pairCount) pairs @ \(workWidth)x\(workHeight) ---")
+let centeredExperiment = envInt("MV_CENTERED", 0) == 1
+if centeredExperiment {
+    do { try checkCenteredRefinement() } catch { fatalError("Centered check failed: \(error)") }
+}
 if temporalGatePx > 0 {
     print(String(format: "temporal EMA gating ON (gate %d px on post-median L0; reset at pair %d)",
                  temporalGatePx, tmaResetAt))
@@ -1841,6 +1845,26 @@ for i in 0..<pairCount {
     // Per-pair quality metrics: accumulate the same L0 field the histogram uses.
     let cur: [UInt16] = frames[i].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
     let ref: [UInt16] = frames[i + 1].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
+    if centeredExperiment {
+        do {
+            let original = engine.downloadMV(level: 0)
+            let refined = try engine.experimentalCenteredRefinement()
+            precondition(engine.downloadMV(level: 0) == original)
+            let before = centeredResidual(cur, ref, vectors: original, width: workWidth, height: workHeight)
+            let after = centeredResidual(cur, ref, vectors: refined.vectors, width: workWidth, height: workHeight)
+            precondition(after <= before + 0.01, "Centered GPU pass increased its objective")
+            print(String(format: "CENTERED pair=%d extra_ms=%.3f residual_before=%.3f residual_after=%.3f", i, refined.milliseconds, before, after))
+            if i == 0 {
+                let folder = "/tmp/rift-centered"
+                try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+                let centered = warpEngine.interpolate(I0: cur, I1: ref, mv: refined.vectors, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5).0
+                let baseline = warpEngine.interpolate(I0: cur, I1: ref, mv: original, width: workWidth, height: workHeight, gridW: measureGW, gridH: measureGH, blockSize: measureBS, t: 0.5).0
+                for (name, pixels) in [("source", cur), ("baseline", baseline), ("centered", centered)] {
+                    precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) }, width: workWidth, height: workHeight, to: "\(folder)/\(name).png"), "Diagnostic PNG write failed")
+                }
+            }
+        } catch { fatalError("Centered experiment failed: \(error)") }
+    }
     let m = measurePair(cur: cur, ref: ref, mvs: engine.downloadMV(level: 0))
     cum.zeroTotal += m.zeroTotal
     cum.compTotal += m.compTotal
