@@ -46,13 +46,32 @@ struct GlassBackground: View {
 
 // MARK: - Liquid Glass Panel
 
+/// Glass for surfaces above video; window and recovery backgrounds keep their own material.
+struct VideoOverlayGlass: View {
+    var cornerRadius: CGFloat = 16
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if reduceTransparency {
+            shape.fill(Color(nsColor: .windowBackgroundColor))
+        } else if #available(macOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+                .overlay(shape.strokeBorder(.white.opacity(0.22), lineWidth: 0.6))
+        }
+    }
+}
+
 struct LiquidGlassPanel<Content: View>: View {
     var cornerRadius: CGFloat = 16
     @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .background(GlassBackground(cornerRadius: cornerRadius))
+            .background(VideoOverlayGlass(cornerRadius: cornerRadius))
             .shadow(color: .black.opacity(0.20), radius: 12, y: 5)
     }
 }

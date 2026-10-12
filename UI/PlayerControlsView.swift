@@ -257,6 +257,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         .accessibilityLabel(NSLocalizedString("Open Visual Controls", comment: ""))
         .popover(isPresented: $showVisualPanel, arrowEdge: .bottom) {
             visualControlsPanel
+                .background(VideoOverlayGlass(cornerRadius: 16))
         }
     }
 
@@ -749,7 +750,7 @@ struct TimelineTrack: View {
         }
         .padding(4)
         .background {
-            GlassBackground(cornerRadius: 9, effectOpacity: 0.34)
+            VideoOverlayGlass(cornerRadius: 9)
         }
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
     }

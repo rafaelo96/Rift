@@ -607,6 +607,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .padding(10)
                 }
                 .frame(width: 290, height: 360)
+                .background(VideoOverlayGlass(cornerRadius: 16))
                 }
 
             if let rift = state as? RiftPlayerState, rift.isPictureInPictureAvailable {
@@ -627,12 +628,13 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         }
         .fixedSize()
         .padding(6)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(VideoOverlayGlass(cornerRadius: 8))
         .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
         .padding(.top, 12)
         .padding(.trailing, 14)
         .popover(isPresented: $showTechnicalInfo, arrowEdge: .top) {
             technicalInfoPanel
+                .background(VideoOverlayGlass(cornerRadius: 16))
         }
     }
 

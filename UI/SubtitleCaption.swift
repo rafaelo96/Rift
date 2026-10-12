@@ -22,6 +22,7 @@ enum SubtitleColors {
 
 /// Shared by the player, floating PiP and Settings preview.
 struct SubtitleCaption: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let text: String
     let fontSize: Double
     let textColor: Color
@@ -40,8 +41,8 @@ struct SubtitleCaption: View {
             .padding(.vertical, 9)
             .background {
                 if backgroundStyle == .liquidGlass {
-                    GlassBackground(cornerRadius: 8, effectOpacity: backgroundOpacity)
-                        .opacity(backgroundOpacity)
+                    VideoOverlayGlass(cornerRadius: 8)
+                        .opacity(reduceTransparency ? 1 : backgroundOpacity)
                 } else {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(backgroundColor.opacity(backgroundOpacity))
