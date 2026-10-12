@@ -77,6 +77,16 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_WARP_CHECK", 0) == 1 {
+    do {
+        try checkWarpMotionContinuity()
+        print("OK — moving point, temporal endpoints and static content checked")
+        exit(0)
+    } catch {
+        print("WARP MOTION CHECK FAILED: \(error)")
+        exit(3)
+    }
+}
 if envInt("MV_GRID_CHECK", 0) == 1 {
     do {
         try checkMotionGridRegistration()

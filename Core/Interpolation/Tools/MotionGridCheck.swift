@@ -2,6 +2,89 @@ import Foundation
 import Metal
 import Interpolation
 
+func checkWarpMotionContinuity() throws {
+    let width = 32, height = 24
+    let engine = try WarpEngine(msl: warpShadersMSL)
+    var first = [UInt16](repeating: 64, count: width*height)
+    var last = first
+    first[12*width+8] = 960
+    last[12*width+16] = 960
+    let field = [SIMD2<Int32>](repeating: SIMD2<Int32>(16,0), count: 12)
+    for time: Float in [0,0.25,0.5,0.75,1] {
+        let result = engine.interpolate(I0: first, I1: last, mv: field, width: width, height: height, gridW: 4, gridH: 3, blockSize: 8, t: time).0
+        var expected = [UInt16](repeating: 64, count: width*height)
+        expected[12*width+8+Int(time*8)] = 960
+        let error = zip(result,expected).map { abs(Int($0)-Int($1)) }.max() ?? Int.max
+        print("WARP MOTION: t=\(time), maximum error=\(error)")
+        guard result == expected else { throw WarpEngine.Error.pipeline("Moving point disappeared or warped incorrectly") }
+    }
+    let still = engine.interpolate(I0: first, I1: first, mv: field, width: width, height: height, gridW: 4, gridH: 3, blockSize: 8, t: 0.5).0
+    precondition(still == first, "Static content protection regressed")
+    try checkNativeAndChromaTransport()
+}
+
+private func checkNativeAndChromaTransport() throws {
+    guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { throw WarpEngine.Error.deviceUnavailable }
+    let library = try device.makeLibrary(source: warpShadersMSL, options: nil)
+    let variants: [(name: String, channels: Int, subsampleY: Int)] = [
+        ("warpBlendNative",1,1), ("warpBlendChromaNative",2,2),
+        ("warpBlendChromaNative",2,1), ("warpBlendChroma2",2,2)
+    ]
+    for variant in variants {
+        let width = variant.channels == 1 ? 32 : 16
+        let height = 24 / variant.subsampleY
+        let shift = variant.channels == 1 ? 8 : 4
+        let startX = variant.channels == 1 ? 8 : 4
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: variant.channels == 1 ? .r16Uint : .rg16Uint, width: width, height: height, mipmapped: false)
+        descriptor.storageMode = .shared
+        descriptor.usage = [.shaderRead,.shaderWrite]
+        guard let function = library.makeFunction(name: variant.name), let a = device.makeTexture(descriptor: descriptor),
+              let b = device.makeTexture(descriptor: descriptor), let output = device.makeTexture(descriptor: descriptor) else { throw WarpEngine.Error.pipeline("transport texture allocation failed") }
+        let pipeline = try device.makeComputePipelineState(function: function)
+        let field = [SIMD2<Int32>](repeating: SIMD2<Int32>(16,0), count: 12)
+        guard let mv = device.makeBuffer(bytes: field, length: field.count*MemoryLayout<SIMD2<Int32>>.stride) else { throw WarpEngine.Error.pipeline("transport vector allocation failed") }
+        for scale: UInt16 in [1,64] {
+            var source = [UInt16](repeating: 64*scale, count: width*height*variant.channels)
+            for channel in 0..<variant.channels { source[(6*width+startX)*variant.channels+channel] = (960-UInt16(channel)*80)*scale }
+            var target = [UInt16](repeating: 64*scale, count: source.count)
+            for channel in 0..<variant.channels { target[(6*width+startX+shift)*variant.channels+channel] = (960-UInt16(channel)*80)*scale }
+            let region = MTLRegionMake2D(0,0,width,height)
+            for isStatic in [false,true] {
+                source.withUnsafeBytes { a.replace(region: region, mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width*variant.channels*2) }
+                let second = isStatic ? source : target
+                second.withUnsafeBytes { b.replace(region: region, mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width*variant.channels*2) }
+                for time: Float in [0,0.25,0.5,0.75,1] {
+                    var uniforms: [UInt32]
+                    if variant.name == "warpBlendChroma2" {
+                        uniforms = [UInt32(width),UInt32(height),4,3,8,time.bitPattern,Float(1).bitPattern]
+                    } else {
+                        uniforms = [UInt32(width),UInt32(height),32,24,4,3,8,0,UInt32(variant.subsampleY),time.bitPattern,Float(1).bitPattern]
+                    }
+                    guard let command = queue.makeCommandBuffer(), let encoder = command.makeComputeCommandEncoder() else { throw WarpEngine.Error.pipeline("transport command allocation failed") }
+                    encoder.setComputePipelineState(pipeline)
+                    encoder.setTexture(a,index: 0)
+                    encoder.setTexture(b,index: 1)
+                    encoder.setTexture(output,index: 2)
+                    encoder.setBuffer(mv,offset: 0,index: 0)
+                    uniforms.withUnsafeBytes { encoder.setBytes($0.baseAddress!, length: $0.count, index: 1) }
+                    encoder.dispatchThreads(MTLSize(width: width,height: height,depth: 1), threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+                    encoder.endEncoding()
+                    command.commit()
+                    command.waitUntilCompleted()
+                    guard command.status == .completed else { throw WarpEngine.Error.pipeline("transport GPU command failed") }
+                    var actual = [UInt16](repeating: 0,count: source.count)
+                    actual.withUnsafeMutableBytes { output.getBytes($0.baseAddress!, bytesPerRow: width*variant.channels*2, from: region, mipmapLevel: 0) }
+                    var expected = [UInt16](repeating: 64*scale,count: source.count)
+                    let position = startX + (isStatic ? 0 : Int(time*Float(shift)))
+                    for channel in 0..<variant.channels { expected[(6*width+position)*variant.channels+channel] = (960-UInt16(channel)*80)*scale }
+                    guard actual == expected else { throw WarpEngine.Error.pipeline("\(variant.name) transport mismatch, subsampleY=\(variant.subsampleY), scale=\(scale), static=\(isStatic), t=\(time)") }
+                }
+            }
+        }
+        print("WARP TRANSPORT: \(variant.name), subsampleY=\(variant.subsampleY) — motion and static checks passed at both numeric scales")
+    }
+}
+
 func checkMotionGridRegistration() throws {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
         throw WarpEngine.Error.deviceUnavailable

@@ -102,11 +102,6 @@ kernel void warpBlendNative(
     const float aS = float(tex0.read(gid).x);
     const float bS = float(tex1.read(gid).x);
     const float adS = fabs(aS - bS);
-    if (adS * 16.0 <= (aS + bS)) {
-        outTex.write(uint(aS + 0.5), gid);
-        return;
-    }
-
     float2 nativeP = float2(gid);
     float2 nativeToWork = float2(float(u.workW) / float(u.outW),
                                  float(u.workH) / float(u.outH));
@@ -118,6 +113,13 @@ kernel void warpBlendNative(
 
     float v0 = sampleBilinearU16(tex0, p0, int(u.outW), int(u.outH)).x;
     float v1 = sampleBilinearU16(tex1, p1, int(u.outW), int(u.outH)).x;
+    bool staticSupport = false;
+    if (adS * 8.0 <= (aS + bS)) {
+        float other0 = sampleBilinearU16(tex1, p0, int(u.outW), int(u.outH)).x;
+        float other1 = sampleBilinearU16(tex0, p1, int(u.outW), int(u.outH)).x;
+        staticSupport = fabs(v0-other0)*16.0 <= v0+other0 && fabs(v1-other1)*16.0 <= v1+other1;
+    }
+    if (staticSupport && adS * 16.0 <= (aS + bS)) { outTex.write(uint(aS+0.5), gid); return; }
 
     float2 nextWork = clamp(workP + flowWork, float2(0),
                             float2(float(u.workW - 1), float(u.workH - 1)));
@@ -128,7 +130,7 @@ kernel void warpBlendNative(
     float wB = u.t * (1.0 - occ);
     float dom = (u.t < 0.5) ? v0 : v1;
     float out = (wF * v0 + wB * v1 + occ * dom) / max(wF + wB + occ, 1e-4);
-    if (occ > 0.5 && adS * 8.0 <= (aS + bS)) out = aS;
+    if (occ > 0.5 && staticSupport) out = aS;
     outTex.write(uint(out + 0.5), gid);
 }
 
@@ -146,11 +148,6 @@ kernel void warpBlendChromaNative(
     float2 aS = float2(c0), bS = float2(c1);
     float adS = fabs(aS.x - bS.x) + fabs(aS.y - bS.y);
     float sumLevels = aS.x + aS.y + bS.x + bS.y;
-    if (adS * 16.0 <= sumLevels) {
-        outTex.write(uint4(c0.x, c0.y, 0, 0), gid);
-        return;
-    }
-
     // One chroma texel represents 2x2 native-luma pixels for 4:2:0 and 2x1
     // for 4:2:2. The vertical factor is supplied by the source plane geometry.
     float2 chromaP = float2(gid);
@@ -166,6 +163,13 @@ kernel void warpBlendChromaNative(
     float2 p1 = chromaP + (1.0 - u.t) * flowChroma;
     float2 v0 = sampleBilinearNative2(tex0, p0, int(u.outW), int(u.outH));
     float2 v1 = sampleBilinearNative2(tex1, p1, int(u.outW), int(u.outH));
+    bool staticSupport = false;
+    if (adS * 8.0 <= sumLevels) {
+        float2 other0 = sampleBilinearNative2(tex1, p0, int(u.outW), int(u.outH));
+        float2 other1 = sampleBilinearNative2(tex0, p1, int(u.outW), int(u.outH));
+        staticSupport = dot(abs(v0-other0),float2(1))*16.0 <= dot(v0+other0,float2(1)) && dot(abs(v1-other1),float2(1))*16.0 <= dot(v1+other1,float2(1));
+    }
+    if (staticSupport && adS * 16.0 <= sumLevels) { outTex.write(uint4(c0.x,c0.y,0,0), gid); return; }
 
     float2 nextWork = clamp(workP + flowWork, float2(0),
                             float2(float(u.workW - 1), float(u.workH - 1)));
@@ -176,7 +180,7 @@ kernel void warpBlendChromaNative(
     float wB = u.t * (1.0 - occ);
     float2 dom = (u.t < 0.5) ? v0 : v1;
     float2 out = (wF * v0 + wB * v1 + occ * dom) / max(wF + wB + occ, 1e-4);
-    if (occ > 0.5 && adS * 8.0 <= sumLevels) out = aS;
+    if (occ > 0.5 && staticSupport) out = aS;
     outTex.write(uint4(uint(out.x + 0.5), uint(out.y + 0.5), 0, 0), gid);
 }
 
@@ -191,23 +195,11 @@ kernel void warpBlend(
     if (gid.x >= u.width || gid.y >= u.height) return;
     const uint bs = u.blockSize;
 
-    // Static bypass (symmetric, format-agnostic): when the two inputs agree at
-    // the SAME pixel, there is no motion to compensate — copy I0 exactly
-    // instead of warping. This nails static content (logos, thin text) even
-    // when the ME field carries spurious vectors there (self-similar strokes,
-    // sub-pel dither), which previously twisted thin glyphs. The relative
-    // threshold (~6% of local level, no absolute floor) auto-scales to any bit
-    // depth and covers edge compression noise; fades and real motion exceed it,
-    // so blending proceeds untouched. Dark levels fall back to the warp (safe:
-    // no visible edges there anyway).
+    // Agreement at the destination alone can erase moving objects passing
+    // through it; static protection also requires agreement along transport.
     const float aS = float(tex0.read(gid).x);
     const float bS = float(tex1.read(gid).x);
     const float adS = fabs(aS - bS);
-    if (adS * 16.0 <= (aS + bS)) {
-        outTex.write(uint(aS + 0.5), gid);
-        return;
-    }
-
     float2 flow = sampleMVBilinear(mv, float2(float(gid.x), float(gid.y)), u.gridW, u.gridH, bs);
 
     // backward warp positions
@@ -217,6 +209,13 @@ kernel void warpBlend(
 
     float v0 = sampleBilinearU16(tex0, p0, int(u.width), int(u.height)).x;
     float v1 = sampleBilinearU16(tex1, p1, int(u.width), int(u.height)).x;
+    bool staticSupport = false;
+    if (adS * 8.0 <= (aS + bS)) {
+        float other0 = sampleBilinearU16(tex1, p0, int(u.width), int(u.height)).x;
+        float other1 = sampleBilinearU16(tex0, p1, int(u.width), int(u.height)).x;
+        staticSupport = fabs(v0-other0)*16.0 <= v0+other0 && fabs(v1-other1)*16.0 <= v1+other1;
+    }
+    if (staticSupport && adS * 16.0 <= (aS + bS)) { outTex.write(uint(aS+0.5), gid); return; }
 
     // occlusion via forward-backward consistency, approx bw = -fw
     // err = |fw(p) + bw(p+fw)| = |flow(p) - flow(p+flow)| ; flow sampled bilinearly
@@ -236,12 +235,8 @@ kernel void warpBlend(
     float dom = (u.t < 0.5) ? v0 : v1;
     float sum = wF + wB + wDom;
     float out = (wF * v0 + wB * v1 + wDom * dom) / max(sum, 1e-4);
-    // Incoherent-flow zones whose inputs still agree are spurious twists, not
-    // occlusions (self-similar strokes / dither on static content): snap to I0.
-    // Real occlusions disagree in the inputs, so they keep the blended result.
-    // The loose bound (~12% of local level) is safe here because occ already
-    // gates it — well-matched motion never reaches this branch with occ == 1.
-    if (occ > 0.5 && adS * 8.0 <= (aS + bS)) {
+    // Incoherent flow may snap only when transport also supports static content.
+    if (occ > 0.5 && staticSupport) {
         out = aS;
     }
     // Single-side occlusion is handled above via the dominant-side pick;
@@ -374,11 +369,6 @@ kernel void warpBlendChroma2(
     const float2 bS = float2(c1);
     const float adS = fabs(aS.x - bS.x) + fabs(aS.y - bS.y);
     const float sm = aS.x + aS.y + bS.x + bS.y;
-    if (adS * 16.0 <= sm) {
-        outTex.write(uint4(c0.x, c0.y, 0, 0), gid);
-        return;
-    }
-
     float2 flow = sampleMVBilinear(mv, float2(float(gid.x) * 2.0 + 1.0, float(gid.y) * 2.0 + 1.0),
                                     u.gridW, u.gridH, u.blockSize) * 0.5;
 
@@ -395,6 +385,13 @@ kernel void warpBlendChroma2(
 
     float2 v0 = oob0 ? aS : sampleBilinear2xU16(tex0, p0, int(u.width), int(u.height));
     float2 v1 = oob1 ? bS : sampleBilinear2xU16(tex1, p1, int(u.width), int(u.height));
+    bool staticSupport = false;
+    if (adS * 8.0 <= sm) {
+        float2 other0 = sampleBilinear2xU16(tex1, p0, int(u.width), int(u.height));
+        float2 other1 = sampleBilinear2xU16(tex0, p1, int(u.width), int(u.height));
+        staticSupport = dot(abs(v0-other0),float2(1))*16.0 <= dot(v0+other0,float2(1)) && dot(abs(v1-other1),float2(1))*16.0 <= dot(v1+other1,float2(1));
+    }
+    if (staticSupport && adS * 16.0 <= sm) { outTex.write(uint4(c0.x,c0.y,0,0), gid); return; }
 
     float2 pp = clamp(p + flow, float2(0, 0), float2(float(u.width - 1), float(u.height - 1)));
     float2 flow1 = sampleMVBilinear(mv, float2(pp.x * 2.0 + 1.0, pp.y * 2.0 + 1.0),
@@ -410,7 +407,7 @@ kernel void warpBlendChroma2(
     float2 dom = (u.t < 0.5) ? v0 : v1;
     float sum = wF + wB + wDom;
     float2 out = (wF * v0 + wB * v1 + wDom * dom) / max(sum, 1e-4);
-    if (occ > 0.5 && adS * 8.0 <= sm) {
+    if (occ > 0.5 && staticSupport) {
         out = aS;
     }
     outTex.write(uint4(uint(out.x + 0.5), uint(out.y + 0.5), 0, 0), gid);
