@@ -136,7 +136,7 @@ public final class MotionSearchEngine {
 
     /// Probe-only midpoint refinement after runPair. Never replaces production
     /// vectors or temporal history. Resources remain bounded to one L0 field.
-    public func experimentalCenteredRefinement() throws -> (vectors: [SIMD2<Int32>], milliseconds: Double) {
+    public func experimentalCenteredRefinement(predictorWeight: UInt32 = 0) throws -> (vectors: [SIMD2<Int32>], milliseconds: Double) {
         if centeredPSO == nil {
             let library = try device.makeLibrary(source: centeredRefinementMSL, options: nil)
             guard let function = library.makeFunction(name: "centeredRefine") else {
@@ -154,7 +154,7 @@ public final class MotionSearchEngine {
               let input = mvBufferTemporalOut ?? mvBufferSmoothed ?? mvBuffer[0] else {
             throw EngineError.pipeline("centered refinement resource allocation failed")
         }
-        var uniforms = SIMD4<UInt32>(UInt32(grid.w), UInt32(grid.h), UInt32(spec[0].blockSize), 0)
+        var uniforms = SIMD4<UInt32>(UInt32(grid.w), UInt32(grid.h), UInt32(spec[0].blockSize), predictorWeight)
         let start = DispatchTime.now().uptimeNanoseconds
         encoder.setComputePipelineState(pipeline)
         encoder.setTexture(curTex[0], index: 0)

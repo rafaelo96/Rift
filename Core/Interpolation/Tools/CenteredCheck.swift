@@ -35,6 +35,10 @@ func checkCenteredRefinement() throws {
     let originalCost = centeredResidual(source, shifted, vectors: before, width: w, height: h)
     let refinedCost = centeredResidual(source, shifted, vectors: refined.vectors, width: w, height: h)
     precondition(refinedCost <= originalCost + 0.01, "Centered residual regressed")
+    let constrained = try engine.experimentalCenteredRefinement(predictorWeight: 4)
+    precondition(centeredResidual(source, shifted, vectors: constrained.vectors, width: w, height: h) <= originalCost + 0.01)
+    let locked = try engine.experimentalCenteredRefinement(predictorWeight: 65535)
+    precondition(locked.vectors == before, "Large predictor penalty failed to preserve original vectors")
     let coherent = refined.vectors.enumerated().filter { index, vector in index%8>0 && index%8<7 && vector == SIMD2<Int32>(4,0) }.count
     precondition(coherent >= 24, "Known translation was not recovered")
     _ = engine.runPair(cur: data(source), ref: data(source))

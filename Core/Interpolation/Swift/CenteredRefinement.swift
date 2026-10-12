@@ -24,6 +24,10 @@ float centeredCost(texture2d<uint, access::read> a, texture2d<uint, access::read
         }
     return cost;
 }
+float predictorPenalty(int2 candidate, int2 predictor, uint block, uint weight) {
+    int2 delta=abs(candidate-predictor);
+    return float(block*block*weight)*float(max(delta.x,delta.y))*0.5f;
+}
 kernel void centeredRefine(texture2d<uint, access::read> a [[texture(0)]],
                            texture2d<uint, access::read> b [[texture(1)]],
                            device const int2 *input [[buffer(0)]],
@@ -39,15 +43,15 @@ kernel void centeredRefine(texture2d<uint, access::read> a [[texture(0)]],
     for (int y=-1; y<=1; ++y) for (int x=-1; x<=1; ++x) {
         int2 cell=clamp(int2(gid)+int2(x,y),int2(0),int2(u.xy)-1);
         int2 candidate=input[uint(cell.y)*u.x+uint(cell.x)];
-        float cost=centeredCost(a,b,origin,u.z,candidate);
+        float cost=centeredCost(a,b,origin,u.z,candidate)+predictorPenalty(candidate,original,u.z,u.w);
         if (cost<bestCost) { best=candidate; bestCost=cost; }
     }
     for (int y=-4; y<=4; y+=2) for (int x=-4; x<=4; x+=2) {
         int2 candidate=original+int2(x,y);
-        float cost=centeredCost(a,b,origin,u.z,candidate);
+        float cost=centeredCost(a,b,origin,u.z,candidate)+predictorPenalty(candidate,original,u.z,u.w);
         if (cost<bestCost) { best=candidate; bestCost=cost; }
     }
-    float zeroCost=centeredCost(a,b,origin,u.z,int2(0));
+    float zeroCost=centeredCost(a,b,origin,u.z,int2(0))+predictorPenalty(int2(0),original,u.z,u.w);
     output[index]=zeroCost<bestCost ? int2(0) : best;
 }
 """

@@ -13,3 +13,7 @@ Resultados: residuo medio 17.35378 → 10.31719 (40.5%); costo adicional medio 5
 Inspección de `/tmp/rift-centered/baseline.png` y `centered.png`: persisten contornos deformados y parches. La reducción del objetivo NO demuestra mejor fluidez ni elimina oclusiones. No activar en producción con esta evidencia.
 
 Siguiente hipótesis: regularizar respecto del predictor existente en vez de permitir cualquier candidato con menor residuo. El experimento sigue separado de la reproducción.
+
+Segunda etapa: se añadió penalización por distancia L-infinito respecto del vector original, escalada por área de bloque y peso explícito experimental. Checks adicionales: penalización extrema conserva el predictor; peso 4 no aumenta el residuo original en traslación sintética. No se presume que un peso fijo sea óptimo para toda película.
+
+Comando de comparación: igual que arriba con `MV_CENTERED_WEIGHT=4`. Imágenes de comparación en `/tmp/rift-centered-weight-4/`. La inspección conserva distorsiones en el objeto grande; el siguiente paso evalúa un candidato temporal derivado del par anterior, sin cambiar el estado de producción.
