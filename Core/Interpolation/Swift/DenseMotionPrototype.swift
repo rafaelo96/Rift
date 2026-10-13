@@ -113,6 +113,8 @@ public final class DenseMotionPrototype {
             let normalized=data.withUnsafeBytes { bytes in stride(from: 0,to: bytes.count,by: 2).allSatisfy { bytes.loadUnaligned(fromByteOffset: $0,as: UInt16.self)<=1023 } }
             guard normalized else { throw MotionSearchEngine.EngineError.pipeline("Dense luma must be normalized to 10-bit") }
         }
+        // Identical held neighbors contain no evidence for extrapolating the central motion.
+        let context=context.flatMap { $0.before==first && $0.after==last ? nil : $0 }
         let start=DispatchTime.now().uptimeNanoseconds
         let region=MTLRegionMake2D(0,0,width,height)
         for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }

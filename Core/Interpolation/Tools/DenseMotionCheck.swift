@@ -335,6 +335,18 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
     let fourPixelError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(fourTranslation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
     precondition(fourPixelError<5,"Four-frame transport lost known translated detail")
     print("DENSE FOUR TRANSLATION: pixel MAE=\(fourPixelError)")
+    // Held neighboring drawings must not force constant velocity outside the central pair.
+    let held=DenseMotionPrototype.TemporalContext(before: data(texture),after: data(translated),beforeInterval: 1,afterInterval: 1)
+    let heldTranslation=try dense.interpolate(first: data(texture),last: data(translated),forward: seed,backward: reverse,time: 0.5,context: held)
+    let heldError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(heldTranslation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
+    print("DENSE HELD NEIGHBORS: midpoint pixel MAE=\(heldError), two-frame MAE=\(pixelError)")
+    precondition(heldTranslation.pixels==translation.pixels,"Repeated neighbors corrupted central-pair motion")
+    let noisyFirst=texture.enumerated().map { UInt16(Int($0.element)+($0.offset%2==0 ? 1 : -1)) }
+    let noisyLast=translated.enumerated().map { UInt16(Int($0.element)+($0.offset%2==0 ? -1 : 1)) }
+    let noisyHeld=DenseMotionPrototype.TemporalContext(before: data(noisyFirst),after: data(noisyLast),beforeInterval: 1,afterInterval: 1)
+    let noisyTranslation=try dense.interpolate(first: data(texture),last: data(translated),forward: seed,backward: reverse,time: 0.5,context: noisyHeld)
+    let noisyError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(noisyTranslation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
+    print("DENSE NOISY HELD: midpoint pixel MAE=\(noisyError)")
     let odd=try DenseMotionPrototype(width: 65,height: 49,variational: variational,finestIterations: finestIterations)
     let oddPixels: [UInt16]=(0..<65*49).map { UInt16(($0*9)%1000) }
     let oddSeeds=[SIMD2<Int32>](repeating: .zero,count: 9*7)

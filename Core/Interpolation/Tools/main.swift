@@ -1976,6 +1976,17 @@ for i in 0..<pairCount {
                 let baseline=warpEngine.interpolate(I0: cur,I1: end,mv: groundForward,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: time).0
                 func mae(_ pixels: [UInt16]) -> Double { zip(pixels,ref).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(ref.count) }
                 print("DENSE GROUND TRUTH: pair=\(i), t=\(time), source MAE=\(mae(cur)), block MAE=\(mae(baseline)), dense MAE=\(mae(result.pixels))")
+                if envInt("MV_DENSE_EVIDENCE",0)==1 {
+                    let truth=ref
+                    let first=cur
+                    func difference(_ a: [UInt16],_ b: [UInt16]) -> Double {
+                        zip(a,b).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(a.count)
+                    }
+                    print("DENSE EVIDENCE: pair=\(i), first-to-truth=\(difference(first,truth)), truth-to-last=\(difference(truth,end)), first-to-last=\(difference(first,end))")
+                    for (name,pixels) in [("input0",first),("input1",end)] {
+                        precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_\(name).png"))
+                    }
+                }
                 if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+3<frames.count {
                     let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+3],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+3]-frameTimes[i+2])/span))
                     let four=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time,context: context)
