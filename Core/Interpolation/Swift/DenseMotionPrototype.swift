@@ -34,15 +34,18 @@ public final class DenseMotionPrototype {
     private let reliability: MTLTexture
     private let mappingResidual: MTLTexture
     private let variational: Bool
+    private let finestIterations: Int
     private let dual: [[MTLTexture]]
     private let linear: [MTLTexture]
 
-    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false) throws {
+    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8) throws {
         guard width>=8,height>=8,width<=8192,height<=8192,blockSize>0,blockSize<=64 else { throw MotionSearchEngine.EngineError.pipeline("Invalid dense geometry") }
         guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
         self.device=device; self.queue=queue
         self.width=width; self.height=height; self.blockSize=blockSize
         self.variational=variational
+        guard finestIterations>=1,finestIterations<=8 else { throw MotionSearchEngine.EngineError.pipeline("Invalid finest-level iteration count") }
+        self.finestIterations=finestIterations
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
         for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseSynthesize"] {
@@ -138,7 +141,7 @@ public final class DenseMotionPrototype {
                 if let context {
                     intervals=direction==0 ? SIMD2(-context.beforeInterval,1+context.afterInterval) : SIMD2(1+context.beforeInterval,-context.afterInterval)
                 }
-                for _ in 0..<8 {
+                for _ in 0..<(level==0 ? finestIterations : 8) {
                     try encode("denseLK",[images[direction][level],images[1-direction][level],buffers[0],buffers[1],images[2][level],images[3][level]],buffers[1]) {
                         $0.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
                     }

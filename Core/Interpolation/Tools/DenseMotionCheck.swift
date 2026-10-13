@@ -30,6 +30,9 @@ func checkLargeMotionSearch() throws {
         print("LARGE SEARCH: extended=\(extended), translation vector MAE=\(error)px")
     }
     precondition(errors[0]>50 && errors[1]<1,"Extended hierarchy did not recover known out-of-range motion")
+    let single=try MotionSearchEngine(msl: motionShadersMSL,spec: [spec(false)[0]],lambdaPx: 0,smoothL0: false,gateL0: false)
+    let singleTiming=single.runPair(cur: data(source),ref: data(source))
+    precondition(singleTiming.stages[SEStage.searchL0.rawValue]>0 && singleTiming.stages[SEStage.searchL3.rawValue]==0,"Single-level search was reported as a coarse stage")
 }
 
 private func denseLayerScene(_ offset: Int) -> [UInt16] {
@@ -162,14 +165,20 @@ private func checkDenseTemporalEvidence() throws {
     print("DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence")
 }
 
-func checkDenseMotion(variational: Bool=false) throws {
+func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
+    for invalid in [0,9] {
+        do {
+            _=try DenseMotionPrototype(width: 64,height: 48,finestIterations: invalid)
+            preconditionFailure("Invalid refinement count accepted")
+        } catch MotionSearchEngine.EngineError.pipeline { }
+    }
     try checkDenseInverse()
     try checkDenseVisibility()
     try checkDenseTemporalEvidence()
     let w=64,h=48,gw=8,gh=6
     func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
     func error(_ a: [UInt16],_ b: [UInt16]) -> Double { zip(a,b).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(a.count) }
-    let dense=try DenseMotionPrototype(width: w,height: h,variational: variational)
+    let dense=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations)
     let warp=try WarpEngine(msl: warpShadersMSL)
     let first=denseLayerScene(0),last=denseLayerScene(8)
     func field(_ offset: Int,_ direction: Int32) -> [SIMD2<Int32>] {
@@ -195,7 +204,7 @@ func checkDenseMotion(variational: Bool=false) throws {
     precondition(four[0].pixels==first && four[2].pixels==last)
     print("DENSE FOUR LAYERS: MAE=\(error(four[1].pixels,denseLayerScene(4)))")
     let noContext=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
-    let fresh=try DenseMotionPrototype(width: w,height: h,variational: variational).interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
+    let fresh=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations).interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
     precondition(noContext.pixels==fresh.pixels && noContext.forward==fresh.forward && noContext.backward==fresh.backward,"Neighbor textures leaked into the next context-free pair")
     for invalid in [DenseMotionPrototype.TemporalContext(before: Data(),after: data(last),beforeInterval: 1,afterInterval: 1),DenseMotionPrototype.TemporalContext(before: data(first),after: data(last),beforeInterval: .nan,afterInterval: 1)] {
         do {
@@ -260,7 +269,7 @@ func checkDenseMotion(variational: Bool=false) throws {
     let fourPixelError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(fourTranslation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
     precondition(fourPixelError<5,"Four-frame transport lost known translated detail")
     print("DENSE FOUR TRANSLATION: pixel MAE=\(fourPixelError)")
-    let odd=try DenseMotionPrototype(width: 65,height: 49,variational: variational)
+    let odd=try DenseMotionPrototype(width: 65,height: 49,variational: variational,finestIterations: finestIterations)
     let oddPixels: [UInt16]=(0..<65*49).map { UInt16(($0*9)%1000) }
     let oddSeeds=[SIMD2<Int32>](repeating: .zero,count: 9*7)
     let oddResult=try odd.interpolate(first: data(oddPixels),last: data(oddPixels),forward: oddSeeds,backward: oddSeeds,time: 0.5)
