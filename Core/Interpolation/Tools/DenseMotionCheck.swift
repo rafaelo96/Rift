@@ -95,9 +95,47 @@ private func checkDenseInverse() throws {
     print("DENSE INVERSE: affine ground truth passed; old fixed-point residual exceeds 1px")
 }
 
+private func checkDenseTemporalEvidence() throws {
+    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
+    let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+    guard let function=library.makeFunction(name: "denseTemporalAssess") else { throw MotionSearchEngine.EngineError.pipeline("Temporal check shader missing") }
+    let pipeline=try device.makeComputePipelineState(function: function)
+    func texture(_ format: MTLPixelFormat) throws -> MTLTexture {
+        let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: 64,height: 48,mipmapped: false)
+        descriptor.storageMode = .shared; descriptor.usage = [.shaderRead,.shaderWrite]
+        guard let result=device.makeTexture(descriptor: descriptor) else { throw MotionSearchEngine.EngineError.pipeline("Temporal check allocation failed") }
+        return result
+    }
+    let source=try texture(.r32Float),before=try texture(.r32Float),after=try texture(.r32Float),input=try texture(.rgba32Float),output=try texture(.rgba32Float)
+    let region=MTLRegionMake2D(0,0,64,48)
+    for (image,offset) in [(source,0),(before,-8),(after,16)] {
+        let pixels=denseLayerScene(offset).map { Float($0)/1023 }
+        pixels.withUnsafeBytes { image.replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) }
+    }
+    var field=[SIMD4<Float>](repeating: SIMD4(0,0,1,-1),count: 64*48)
+    field[8*64+10]=SIMD4(8,0,1,-1) // Incorrect moving trajectory on static background.
+    field[20*64+30]=SIMD4(8,0,1,-1) // Correct foreground trajectory.
+    field.withUnsafeBytes { input.replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*16) }
+    guard let command=queue.makeCommandBuffer(),let encoder=command.makeComputeCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Temporal check command failed") }
+    encoder.setComputePipelineState(pipeline)
+    for (i,image) in [source,before,after,input,output].enumerated() { encoder.setTexture(image,index: i) }
+    var intervals=SIMD2<Float>(-1,2)
+    encoder.setBytes(&intervals,length: 8,index: 0)
+    encoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
+    guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Temporal check GPU failure") }
+    var assessed=[SIMD4<Float>](repeating: .zero,count: field.count)
+    assessed.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 64*16,from: region,mipmapLevel: 0) }
+    precondition(assessed[8*64+10].w>=0 && assessed[8*64+10].z<0.3,"False occlusion retained despite both neighbors contradicting it")
+    precondition(assessed[20*64+30].w<0 && assessed[20*64+30].z>0.99,"Known temporal trajectory lost support")
+    precondition(assessed[8*64+5].w<0 && assessed[8*64+5].z>0.99,"Static visible background lost support")
+    print("DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence")
+}
+
 func checkDenseMotion(variational: Bool=false) throws {
     try checkDenseInverse()
     try checkDenseVisibility()
+    try checkDenseTemporalEvidence()
     let w=64,h=48,gw=8,gh=6
     func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
     func error(_ a: [UInt16],_ b: [UInt16]) -> Double { zip(a,b).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(a.count) }
@@ -122,12 +160,28 @@ func checkDenseMotion(variational: Bool=false) throws {
         print("DENSE LAYERS: t=\(time), baseline MAE=\(a), dense MAE=\(b), ms=\(result.milliseconds)")
     }
     precondition(denseError<baselineError,"Dense motion did not improve known layered sequence")
+    let context=DenseMotionPrototype.TemporalContext(before: data(denseLayerScene(-8)),after: data(denseLayerScene(16)),beforeInterval: 1,afterInterval: 1)
+    let four=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,times: [0,0.5,1],context: context)
+    precondition(four[0].pixels==first && four[2].pixels==last)
+    print("DENSE FOUR LAYERS: MAE=\(error(four[1].pixels,denseLayerScene(4)))")
+    let noContext=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
+    let fresh=try DenseMotionPrototype(width: w,height: h,variational: variational).interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
+    precondition(noContext.pixels==fresh.pixels && noContext.forward==fresh.forward && noContext.backward==fresh.backward,"Neighbor textures leaked into the next context-free pair")
+    for invalid in [DenseMotionPrototype.TemporalContext(before: Data(),after: data(last),beforeInterval: 1,afterInterval: 1),DenseMotionPrototype.TemporalContext(before: data(first),after: data(last),beforeInterval: .nan,afterInterval: 1)] {
+        do {
+            _=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5,context: invalid)
+            preconditionFailure("Invalid temporal context accepted")
+        } catch MotionSearchEngine.EngineError.pipeline { }
+    }
     for time: Float in [0,1] {
         let result=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: time)
         precondition(result.pixels==(time==0 ? first : last),"Dense endpoint changed")
     }
     let still=try dense.interpolate(first: data(first),last: data(first),forward: forward,backward: backward,time: 0.5)
     precondition(still.pixels==first,"Dense static protection regressed")
+    let staticContext=DenseMotionPrototype.TemporalContext(before: data(first),after: data(first),beforeInterval: 1,afterInterval: 1)
+    let fourStill=try dense.interpolate(first: data(first),last: data(first),forward: forward,backward: backward,time: 0.5,context: staticContext)
+    precondition(fourStill.pixels==first,"Four-frame static protection regressed")
     let repeated=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
     let batch=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,times: [0,0.5,1,0.5])
     precondition(batch[0].pixels==first && batch[2].pixels==last && batch[1].pixels==repeated.pixels && batch[3].pixels==repeated.pixels,"Shared flow changed temporal samples")
@@ -169,6 +223,13 @@ func checkDenseMotion(variational: Bool=false) throws {
     let pixelError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(translation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
     print("DENSE TRANSLATION: original-detail pixel MAE=\(pixelError)")
     precondition(pixelError<5,"Dense reconstruction lost known translated detail")
+    let past: [UInt16]=(0..<w*h).map { i in texture[(i/w)*w+min(w-1,i%w+4)] }
+    let future: [UInt16]=(0..<w*h).map { i in texture[(i/w)*w+max(0,i%w-8)] }
+    let trajectory=DenseMotionPrototype.TemporalContext(before: data(past),after: data(future),beforeInterval: 1,afterInterval: 1)
+    let fourTranslation=try dense.interpolate(first: data(texture),last: data(translated),forward: seed,backward: reverse,time: 0.5,context: trajectory)
+    let fourPixelError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(fourTranslation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
+    precondition(fourPixelError<5,"Four-frame transport lost known translated detail")
+    print("DENSE FOUR TRANSLATION: pixel MAE=\(fourPixelError)")
     let odd=try DenseMotionPrototype(width: 65,height: 49,variational: variational)
     let oddPixels: [UInt16]=(0..<65*49).map { UInt16(($0*9)%1000) }
     let oddSeeds=[SIMD2<Int32>](repeating: .zero,count: 9*7)

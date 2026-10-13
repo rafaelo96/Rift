@@ -1905,6 +1905,15 @@ for i in 0..<pairCount {
             try FileManager.default.createDirectory(atPath: folder,withIntermediateDirectories: true)
             let times: [Float]=[0.25,0.5,0.75]
             let samples=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times)
+            if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+2<frames.count {
+                let span=frameTimes[i+1]-frameTimes[i]
+                let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+2],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+2]-frameTimes[i+1])/span))
+                let four=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,context: context)
+                print("DENSE FOUR PAIR: pair=\(i), ms=\(four.reduce(0.0) { $0+$1.milliseconds })")
+                for (time,result) in zip(times,four) {
+                    precondition(writeGrayPNG(result.pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_four_t\(time).png"))
+                }
+            }
             print("DENSE PAIR: shared analysis plus three syntheses ms=\(samples.reduce(0.0) { $0+$1.milliseconds })")
             for (time,result) in zip(times,samples) {
                 let supported=result.reliability.filter { $0>0.05 }.count
@@ -1949,6 +1958,12 @@ for i in 0..<pairCount {
                 let baseline=warpEngine.interpolate(I0: cur,I1: end,mv: groundForward,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: time).0
                 func mae(_ pixels: [UInt16]) -> Double { zip(pixels,ref).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(ref.count) }
                 print("DENSE GROUND TRUTH: pair=\(i), t=\(time), source MAE=\(mae(cur)), block MAE=\(mae(baseline)), dense MAE=\(mae(result.pixels))")
+                if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+3<frames.count {
+                    let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+3],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+3]-frameTimes[i+2])/span))
+                    let four=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time,context: context)
+                    print("DENSE FOUR GROUND TRUTH: pair=\(i), dense2 MAE=\(mae(result.pixels)), dense4 MAE=\(mae(four.pixels)), ms=\(four.milliseconds)")
+                    precondition(writeGrayPNG(four.pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_four.png"))
+                }
                 for (name,pixels) in [("reconstructed",result.pixels),("truth",ref),("block",baseline)] {
                     precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_\(name).png"))
                 }

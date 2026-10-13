@@ -3,6 +3,16 @@ import Metal
 
 /// Isolated luma prototype; no decoder, disk, UI, or production state.
 public final class DenseMotionPrototype {
+    public struct TemporalContext {
+        public let before: Data, after: Data
+        public let beforeInterval: Float, afterInterval: Float
+        /// Neighbor intervals relative to the central pair's duration.
+        /// shortcut: constant velocity across this window; acceleration and cuts need a different temporal model.
+        public init(before: Data,after: Data,beforeInterval: Float,afterInterval: Float) {
+            self.before=before; self.after=after
+            self.beforeInterval=beforeInterval; self.afterInterval=afterInterval
+        }
+    }
     public struct Result {
         public let pixels: [UInt16]
         public let reliability: [Float]
@@ -35,7 +45,7 @@ public final class DenseMotionPrototype {
         self.variational=variational
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -47,14 +57,14 @@ public final class DenseMotionPrototype {
             guard let result=device.makeTexture(descriptor: descriptor) else { throw MotionSearchEngine.EngineError.pipeline("Dense texture allocation failed") }
             return result
         }
-        raw=try [texture(.r16Uint,width,height),texture(.r16Uint,width,height)]
-        original=try [texture(.r32Float,width,height),texture(.r32Float,width,height)]
+        raw=try (0..<4).map { _ in try texture(.r16Uint,width,height) }
+        original=try (0..<4).map { _ in try texture(.r32Float,width,height) }
         output=try texture(.r16Uint,width,height)
         reliability=try texture(.r32Float,width,height)
         mappingResidual=try texture(.rg32Float,width,height)
         var sizes=[(width,height)]
         while sizes.count<4,let last=sizes.last,last.0>=16,last.1>=16 { sizes.append(((last.0+1)/2,(last.1+1)/2)) }
-        images=try (0..<2).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
+        images=try (0..<4).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
         flows=try (0..<2).map { _ in try sizes.map { size in try [texture(.rgba32Float,size.0,size.1),texture(.rgba32Float,size.0,size.1)] } }
         dual=variational ? try (0..<2).map { _ in try [texture(.rgba32Float,width,height),texture(.rgba32Float,width,height)] } : []
         linear=variational ? try (0..<2).map { _ in try texture(.rgba32Float,width,height) } : []
@@ -67,25 +77,35 @@ public final class DenseMotionPrototype {
 
     /// UInt16 work-plane luma in 0...1023; vectors in half-pixel units.
     /// Resources are reused; callers must serialize access to this instance.
-    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],time: Float) throws -> Result {
-        try interpolate(first: first,last: last,forward: forward,backward: backward,times: [time])[0]
+    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],time: Float,context: TemporalContext?=nil) throws -> Result {
+        try interpolate(first: first,last: last,forward: forward,backward: backward,times: [time],context: context)[0]
     }
 
     /// One bounded pair analysis shared by up to four temporal samples.
     /// The first result's milliseconds includes analysis; subsequent results measure synthesis.
-    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float]) throws -> [Result] {
+    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
         guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=4,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               forward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }),backward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }) else {
             throw MotionSearchEngine.EngineError.pipeline("Invalid dense input")
         }
-        for data in [first,last] {
+        var inputs=[first,last]
+        if let context {
+            guard context.before.count==first.count,context.after.count==first.count,
+                  context.beforeInterval.isFinite,context.afterInterval.isFinite,
+                  context.beforeInterval>=0.25,context.beforeInterval<=4,
+                  context.afterInterval>=0.25,context.afterInterval<=4 else {
+                throw MotionSearchEngine.EngineError.pipeline("Invalid dense temporal context")
+            }
+            inputs += [context.before,context.after]
+        }
+        for data in inputs {
             let normalized=data.withUnsafeBytes { bytes in stride(from: 0,to: bytes.count,by: 2).allSatisfy { bytes.loadUnaligned(fromByteOffset: $0,as: UInt16.self)<=1023 } }
             guard normalized else { throw MotionSearchEngine.EngineError.pipeline("Dense luma must be normalized to 10-bit") }
         }
         let start=DispatchTime.now().uptimeNanoseconds
         let region=MTLRegionMake2D(0,0,width,height)
-        for (i,data) in [first,last].enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
+        for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
         for (i,field) in [forward,backward].enumerated() { field.withUnsafeBytes { bytes in _=memcpy(seeds[i].contents(),bytes.baseAddress!,bytes.count) } }
         guard var command=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense command allocation failed") }
         func encode(_ name: String,_ textures: [MTLTexture],_ target: MTLTexture,_ setup: (MTLComputeCommandEncoder)->Void = { _ in }) throws {
@@ -96,7 +116,7 @@ public final class DenseMotionPrototype {
             encoder.dispatchThreads(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
         }
-        for direction in 0..<2 {
+        for direction in inputs.indices {
             try encode("denseUpload",[raw[direction],original[direction]],original[direction])
             try encode("denseAnalysisBlur",[original[direction],images[direction][0]],images[direction][0])
             for level in 1..<images[direction].count { try encode("denseDown",[images[direction][level-1],images[direction][level]],images[direction][level]) }
@@ -114,8 +134,14 @@ public final class DenseMotionPrototype {
                         encoder.setBytes(&geometry,length: MemoryLayout<SIMD4<UInt32>>.stride,index: 1)
                     }
                 }
+                var intervals=SIMD2<Float>.zero
+                if let context {
+                    intervals=direction==0 ? SIMD2(-context.beforeInterval,1+context.afterInterval) : SIMD2(1+context.beforeInterval,-context.afterInterval)
+                }
                 for _ in 0..<8 {
-                    try encode("denseLK",[images[direction][level],images[1-direction][level],buffers[0],buffers[1]],buffers[1])
+                    try encode("denseLK",[images[direction][level],images[1-direction][level],buffers[0],buffers[1],images[2][level],images[3][level]],buffers[1]) {
+                        $0.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+                    }
                     try encode("denseRegularize",[images[direction][level],buffers[1],buffers[0]],buffers[0])
                 }
                 previous=buffers[0]
@@ -147,6 +173,19 @@ public final class DenseMotionPrototype {
             assessed.append(next)
         }
         finalFlows=assessed
+        if let context {
+            var temporal: [MTLTexture]=[]
+            for direction in 0..<2 {
+                let current=finalFlows[direction]
+                let next=current === flows[direction][0][0] ? flows[direction][0][1] : flows[direction][0][0]
+                var intervals=direction==0 ? SIMD2<Float>(-context.beforeInterval,1+context.afterInterval) : SIMD2<Float>(1+context.beforeInterval,-context.afterInterval)
+                try encode("denseTemporalAssess",[original[direction],original[2],original[3],current,next],next) {
+                    $0.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+                }
+                temporal.append(next)
+            }
+            finalFlows=temporal
+        }
         var results: [Result]=[]
         var fields: [[SIMD4<Float>]]=[]
         for (sample,time) in times.enumerated() {

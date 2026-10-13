@@ -37,7 +37,7 @@ kernel void denseExpand(texture2d<float,access::sample> coarse [[texture(0)]],te
     float4 value=denseRead(coarse,q);
     fine.write(float4(value.xy*2,value.zw),p);
 }
-kernel void denseLK(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+kernel void denseLK(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::sample> before [[texture(4)]],texture2d<float,access::sample> after [[texture(5)]],constant float2 &intervals [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float2 center=float2(p),v=denseRead(input,center).xy;
     float level=denseRead(a,center).r;
@@ -52,6 +52,21 @@ kernel void denseLK(texture2d<float,access::sample> a [[texture(0)]],texture2d<f
         hxx+=w*gx*gx; hxy+=w*gx*gy; hyy+=w*gy*gy;
         bx+=w*gx*e; by+=w*gy*e;
         residual+=w*abs(e); total+=w;
+        if(intervals.x!=0) {
+            for(int neighbor=0;neighbor<2;++neighbor) {
+                float scale=intervals[neighbor]; float2 s=q+scale*v;
+                uint width=a.get_width(),height=a.get_height();
+                if(s.x<1||s.y<1||s.x>=float(width-1)||s.y>=float(height-1)) continue;
+                float nv=neighbor==0 ? denseRead(before,s).r : denseRead(after,s).r;
+                float nx=neighbor==0 ? denseRead(before,s+float2(1,0)).r-denseRead(before,s-float2(1,0)).r : denseRead(after,s+float2(1,0)).r-denseRead(after,s-float2(1,0)).r;
+                float ny=neighbor==0 ? denseRead(before,s+float2(0,1)).r-denseRead(before,s-float2(0,1)).r : denseRead(after,s+float2(0,1)).r-denseRead(after,s-float2(0,1)).r;
+                float error=av-nv;
+                float weight=0.5f*exp(-10*abs(av-level)-20*abs(error))/max(0.02f,abs(error));
+                nx*=0.5f*scale; ny*=0.5f*scale;
+                hxx+=weight*nx*nx; hxy+=weight*nx*ny; hyy+=weight*ny*ny;
+                bx+=weight*nx*error; by+=weight*ny*error;
+            }
+        }
     }
     float trace=hxx+hyy,det=hxx*hyy-hxy*hxy;
     float2 update=0;
@@ -139,6 +154,25 @@ kernel void denseTVAssess(texture2d<float,access::sample> a [[texture(0)]],textu
     output.write(float4(v,hidden ? prior : exp(-20*residual),hidden ? -1-residual : residual),p);
 }
 bool denseInside(float2 p,uint w,uint h) { return all(p>=0)&&p.x<=float(w-1)&&p.y<=float(h-1); }
+kernel void denseTemporalAssess(texture2d<float,access::sample> source [[texture(0)]],texture2d<float,access::sample> before [[texture(1)]],texture2d<float,access::sample> after [[texture(2)]],texture2d<float,access::sample> input [[texture(3)]],texture2d<float,access::write> output [[texture(4)]],constant float2 &intervals [[buffer(0)]],uint2 gid [[thread_position_in_grid]]) {
+    uint w=output.get_width(),h=output.get_height();
+    if(gid.x>=w||gid.y>=h) return;
+    float2 p=float2(gid); float4 field=denseRead(input,p);
+    float2 q0=p+intervals.x*field.xy,q1=p+intervals.y*field.xy;
+    float e0=0,e1=0;
+    for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
+        float2 d=float2(x,y); float a=denseRead(source,p+d).r;
+        e0+=abs(a-denseRead(before,q0+d).r); e1+=abs(a-denseRead(after,q1+d).r);
+    }
+    e0=denseInside(q0,w,h) ? e0/9 : 1;
+    e1=denseInside(q1,w,h) ? e1/9 : 1;
+    // One neighbor may be occluded too; require evidence from at least one.
+    float evidence=min(e0,e1);
+    field.z*=exp(-20*evidence);
+    // Failed central closure alone is insufficient evidence of a visible surface.
+    if(field.w<0 && evidence>0.03f) field.w=-1-field.w;
+    output.write(field,gid);
+}
 float2 denseInverse(texture2d<float,access::sample> flow,float2 p,float amount) {
     float2 q=p-amount*denseRead(flow,p).xy;
     for(int iteration=0;iteration<6;++iteration) {
