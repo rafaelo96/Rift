@@ -82,6 +82,11 @@ if envInt("MV_DENSE_CHECK",0)==1 {
     do { try checkDenseMotion(variational: envInt("MV_DENSE_TV",0)==1); exit(0) }
     catch { print("DENSE CHECK FAILED: \(error)"); exit(3) }
 }
+if envInt("MV_LARGE_CHECK",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkLargeMotionSearch(); exit(0) }
+    catch { print("LARGE SEARCH CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_FOUR_CHECK",0)==1 {
     do { try checkCenteredRefinement(); print("OK — four-frame translation, static, determinism and geometry checks"); exit(0) }
     catch { print("FOUR CHECK FAILED: \(error)"); exit(3) }
@@ -1678,7 +1683,7 @@ if envInt("MV_PRORES_CHECK", 0) == 1 {
     exit(0)
 }
 
-let pyramidSpec: [LevelSpec]
+var pyramidSpec: [LevelSpec]
 // Diagnostic ablation: distinguish out-of-range motion from synthesis errors.
 let coarseHalfPel: Int32=envInt("MV_DENSE_WIDE",0)==1 ? 60 : 32
 if envInt("MV_HIER", 1) == 1 {
@@ -1693,6 +1698,14 @@ if envInt("MV_HIER", 1) == 1 {
     // the fine-level block matcher (diagnostic, MV_HIER=0). ~40x L0 cost.
     pyramidSpec = [
         LevelSpec(width: workWidth, height: workHeight, blockSize: 8, searchHalfPel: 70, halfPelRefine: subpelOn, inheritFactor: 1),
+    ]
+}
+
+if envInt("MV_DENSE_DEEP",0)==1 {
+    guard pyramidSpec.count==4 else { fatalError("Deep diagnostic requires the hierarchical four-level base") }
+    pyramidSpec += [
+        LevelSpec(width: 72,height: 30,blockSize: 8,searchHalfPel: 32,halfPelRefine: false,inheritFactor: 1),
+        LevelSpec(width: 36,height: 15,blockSize: 4,searchHalfPel: 32,halfPelRefine: false,inheritFactor: 1)
     ]
 }
 
@@ -1818,8 +1831,8 @@ var perStage = [[Double]](repeating: [], count: SEStage.allCases.count)
 var perPairTotal: [Double] = []
 var uploadTotal: [Double] = []
 // Per-level |MV| magnitude histograms (index 0 = L0): 6 bins like PairMetrics.hist.
-var levelHist = [[Int]](repeating: [0, 0, 0, 0, 0, 0], count: 4)
-var levelBlocks = [Int](repeating: 0, count: 4)
+var levelHist = [[Int]](repeating: [0, 0, 0, 0, 0, 0], count: engine.grids.count)
+var levelBlocks = [Int](repeating: 0, count: engine.grids.count)
 // Aggregate motion-compensation metrics, accumulated per pair inside the main
 // loop (NOT recomputed on the last field after the loop — that was a reporting
 // bug that made the histogram reflect only whichever pair landed last).

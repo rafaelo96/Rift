@@ -2,6 +2,36 @@ import Foundation
 import Metal
 import Interpolation
 
+func checkLargeMotionSearch() throws {
+    let width=512,height=128,shift=160
+    let source: [UInt16]=(0..<width*height).map { i in UInt16(100+(i%width*43+i/width*67+(i%width)*(i/width)*7)%800) }
+    let target: [UInt16]=(0..<width*height).map { i in source[(i/width)*width+max(0,i%width-shift)] }
+    func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
+    func spec(_ extended: Bool) -> [LevelSpec] {
+        var levels=[
+            LevelSpec(width: width,height: height,blockSize: 8,searchHalfPel: 8,halfPelRefine: false,inheritFactor: 2),
+            LevelSpec(width: 256,height: 64,blockSize: 8,searchHalfPel: 8,halfPelRefine: false,inheritFactor: 2),
+            LevelSpec(width: 128,height: 32,blockSize: 8,searchHalfPel: 8,halfPelRefine: false,inheritFactor: 2),
+            LevelSpec(width: 64,height: 16,blockSize: 8,searchHalfPel: 8,halfPelRefine: false,inheritFactor: 2)
+        ]
+        if extended { levels.append(LevelSpec(width: 32,height: 8,blockSize: 8,searchHalfPel: 32,halfPelRefine: false,inheritFactor: 1)) }
+        return levels
+    }
+    var errors: [Double]=[]
+    for extended in [false,true] {
+        let engine=try MotionSearchEngine(msl: motionShadersMSL,spec: spec(extended),lambdaPx: 0,smoothL0: false,gateL0: false)
+        let timing=engine.runPair(cur: data(source),ref: data(target))
+        precondition(timing.stages.count==SEStage.allCases.count && timing.stages.allSatisfy { $0.isFinite && $0>=0 },"Extended hierarchy broke timing buckets")
+        let field=engine.downloadMV(level: 0)
+        // Only fully visible coarse blocks: do not score regions transported out of frame.
+        let indices=(2..<14).flatMap { y in (4..<28).map { y*64+$0 } }
+        let error=indices.reduce(0.0) { $0+Double(abs(Int(field[$1].x)-shift*2)+abs(Int(field[$1].y)))/2 }/Double(indices.count)
+        errors.append(error)
+        print("LARGE SEARCH: extended=\(extended), translation vector MAE=\(error)px")
+    }
+    precondition(errors[0]>50 && errors[1]<1,"Extended hierarchy did not recover known out-of-range motion")
+}
+
 private func denseLayerScene(_ offset: Int) -> [UInt16] {
     (0..<64*48).map { i in
         let x=i%64,y=i/64

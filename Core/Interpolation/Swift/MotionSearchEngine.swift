@@ -346,14 +346,14 @@ public final class MotionSearchEngine {
         for i in 1..<levels {
             let tCur = runDownsample(from: curTex[i - 1]!, to: curTex[i]!, level: i)
             let tRef = runDownsample(from: refTex[i - 1]!, to: refTex[i]!, level: i)
-            times[stageIndex(.downL1, level: i)] = tCur + tRef
+            times[stageIndex(.downL1, level: i)] += tCur + tRef
         }
 
         // Search coarse → fine.
         for i in stride(from: levels - 1, through: 0, by: -1) {
             let inherited = i < levels - 1 ? mvBuffer[i + 1] : nil
             let t = runSearch(level: i, inheritedBuffer: inherited)
-            times[stageIndex(.searchL3, level: i)] = t
+            times[stageIndex(.searchL3, level: i)] += t
         }
         // L0 3x3 vector-median smoothing (when enabled).
         if let medianPSO = medianPSO, let smooth = mvBufferSmoothed {
@@ -502,11 +502,11 @@ public final class MotionSearchEngine {
     // MARK: - Stages
 
     private func stageIndex(_ base: SEStage, level: Int) -> Int {
-        // downL1 → levels 1,2,3 ; searchL3 → levels 3,2,1,0
+        // Preserve the public seven timing buckets; fold additional coarse levels into L3.
         let idx: Int
         switch base {
-        case .downL1: idx = SEStage.downL1.rawValue + (level - 1)
-        case .searchL3: idx = SEStage.searchL3.rawValue + (levels - 1 - level)
+        case .downL1: idx = SEStage.downL1.rawValue + (min(level,3) - 1)
+        case .searchL3: idx = SEStage.searchL3.rawValue + (3 - min(level,3))
         default: idx = base.rawValue
         }
         return idx
