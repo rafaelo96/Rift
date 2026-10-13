@@ -77,6 +77,11 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_DENSE_CHECK",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkDenseMotion(variational: envInt("MV_DENSE_TV",0)==1); exit(0) }
+    catch { print("DENSE CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_FOUR_CHECK",0)==1 {
     do { try checkCenteredRefinement(); print("OK — four-frame translation, static, determinism and geometry checks"); exit(0) }
     catch { print("FOUR CHECK FAILED: \(error)"); exit(3) }
@@ -1703,6 +1708,14 @@ do {
     print("ENGINE INIT FAILED: \(error)")
     exit(3)
 }
+let densePrototype: DenseMotionPrototype?
+let denseReverseSearch: MotionSearchEngine?
+do {
+    if envInt("MV_DENSE",0)==1 {
+        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1)
+        denseReverseSearch=try MotionSearchEngine(msl: motionShadersMSL,spec: pyramidSpec,lambdaPx: UInt32(lambdaPx),smoothL0: true,gateL0: true,temporalGatePx: 0)
+    } else { densePrototype=nil; denseReverseSearch=nil }
+} catch { fatalError("Dense prototype init failed: \(error)") }
 let warpEngine: WarpEngine
 let contourEngine: WarpEngine?
 do {
@@ -1880,6 +1893,66 @@ for i in 0..<pairCount {
     // Per-pair quality metrics: accumulate the same L0 field the histogram uses.
     let cur: [UInt16] = frames[i].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
     let ref: [UInt16] = frames[i + 1].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
+    if let dense=densePrototype,let reverse=denseReverseSearch {
+        do {
+            _=reverse.runPair(cur: frames[i+1],ref: frames[i])
+            let forwardSearch=engine.downloadMV(level: 0),backwardSearch=reverse.downloadMV(level: 0)
+            let forward=envInt("MV_DENSE_ZERO",0)==1 ? [SIMD2<Int32>](repeating: .zero,count: forwardSearch.count) : forwardSearch
+            let backward=envInt("MV_DENSE_ZERO",0)==1 ? [SIMD2<Int32>](repeating: .zero,count: backwardSearch.count) : backwardSearch
+            let folder=ProcessInfo.processInfo.environment["MV_DENSE_OUTPUT"] ?? (envInt("MV_DENSE_TV",0)==1 ? "/tmp/rift-dense-avatar-tv" : (envInt("MV_DENSE_ZERO",0)==1 ? "/tmp/rift-dense-avatar-zero" : "/tmp/rift-dense-avatar"))
+            try FileManager.default.createDirectory(atPath: folder,withIntermediateDirectories: true)
+            let times: [Float]=[0.25,0.5,0.75]
+            let samples=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times)
+            print("DENSE PAIR: shared analysis plus three syntheses ms=\(samples.reduce(0.0) { $0+$1.milliseconds })")
+            for (time,result) in zip(times,samples) {
+                let supported=result.reliability.filter { $0>0.05 }.count
+                let moving=cur.indices.filter { abs(Int(cur[$0])-Int(ref[$0]))>32 }
+                let copies=moving.filter { result.pixels[$0]==cur[$0] || result.pixels[$0]==ref[$0] }.count
+                print("DENSE FRAME: pair=\(i), t=\(time), ms=\(result.milliseconds), supported=\(supported)/\(cur.count), sourceCopiesOnMoving=\(copies)/\(moving.count)")
+                if i==0 && time==0.5 {
+                    var variation=0.0,weakVariation=0.0,weakCount=0
+                    for y in 1..<workHeight { for x in 1..<workWidth {
+                        let index=y*workWidth+x
+                        let left=result.forward[index-1],current=result.forward[index]
+                        let difference=Double(abs(left.x-current.x)+abs(left.y-current.y))
+                        variation+=difference
+                        if abs(Int(cur[index])-Int(cur[index-1]))<4 { weakVariation+=difference; weakCount+=1 }
+                    } }
+                    print("DENSE FIELD: mean neighboring flow variation=\(variation/Double((workHeight-1)*(workWidth-1))), weak-gradient variation=\(weakVariation/Double(max(1,weakCount)))")
+                    let inaccurate=result.mappingResidual.filter { $0.x>1 || $0.y>1 }.count
+                    let mean=result.mappingResidual.reduce(0.0) { $0+Double($1.x+$1.y) }/Double(cur.count*2)
+                    print("DENSE TRANSPORT: mean mapping residual=\(mean), over1px=\(inaccurate)/\(cur.count)")
+                }
+                precondition(writeGrayPNG(result.pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_t\(time).png"))
+                if time==0.5 {
+                    precondition(writeGrayPNG(result.reliability.map { UInt8(clamping: Int($0*255)) },width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_confidence.png"))
+                    let baseline=warpEngine.interpolate(I0: cur,I1: ref,mv: forwardSearch,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: time).0
+                    precondition(writeGrayPNG(baseline.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_baseline.png"))
+                }
+            }
+            if i==0 {
+                for (name,pixels) in [("first",cur),("last",ref)] { precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/\(name).png")) }
+            }
+            if envInt("MV_DENSE_GROUND_TRUTH",0)==1 && i+2<frames.count {
+                // Hide one decoded frame, then compare its reconstruction at its actual PTS.
+                let span=frameTimes[i+2]-frameTimes[i]
+                let time=Float((frameTimes[i+1]-frameTimes[i])/span)
+                precondition(span>0 && time>0 && time<1)
+                _=reverse.runPair(cur: frames[i],ref: frames[i+2])
+                let groundForward=reverse.downloadMV(level: 0)
+                _=reverse.runPair(cur: frames[i+2],ref: frames[i])
+                let groundBackward=reverse.downloadMV(level: 0)
+                let result=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time)
+                let end: [UInt16]=frames[i+2].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
+                let baseline=warpEngine.interpolate(I0: cur,I1: end,mv: groundForward,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: time).0
+                func mae(_ pixels: [UInt16]) -> Double { zip(pixels,ref).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(ref.count) }
+                print("DENSE GROUND TRUTH: pair=\(i), t=\(time), source MAE=\(mae(cur)), block MAE=\(mae(baseline)), dense MAE=\(mae(result.pixels))")
+                for (name,pixels) in [("reconstructed",result.pixels),("truth",ref),("block",baseline)] {
+                    precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_\(name).png"))
+                }
+            }
+        } catch { fatalError("Dense experiment failed: \(error)") }
+    }
     if envInt("MV_FOUR",0)==1 && i>0 && i+2<frames.count {
         do {
             let intervals = (i-1...i+1).map { frameTimes[$0+1]-frameTimes[$0] }
