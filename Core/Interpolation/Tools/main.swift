@@ -1679,12 +1679,14 @@ if envInt("MV_PRORES_CHECK", 0) == 1 {
 }
 
 let pyramidSpec: [LevelSpec]
+// Diagnostic ablation: distinguish out-of-range motion from synthesis errors.
+let coarseHalfPel: Int32=envInt("MV_DENSE_WIDE",0)==1 ? 60 : 32
 if envInt("MV_HIER", 1) == 1 {
     pyramidSpec = [
         LevelSpec(width: workWidth, height: workHeight, blockSize: 8,  searchHalfPel: 8,  halfPelRefine: subpelOn, inheritFactor: 4),
         LevelSpec(width: 576,       height: 240,        blockSize: 16, searchHalfPel: 16, halfPelRefine: false,   inheritFactor: 2),
         LevelSpec(width: 288,       height: 120,        blockSize: 16, searchHalfPel: 32, halfPelRefine: false,   inheritFactor: 2),
-        LevelSpec(width: 144,       height: 60,         blockSize: 16, searchHalfPel: 32, halfPelRefine: false,   inheritFactor: 1),
+        LevelSpec(width: 144,       height: 60,         blockSize: 16, searchHalfPel: coarseHalfPel, halfPelRefine: false, inheritFactor: 1),
     ]
 } else {
     // Single level, exhaustive wide search: isolates the coarse-hierarchy from
