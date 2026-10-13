@@ -87,6 +87,11 @@ if envInt("MV_LARGE_CHECK",0)==1 {
     do { try checkLargeMotionSearch(); exit(0) }
     catch { print("LARGE SEARCH CHECK FAILED: \(error)"); exit(3) }
 }
+if envInt("MV_VISIBILITY_CHECK",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkDenseVisibility(collision: true); exit(0) }
+    catch { print("VISIBILITY CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_FOUR_CHECK",0)==1 {
     do { try checkCenteredRefinement(); print("OK — four-frame translation, static, determinism and geometry checks"); exit(0) }
     catch { print("FOUR CHECK FAILED: \(error)"); exit(3) }
@@ -1727,7 +1732,7 @@ let densePrototype: DenseMotionPrototype?
 let denseReverseSearch: MotionSearchEngine?
 do {
     if envInt("MV_DENSE",0)==1 {
-        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8))
+        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),projectedOwnership: envInt("MV_DENSE_OWNERSHIP",1)==1)
         denseReverseSearch=try MotionSearchEngine(msl: motionShadersMSL,spec: pyramidSpec,lambdaPx: UInt32(lambdaPx),smoothL0: true,gateL0: true,temporalGatePx: 0)
     } else { densePrototype=nil; denseReverseSearch=nil }
 } catch { fatalError("Dense prototype init failed: \(error)") }

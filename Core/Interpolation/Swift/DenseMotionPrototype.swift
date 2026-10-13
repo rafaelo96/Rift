@@ -35,10 +35,12 @@ public final class DenseMotionPrototype {
     private let mappingResidual: MTLTexture
     private let variational: Bool
     private let finestIterations: Int
+    private let projectedOwnership: Bool
+    private let ownership: [MTLBuffer]
     private let dual: [[MTLTexture]]
     private let linear: [MTLTexture]
 
-    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8) throws {
+    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8,projectedOwnership: Bool=true) throws {
         guard width>=8,height>=8,width<=8192,height<=8192,blockSize>0,blockSize<=64 else { throw MotionSearchEngine.EngineError.pipeline("Invalid dense geometry") }
         guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
         self.device=device; self.queue=queue
@@ -46,9 +48,14 @@ public final class DenseMotionPrototype {
         self.variational=variational
         guard finestIterations>=1,finestIterations<=8 else { throw MotionSearchEngine.EngineError.pipeline("Invalid finest-level iteration count") }
         self.finestIterations=finestIterations
+        self.projectedOwnership=projectedOwnership
+        ownership=try (0..<2).map { _ in
+            guard let buffer=device.makeBuffer(length: width*height*4,options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Ownership allocation failed") }
+            return buffer
+        }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -198,7 +205,27 @@ public final class DenseMotionPrototype {
                 command=nextCommand
             }
             var t=time
-            try encode("denseSynthesize",[original[0],original[1],finalFlows[0],finalFlows[1],output,reliability,mappingResidual],output) { $0.setBytes(&t,length: MemoryLayout<Float>.stride,index: 0) }
+            var indexBits=UInt32(UInt32.bitWidth-UInt32(width*height).leadingZeroBitCount)
+            var projection=SIMD2<UInt32>(indexBits,projectedOwnership && first != last && time>0 && time<1 ? 1 : 0)
+            if projection.y != 0 {
+                guard let clear=command.makeBlitCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Ownership reset failed") }
+                for buffer in ownership { clear.fill(buffer: buffer,range: 0..<width*height*4,value: 0) }
+                clear.endEncoding()
+                for direction in 0..<2 {
+                    var amount=direction==0 ? time : 1-time
+                    try encode("denseProject",[original[direction],original[1-direction],finalFlows[direction],finalFlows[1-direction]],output) {
+                        $0.setBuffer(ownership[direction],offset: 0,index: 0)
+                        $0.setBytes(&indexBits,length: 4,index: 1)
+                        $0.setBytes(&amount,length: 4,index: 2)
+                    }
+                }
+            }
+            try encode("denseSynthesize",[original[0],original[1],finalFlows[0],finalFlows[1],output,reliability,mappingResidual],output) {
+                $0.setBytes(&t,length: MemoryLayout<Float>.stride,index: 0)
+                $0.setBytes(&projection,length: 8,index: 1)
+                $0.setBuffer(ownership[0],offset: 0,index: 2)
+                $0.setBuffer(ownership[1],offset: 0,index: 3)
+            }
             command.commit(); command.waitUntilCompleted()
             guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
             let elapsed=Double(DispatchTime.now().uptimeNanoseconds-sampleStart)/1e6

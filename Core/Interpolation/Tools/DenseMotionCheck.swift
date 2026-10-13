@@ -43,11 +43,35 @@ private func denseLayerScene(_ offset: Int) -> [UInt16] {
     }
 }
 
-private func checkDenseVisibility() throws {
+private func denseCollisionScene(_ offset: Int,origin: Int=12) -> [UInt16] {
+    (0..<64*48).map { i in
+        let x=i%64,y=i/64
+        if x>=origin+offset && x<origin+4+offset && y>=16 && y<32 { return UInt16(700+((x-offset)*17+y*31)%250) }
+        return UInt16(64+(x*13+y*19)%150)
+    }
+}
+
+private func denseStationaryForegroundScene(_ offset: Int) -> [UInt16] {
+    (0..<64*48).map { i in
+        let x=i%64,y=i/64
+        if x>=20 && x<28 && y>=16 && y<32 { return UInt16(700+(x*17+y*31)%250) }
+        return UInt16(64+(((x-offset)*13+y*19)%150+150)%150)
+    }
+}
+
+func checkDenseVisibility(collision: Bool=false,stationaryForeground: Bool=false,borderCrossing: Int=0) throws {
+    let origin=borderCrossing==1 ? -4 : (borderCrossing==2 ? 48 : (collision ? 12 : 20))
+    let narrow=collision || borderCrossing != 0
+    let scene: (Int)->[UInt16]=stationaryForeground ? denseStationaryForegroundScene : (narrow ? { denseCollisionScene($0,origin: origin) } : denseLayerScene)
+    let displacement=narrow || stationaryForeground ? 16 : 8,extent=stationaryForeground ? 8 : (narrow ? 4 : 16)
     guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
     let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
     guard let function=library.makeFunction(name: "denseSynthesize") else { throw MotionSearchEngine.EngineError.pipeline("Visibility shader missing") }
     let pipeline=try device.makeComputePipelineState(function: function)
+    guard let projectFunction=library.makeFunction(name: "denseProject"),
+          let ownership0=device.makeBuffer(length: 64*48*4,options: .storageModeShared),
+          let ownership1=device.makeBuffer(length: 64*48*4,options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Ownership oracle allocation failed") }
+    let projectPipeline=try device.makeComputePipelineState(function: projectFunction)
     func texture(_ format: MTLPixelFormat) throws -> MTLTexture {
         let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: 64,height: 48,mipmapped: false)
         descriptor.storageMode = .shared; descriptor.usage = [.shaderRead,.shaderWrite]
@@ -57,34 +81,59 @@ private func checkDenseVisibility() throws {
     let a=try texture(.r32Float),b=try texture(.r32Float),forward=try texture(.rgba32Float),backward=try texture(.rgba32Float)
     let output=try texture(.r16Uint),confidence=try texture(.r32Float),mapping=try texture(.rg32Float)
     let region=MTLRegionMake2D(0,0,64,48)
-    for (image,offset) in [(a,0),(b,8)] {
-        let pixels=denseLayerScene(offset).map { Float($0)/1023 }
+    for (image,offset) in [(a,0),(b,displacement)] {
+        let pixels=scene(offset).map { Float($0)/1023 }
         pixels.withUnsafeBytes { image.replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) }
     }
-    for (image,offset,direction) in [(forward,0,Float(8)),(backward,8,Float(-8))] {
+    for (image,offset,direction) in [(forward,0,Float(displacement)),(backward,displacement,Float(-displacement))] {
         let field: [SIMD4<Float>] = (0..<64*48).map { i in
             let x=i%64,y=i/64
-            let own=x>=20+offset && x<36+offset && y>=16 && y<32
-            let otherOffset=8-offset
-            let hidden = !own && x>=20+otherOffset && x<36+otherOffset && y>=16 && y<32
-            return SIMD4<Float>(own ? direction : 0,0,1,hidden ? -1 : 0)
+            if stationaryForeground {
+                let own=x>=20 && x<28 && y>=16 && y<32
+                let hidden = !own && Float(x)+direction>=20 && Float(x)+direction<28 && y>=16 && y<32
+                return SIMD4<Float>(own ? 0 : direction,0,1,hidden ? -1 : 0)
+            }
+            let own=x>=origin+offset && x<origin+extent+offset && y>=16 && y<32
+            let otherOffset=displacement-offset
+            let hidden = !own && x>=origin+otherOffset && x<origin+extent+otherOffset && y>=16 && y<32
+            let outside=own && (Float(x)+direction<0 || Float(x)+direction>=64)
+            return SIMD4<Float>(own ? direction : 0,0,1,hidden || outside ? -1 : 0)
         }
         field.withUnsafeBytes { image.replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*16) }
     }
     for time: Float in [0.25,0.5,0.75] {
-        guard let command=queue.makeCommandBuffer(),let encoder=command.makeComputeCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Visibility command allocation failed") }
+        guard let command=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Visibility command allocation failed") }
+        var bits: UInt32=12
+        for (direction,buffer) in [ownership0,ownership1].enumerated() {
+            _=buffer.contents().initializeMemory(as: UInt32.self,repeating: 0,count: 64*48)
+            guard let project=command.makeComputeCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Projection oracle encoder failed") }
+            project.setComputePipelineState(projectPipeline)
+            let textures=direction==0 ? [a,b,forward,backward] : [b,a,backward,forward]
+            for (i,image) in textures.enumerated() { project.setTexture(image,index: i) }
+            var amount=direction==0 ? time : 1-time
+            project.setBuffer(buffer,offset: 0,index: 0)
+            project.setBytes(&bits,length: 4,index: 1)
+            project.setBytes(&amount,length: 4,index: 2)
+            project.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+            project.endEncoding()
+        }
+        guard let encoder=command.makeComputeCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Visibility synthesis encoder failed") }
         encoder.setComputePipelineState(pipeline)
         for (i,image) in [a,b,forward,backward,output,confidence,mapping].enumerated() { encoder.setTexture(image,index: i) }
         var t=time
         encoder.setBytes(&t,length: 4,index: 0)
+        var projection=SIMD2<UInt32>(bits,1)
+        encoder.setBytes(&projection,length: 8,index: 1)
+        encoder.setBuffer(ownership0,offset: 0,index: 2)
+        encoder.setBuffer(ownership1,offset: 0,index: 3)
         encoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
         encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
         guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Visibility GPU failure") }
         var pixels=[UInt16](repeating: 0,count: 64*48)
         pixels.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 64*2,from: region,mipmapLevel: 0) }
-        let truth=denseLayerScene(Int(time*8))
+        let truth=scene(Int(time*Float(displacement)))
         let error=zip(pixels,truth).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(pixels.count)
-        print("DENSE VISIBILITY ORACLE: t=\(time), MAE=\(error)")
+        print("DENSE VISIBILITY ORACLE: collision=\(collision), stationaryForeground=\(stationaryForeground), border=\(borderCrossing), t=\(time), MAE=\(error)")
         let failures=pixels.indices.filter { abs(Int(pixels[$0])-Int(truth[$0]))>10 }
         print("Visibility mismatches: \(failures.count), first: \(failures.prefix(12).map { "\($0%64),\($0/64):\(pixels[$0])/\(truth[$0])" })")
         precondition(error<1,"Visible source selection failed with known exact flows")
@@ -99,6 +148,10 @@ private func checkDenseInverse() throws {
         for(int j=0;j<3;++j) old=p-0.5f*denseRead(flow,old).xy;
         float2 q=denseInverse(flow,p,0.5f);
         result[i]=float4(q,length(p-old-0.5f*denseRead(flow,old).xy),length(p-q-0.5f*denseRead(flow,q).xy));
+    }
+    kernel void checkMembership(texture2d<float,access::sample> flow [[texture(0)]],device float4 *result [[buffer(0)]],uint i [[thread_position_in_grid]]) {
+        float2 q=float2(10.49f,15.2f),v=float2(3*q.x,0.5f*q.y);
+        result[i]=float4(length(denseRead(flow,round(q)).xy-v),denseSurfaceMembership(flow,q,v)?1:0,0,0);
     }
     """
     let library=try device.makeLibrary(source: source,options: nil)
@@ -126,6 +179,15 @@ private func checkDenseInverse() throws {
         precondition(values[i].z>1 && values[i].w<0.002,"Transport inversion did not improve known affine field")
     }
     print("DENSE INVERSE: affine ground truth passed; old fixed-point residual exceeds 1px")
+    let affine: [SIMD4<Float>]=(0..<64*48).map { i in SIMD4(3*Float(i%64),0.5*Float(i/64),1,0) }
+    affine.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*16) }
+    guard let membership=library.makeFunction(name: "checkMembership"),let command2=queue.makeCommandBuffer(),let encoder2=command2.makeComputeCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Membership check allocation failed") }
+    encoder2.setComputePipelineState(try device.makeComputePipelineState(function: membership))
+    encoder2.setTexture(texture,index: 0); encoder2.setBuffer(output,offset: 0,index: 0)
+    encoder2.dispatchThreads(MTLSize(width: 1,height: 1,depth: 1),threadsPerThreadgroup: MTLSize(width: 1,height: 1,depth: 1))
+    encoder2.endEncoding(); command2.commit(); command2.waitUntilCompleted()
+    guard command2.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Membership check GPU failure") }
+    precondition(values[0].x>1 && values[0].y==1,"Continuous affine surface was mistaken for a motion discontinuity")
 }
 
 private func checkDenseTemporalEvidence() throws {
@@ -174,6 +236,10 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
     }
     try checkDenseInverse()
     try checkDenseVisibility()
+    try checkDenseVisibility(collision: true)
+    try checkDenseVisibility(stationaryForeground: true)
+    try checkDenseVisibility(borderCrossing: 1)
+    try checkDenseVisibility(borderCrossing: 2)
     try checkDenseTemporalEvidence()
     let w=64,h=48,gw=8,gh=6
     func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }

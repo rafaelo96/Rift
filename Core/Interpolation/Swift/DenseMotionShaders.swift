@@ -202,7 +202,46 @@ float denseMatch(texture2d<float,access::sample> a,texture2d<float,access::sampl
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) { float2 d=float2(x,y); cost+=abs(denseRead(a,q0+d).r-denseRead(b,q1+d).r); }
     return cost/9;
 }
-kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],constant float &t [[buffer(0)]],uint2 gid [[thread_position_in_grid]]) {
+bool denseSurfaceMembership(texture2d<float,access::sample> flow,float2 q,float2 velocity) {
+    float2 anchor=round(q),center=denseRead(flow,anchor).xy;
+    if(length(center-velocity)<1) return true;
+    // Continuous affine motion belongs to one surface, unlike a blended jump.
+    float2 gx=(denseRead(flow,anchor+float2(1,0)).xy-denseRead(flow,anchor-float2(1,0)).xy)*0.5f;
+    float2 gy=(denseRead(flow,anchor+float2(0,1)).xy-denseRead(flow,anchor-float2(0,1)).xy)*0.5f;
+    float2 delta=q-anchor;
+    return length(center+delta.x*gx+delta.y*gy-velocity)<1;
+}
+kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],texture2d<float,access::sample> target [[texture(1)]],texture2d<float,access::sample> flow [[texture(2)]],texture2d<float,access::sample> opposite [[texture(3)]],device atomic_uint *ownership [[buffer(0)]],constant uint &indexBits [[buffer(1)]],constant float &amount [[buffer(2)]],uint2 gid [[thread_position_in_grid]]) {
+    uint w=source.get_width(),h=source.get_height();
+    if(gid.x>=w||gid.y>=h) return;
+    float2 q=float2(gid); float4 f=denseRead(flow,q);
+    float2 end=q+f.xy;
+    if(f.z<=0.02f) return;
+    bool paired=denseInside(end,w,h);
+    if(!paired && f.w>=0) return;
+    float4 reverse=denseRead(opposite,end);
+    if(paired && (length(f.xy+reverse.xy)>=1 || reverse.z<=0.02f)) return;
+    // A consistent surface covers/unveils a different, hidden trajectory.
+    float4 covered=denseRead(flow,end),uncovered=denseRead(opposite,q);
+    bool foreground=(paired && covered.w<0 && length(covered.xy-f.xy)>1) || (uncovered.w<0 && length(uncovered.xy+f.xy)>1);
+    if(!foreground) return;
+    float cost=paired ? denseMatch(source,target,q,end) : 0;
+    if(cost>=0.08f) return;
+    uint band=((1u<<(32-indexBits))-1u)/4u;
+    float quality=(paired ? min(f.z,reverse.z) : f.z)*exp(-20*cost);
+    float2 projected=q+amount*f.xy,base=floor(projected),fraction=projected-base;
+    for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
+        float2 p=base+float2(x,y);
+        if(!denseInside(p,w,h)) continue;
+        float coverage=(x==0 ? 1-fraction.x : fraction.x)*(y==0 ? 1-fraction.y : fraction.y);
+        if(coverage<=0) continue;
+        uint score=(paired?3u:2u)*band+uint(float(band-1)*quality*coverage);
+        uint key=(score<<indexBits)|(gid.y*w+gid.x+1u);
+        // Integer max makes the winner independent of thread scheduling.
+        atomic_fetch_max_explicit(&ownership[uint(p.y)*w+uint(p.x)],key,memory_order_relaxed);
+    }
+}
+kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],uint2 gid [[thread_position_in_grid]]) {
     uint w=output.get_width(),h=output.get_height();
     if(gid.x>=w||gid.y>=h) return;
     float2 p=float2(gid);
@@ -225,6 +264,9 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
             float4 fa=denseRead(forward,a0),fb=denseRead(backward,b1);
             bool has0=denseInside(a0,w,h)&&length(fa.xy-velocity)<1.0f&&fa.z>0.02f;
             bool has1=denseInside(b1,w,h)&&length(fb.xy+velocity)<1.0f&&fb.z>0.02f;
+            // A bilinear mixture at a motion boundary is not a new surface.
+            bool surface0=has0&&denseSurfaceMembership(forward,a0,velocity);
+            bool surface1=has1&&denseSurfaceMembership(backward,b1,-velocity);
             if(has0&&has1) {
                 float cost=denseMatch(a,b,a0,b1);
                 if(cost<0.08f && (rank<2 || cost<best)) {
@@ -232,14 +274,33 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
                     ownerValue=(1-t)*denseRead(a,a0).r+t*denseRead(b,b1).r;
                     ownerConfidence=min(fa.z,fb.z); q0=a0; q1=b1;
                 }
-            } else if(rank<2 && ((has0&&fa.w<0)||(has1&&fb.w<0))) {
-                float confidence=has0 ? fa.z : fb.z;
+            } else if(rank<2 && ((surface0&&fa.w<0)||(surface1&&fb.w<0))) {
+                bool fromFirst=surface0&&fa.w<0;
+                float confidence=fromFirst ? fa.z : fb.z;
                 if(rank==0 || confidence>ownerConfidence) {
                     rank=1; owned=true; ownerConfidence=confidence;
-                    ownerValue=has0 ? denseRead(a,a0).r : denseRead(b,b1).r;
+                    ownerValue=fromFirst ? denseRead(a,a0).r : denseRead(b,b1).r;
                     q0=a0; q1=b1;
                 }
             }
+        }
+    }
+    if(projection.y!=0) {
+        uint band=((1u<<(32-projection.x))-1u)/4u,mask=(1u<<projection.x)-1u,bestScore=0;
+        for(uint direction=0;direction<2;++direction) {
+            uint key=direction==0 ? ownership0[gid.y*w+gid.x] : ownership1[gid.y*w+gid.x];
+            uint score=key>>projection.x,encoded=key&mask;
+            if(encoded==0 || score<2u*band || score<=bestScore) continue;
+            uint index=encoded-1u;
+            float2 source=float2(index%w,index/w);
+            float2 velocity=direction==0 ? denseRead(forward,source).xy : -denseRead(backward,source).xy;
+            float2 a0=p-t*velocity,b1=p+(1-t)*velocity;
+            bool visible0=denseInside(a0,w,h),visible1=denseInside(b1,w,h);
+            if(!visible0&&!visible1) continue;
+            bestScore=score; owned=true;
+            ownerValue=visible0&&visible1 ? (1-t)*denseRead(a,a0).r+t*denseRead(b,b1).r : (visible0 ? denseRead(a,a0).r : denseRead(b,b1).r);
+            ownerConfidence=direction==0 ? denseRead(forward,source).z : denseRead(backward,source).z;
+            q0=a0; q1=b1;
         }
     }
     float4 f=denseRead(forward,q0),r=denseRead(backward,q1);
@@ -250,6 +311,9 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     float closure1=length(r.xy+denseRead(forward,q1+r.xy).xy);
     float c0=denseInside(q0,w,h)&&denseInside(q0+f.xy,w,h) ? f.z*exp(-closure0*closure0-error0*error0-10*max(f.w,0.0f)) : 0;
     float c1=denseInside(q1,w,h)&&denseInside(q1+r.xy,w,h) ? r.z*exp(-closure1*closure1-error1*error1-10*max(r.w,0.0f)) : 0;
+    // A surface leaving the crop still exists in its visible source frame.
+    if(denseInside(q0,w,h)&&!denseInside(q0+f.xy,w,h)&&denseSurfaceMembership(forward,q0,f.xy)) c0=f.z*exp(-error0*error0);
+    if(denseInside(q1,w,h)&&!denseInside(q1+r.xy,w,h)&&denseSurfaceMembership(backward,q1,r.xy)) c1=r.z*exp(-error1*error1);
     // Static protection requires agreement along both transport paths.
     bool still=abs(av-bv)*16<=av+bv && abs(v0-denseRead(b,q0).r)*16<=v0+denseRead(b,q0).r && abs(v1-denseRead(a,q1).r)*16<=v1+denseRead(a,q1).r;
     // A near-periodic moving texture can look static at the original pixel.
