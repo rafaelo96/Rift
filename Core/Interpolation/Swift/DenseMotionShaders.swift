@@ -75,8 +75,16 @@ kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]]
     if(p.x>=field.get_width()||p.y>=field.get_height()) return;
     float2 sum=0; float total=0,level=denseRead(a,float2(p)).r;
     uint2 base=p/4;
+    float2 winner=0; float best=INFINITY;
     for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
         float4 patch=denseRead(patches,float2(base+uint2(x,y)));
+        float error=abs(level-denseRead(b,float2(p)+patch.xy).r)+sqrt(max(0.0f,patch.w));
+        if(error<best) { best=error; winner=patch.xy; }
+    }
+    for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
+        float4 patch=denseRead(patches,float2(base+uint2(x,y)));
+        // Aggregate only one velocity hypothesis; a layer boundary is not an intermediate motion.
+        if(length(patch.xy-winner)>=1) continue;
         float error=abs(level-denseRead(b,float2(p)+patch.xy).r);
         float weight=1/max(0.01f,error);
         sum+=weight*patch.xy; total+=weight;

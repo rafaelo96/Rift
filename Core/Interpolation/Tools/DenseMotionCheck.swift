@@ -227,7 +227,45 @@ private func checkDenseTemporalEvidence() throws {
     print("DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence")
 }
 
+func checkPatchSurfaceAggregation() throws {
+    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
+    let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+    let pipeline=try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchAggregate")!)
+    func texture(_ format: MTLPixelFormat,_ w: Int,_ h: Int) -> MTLTexture {
+        let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: w,height: h,mipmapped: false)
+        descriptor.storageMode = .shared; descriptor.usage = [.shaderRead,.shaderWrite]
+        return device.makeTexture(descriptor: descriptor)!
+    }
+    let a=texture(.r32Float,64,48),b=texture(.r32Float,64,48),patches=texture(.rgba32Float,17,13),output=texture(.rgba32Float,64,48)
+    let pixels=[Float](repeating: 0.4,count: 64*48)
+    for image in [a,b] { pixels.withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) } }
+    let candidates=(0..<17*13).map { SIMD4<Float>(($0%17+$0/17)%2==0 ? 0 : 8,0,1,0) }
+    candidates.withUnsafeBytes { patches.replace(region: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 17*16) }
+    let command=queue.makeCommandBuffer()!,encoder=command.makeComputeCommandEncoder()!
+    encoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,patches,output].enumerated() { encoder.setTexture(image,index: i) }
+    encoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
+    guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Patch aggregation GPU failure") }
+    var field=[SIMD4<Float>](repeating: .zero,count: 64*48)
+    field.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 64*16,from: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0) }
+    let v=field[24*64+32].x
+    print("PATCH SURFACES: candidates 0/8px, selected=\(v)px")
+    precondition(v==0 || v==8,"Patch aggregation invented a trajectory between separate surfaces")
+    let coherent=candidates.map { SIMD4<Float>($0.x/16,0,1,0) }
+    coherent.withUnsafeBytes { patches.replace(region: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 17*16) }
+    let second=queue.makeCommandBuffer()!,secondEncoder=second.makeComputeCommandEncoder()!
+    secondEncoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,patches,output].enumerated() { secondEncoder.setTexture(image,index: i) }
+    secondEncoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    secondEncoder.endEncoding(); second.commit(); second.waitUntilCompleted()
+    guard second.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Coherent patch aggregation GPU failure") }
+    field.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 64*16,from: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0) }
+    precondition(abs(field[24*64+32].x-0.25)<1e-6,"Compatible subpixel trajectories lost aggregation")
+}
+
 func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSearch: Bool=false) throws {
+    if inverseSearch { try checkPatchSurfaceAggregation() }
     for invalid in [0,9] {
         do {
             _=try DenseMotionPrototype(width: 64,height: 48,finestIterations: invalid)

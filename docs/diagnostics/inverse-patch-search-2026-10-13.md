@@ -18,3 +18,13 @@ Avatar, luminancia 1152×480 en Apple M4, mismos frames:
 Análisis compartido más tres síntesis: 15.9–23.3 ms a 69 s y 17.7–28.3 ms a 300 s. Excluye búsqueda inicial de seeds en ambas direcciones, transferencia de resultados, decode y presentación. No demuestra cumplimiento del presupuesto del pipeline completo. Las referencias ocultas a 300 s tienen poses retenidas, por lo que MAE no mide directamente calidad del movimiento deseado.
 
 La inspección de `/tmp/rift-patch-300/pair4_four_t0.5.png` muestra parches grandes todavía visibles, pese a mejorar costo y cifras. No se integra ni se declara objetivo cumplido. Siguiente trabajo: correspondencias de regiones ambiguas, mezcla de superficies durante densificación y coherencia de síntesis; conservar la evaluación de tiempo real completa como requisito.
+
+## Agregación de hipótesis compatibles
+
+Repro aislado: cuatro parches con velocidades alternas 0/8 y residuo idéntico producían 4px. No existe una trayectoria observada de 4px en esos candidatos. Ahora la agregación elige un candidato por residuo local más RMS del parche y promedia únicamente candidatos a menos de un píxel de esa hipótesis. La tolerancia coincide con la pertenencia de superficies ya usada, pero sigue siendo una aproximación traslacional: no prueba separación semántica ni trata campos afines con gradiente grande.
+
+Checks directos verifican selección 0 u 8 (fallaba antes, ahora pasa) y agregación subpíxel de candidatos 0/0.5 → 0.25. Ambas configuraciones de parches, normal y TV, pasan la batería existente sin relajar criterios. Traslación: MAE 0.94076; capas con evaluación de vecinos: 5.88184 frente a 6.70280 anterior.
+
+Avatar: 69 s, referencias MAE 5.55211 / 5.50088 / 6.44829, todas mejores que el ensayo de parches inicial. 300 s: 22.10902 / 22.23173 / 42.40777; dos mejores, tercera ligeramente peor frente a 41.81755. Inspección de `pair4_four_t0.5.png` aún insuficiente. Logs y PNGs `/tmp/rift-patch-surface-69` y `/tmp/rift-patch-surface-300`. En Apple M4, tiempos observados 14.1–19.6ms de análisis y tres síntesis con las mismas exclusiones; no atribuir toda la variación temporal al cambio de agregación.
+
+La corrección elimina una mezcla concreta no respaldada por candidatos; las zonas sin correspondencia válida siguen pendientes. El objetivo continúa abierto.
