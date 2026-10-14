@@ -227,6 +227,25 @@ private func checkDenseTemporalEvidence() throws {
     print("DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence")
 }
 
+func checkDenseLighting() throws {
+    let w=64,h=48
+    let source=(0..<w*h).map { UInt16((($0%w)*43+($0/w)*67+($0%w)*($0/w)*7)%700+100) }
+    let target=(0..<w*h).map { source[($0/w)*w+max(0,$0%w-4)]+120 }
+    let seed=[SIMD2<Int32>](repeating: SIMD2(6,0),count: 8*6)
+    let reverse=[SIMD2<Int32>](repeating: SIMD2(-6,0),count: 8*6)
+    func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
+    let engine=try DenseMotionPrototype(width: w,height: h,inverseSearch: true)
+    let result=try engine.interpolate(first: data(source),last: data(target),forward: seed,backward: reverse,time: 0.5)
+    var vectorError=0.0,pixelError=0.0,count=0
+    for y in 8..<h-8 { for x in 8..<w-8 {
+        let k=y*w+x
+        vectorError+=hypot(Double(result.forward[k].x)-4,Double(result.forward[k].y))
+        pixelError+=Double(abs(Int(result.pixels[k])-Int(source[y*w+x-2])-60)); count+=1
+    } }
+    print("DENSE LIGHTING: shift=4px, brightnessDelta=120, vectorMAE=\(vectorError/Double(count))px, midpointMAE=\(pixelError/Double(count))")
+    precondition(vectorError.isFinite && pixelError.isFinite)
+}
+
 func checkDenseRotation() throws {
     let w=96,h=96,angle=0.2,c=cos(angle),s=sin(angle)
     let center=SIMD2<Double>(47.5,47.5)
