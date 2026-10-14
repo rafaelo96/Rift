@@ -71,6 +71,18 @@ kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],te
     }
     patches.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
+kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    float2 center=float2(p)*4,v=denseRead(input,float2(p)).xy;
+    float best=densePatchCost(a,b,center,v);
+    const float2 neighbors[4]={float2(-1,0),float2(1,0),float2(0,-1),float2(0,1)};
+    for(int i=0;i<4;++i) {
+        float2 candidate=denseRead(input,float2(p)+neighbors[i]).xy;
+        float cost=densePatchCost(a,b,center,candidate);
+        if(cost<best) { best=cost; v=candidate; }
+    }
+    output.write(float4(v,exp(-20*sqrt(best)),best),p);
+}
 kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=field.get_width()||p.y>=field.get_height()) return;
     float2 sum=0; float total=0,level=denseRead(a,float2(p)).r;

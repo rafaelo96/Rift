@@ -39,6 +39,7 @@ public final class DenseMotionPrototype {
     private let ownership: [MTLBuffer]
     private let inverseSearch: Bool
     private let patches: [MTLTexture]
+    private let patchScratch: [MTLTexture]
     private let dual: [[MTLTexture]]
     private let linear: [MTLTexture]
 
@@ -58,7 +59,7 @@ public final class DenseMotionPrototype {
         }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -79,6 +80,7 @@ public final class DenseMotionPrototype {
         while sizes.count<4,let last=sizes.last,last.0>=16,last.1>=16 { sizes.append(((last.0+1)/2,(last.1+1)/2)) }
         images=try (0..<4).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
         patches=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
+        patchScratch=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
         flows=try (0..<2).map { _ in try sizes.map { size in try [texture(.rgba32Float,size.0,size.1),texture(.rgba32Float,size.0,size.1)] } }
         dual=variational ? try (0..<2).map { _ in try [texture(.rgba32Float,width,height),texture(.rgba32Float,width,height)] } : []
         linear=variational ? try (0..<2).map { _ in try texture(.rgba32Float,width,height) } : []
@@ -175,6 +177,8 @@ public final class DenseMotionPrototype {
                 }
                 if inverseSearch {
                     try encode("densePatchSearch",[images[direction][level],images[1-direction][level],buffers[0],patches[level]],patches[level])
+                    try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level]],patchScratch[level])
+                    try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patchScratch[level],patches[level]],patches[level])
                     try encode("densePatchAggregate",[images[direction][level],images[1-direction][level],patches[level],buffers[0]],buffers[0])
                 } else { for _ in 0..<(level==0 ? finestIterations : 8) {
                     try encode("denseLK",[images[direction][level],images[1-direction][level],buffers[0],buffers[1],images[2][level],images[3][level]],buffers[1]) {

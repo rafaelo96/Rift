@@ -311,6 +311,39 @@ func checkDenseRotation() throws {
     }
 }
 
+func checkPatchPropagation() throws {
+    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
+    let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+    let pipeline=try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchPropagate")!)
+    func texture(_ format: MTLPixelFormat,_ w: Int,_ h: Int) -> MTLTexture {
+        let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: w,height: h,mipmapped: false)
+        descriptor.storageMode = .shared; descriptor.usage = [.shaderRead,.shaderWrite]
+        return device.makeTexture(descriptor: descriptor)!
+    }
+    let a=texture(.r32Float,64,48),b=texture(.r32Float,64,48),input=texture(.rgba32Float,17,13),output=texture(.rgba32Float,17,13)
+    let source: [Float]=(0..<64*48).map { i in
+        let x=i%64,y=i/64
+        let value=(x*43+y*67+x*y*7)%700+100
+        return Float(value)/1023
+    }
+    let target: [Float]=(0..<64*48).map { i in source[(i/64)*64+max(0,i%64-4)] }
+    for (image,pixels) in [(a,source),(b,target)] { pixels.withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) } }
+    var candidates=[SIMD4<Float>](repeating: .zero,count: 17*13)
+    candidates[6*17+7]=SIMD4(4,0,1,0)
+    candidates.withUnsafeBytes { input.replace(region: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 17*16) }
+    let command=queue.makeCommandBuffer()!,encoder=command.makeComputeCommandEncoder()!
+    encoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,input,output].enumerated() { encoder.setTexture(image,index: i) }
+    encoder.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
+    guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Patch propagation GPU failure") }
+    var result=[SIMD4<Float>](repeating: .zero,count: 17*13)
+    result.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
+    precondition(candidates[6*17+8].x==0 && result[6*17+8].x==4,"Verified neighbor did not recover incorrect correspondence")
+    precondition(result[6*17+7].x==4 && result[6*17+8].w<1e-6,"Propagation corrupted a verified trajectory")
+    print("PATCH PROPAGATION: wrong 0px candidate recovered as verified 4px neighbor")
+}
+
 func checkPatchSurfaceAggregation() throws {
     guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
     let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
@@ -349,7 +382,7 @@ func checkPatchSurfaceAggregation() throws {
 }
 
 func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSearch: Bool=false) throws {
-    if inverseSearch { try checkPatchSurfaceAggregation() }
+    if inverseSearch { try checkPatchPropagation(); try checkPatchSurfaceAggregation() }
     for invalid in [0,9] {
         do {
             _=try DenseMotionPrototype(width: 64,height: 48,finestIterations: invalid)
