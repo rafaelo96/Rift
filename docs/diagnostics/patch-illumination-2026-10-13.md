@@ -9,3 +9,15 @@ Compensación por media del frame completo: error vectorial 0.02444px, frame 18.
 Ambos cambios de estimador fueron retirados. Se conserva el diagnóstico y no se presenta como una solución integrada. Los costes de búsqueda basados solo en luminancia siguen siendo ambiguos; quitar el brillo sin otra evidencia no resuelve qué superficie corresponde. Pendiente identificar regiones concretas y la información que permite distinguirlas, antes de otra modificación de matching.
 
 Logs `/tmp/rift-patch-lighting-69.log`, `/tmp/rift-patch-lighting-300.log`, `/tmp/rift-global-lighting-300.log`; mediciones en Apple M4. Objetivo de calidad y fluidez comparable con Motion² abierto.
+
+## Iteración que supera el caso reproducido
+
+La compensación ahora exige que el desplazamiento medio de brillo domine su variación espacial: medias de diferencia en bloques 8×8, media² > varianza entre bloques. Si no hay evidencia de cambio coherente, offset cero. Esto evita compensar el cambio de media por recorte que hizo fallar el ensayo anterior. Es una heurística de exposición uniforme, no una solución a sombras locales, ganancias de contraste, recorte de highlights o cortes de escena.
+
+El offset se aplica únicamente al análisis y a la comparación fotométrica de proyección/síntesis/soporte temporal. Las muestras originales de salida conservan el brillo de cada extremo. Segundo fallo identificado: el bypass estático congelaba puntos de una textura casi periódica durante el cambio de exposición, pese a existir un parche móvil verificado. En presencia de exposición compensada, cierre bidireccional <1px, confianza de ambos lados >0.5 y movimiento >1px, esa igualdad puntual no anula el movimiento. Los casos sin compensación conservan el bypass anterior.
+
+Verificación con asserts: traslación cuatro píxeles y +120, error vectorial 47.49165→0.02444px, punto medio 267.3724→3.3125; cuatro vecinos 4.19987. Amplitudes -60/+60: 3.26628/3.28971. Todos los casos móviles requieren MAE<5; el caso +120 requiere también error vectorial<0.1px. Iluminación +120 sin movimiento conserva exactamente cada píxel del punto medio esperado, pese a semillas imperfectas.
+
+Pasan las baterías predeterminada, parches y parches+TV, incluidos estáticos, vecinos retenidos con ruido, entradas inválidas, extremos, batch, determinismo y oráculos de visibilidad. No se relajaron los checks existentes.
+
+Las seis referencias de Avatar mantienen exactamente los MAE anteriores de parches por superficies: 69 s 5.55210865/5.50088252/6.44829463; 300 s 22.10902054/22.23173286/42.40777452. Logs `/tmp/rift-coherent-final-69.log`, `/tmp/rift-coherent-final-300.log`. En Apple M4, análisis más tres síntesis observado a 300 s 16.5–23.5ms, incluye estimación CPU del offset, excluye seeds iniciales, decode, descarga y presentación. Los parches de cambios de pose siguen siendo un problema diferente; esta corrección no valida integración ni equivalencia con Motion².

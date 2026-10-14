@@ -18,12 +18,12 @@ kernel void denseDown(texture2d<float,access::sample> input [[texture(0)]],textu
     for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x) v+=weights[x+2]*weights[y+2]*denseRead(input,q+float2(x,y)).r/256;
     output.write(v,p);
 }
-kernel void denseAnalysisBlur(texture2d<float,access::sample> input [[texture(0)]],texture2d<float,access::write> output [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
+kernel void denseAnalysisBlur(texture2d<float,access::sample> input [[texture(0)]],texture2d<float,access::write> output [[texture(1)]],constant float &offset [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     const float weights[5]={1,4,6,4,1};
     float value=0;
     for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x) value+=weights[x+2]*weights[y+2]*denseRead(input,float2(p)+float2(x,y)).r/256;
-    output.write(value,p);
+    output.write(value-offset,p);
 }
 kernel void denseSeed(device const int2 *mv [[buffer(0)]],constant uint4 &u [[buffer(1)]],texture2d<float,access::write> output [[texture(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
@@ -220,7 +220,7 @@ kernel void denseTVAssess(texture2d<float,access::sample> a [[texture(0)]],textu
     output.write(float4(v,hidden ? prior : exp(-20*residual),hidden ? -1-residual : residual),p);
 }
 bool denseInside(float2 p,uint w,uint h) { return all(p>=0)&&p.x<=float(w-1)&&p.y<=float(h-1); }
-kernel void denseTemporalAssess(texture2d<float,access::sample> source [[texture(0)]],texture2d<float,access::sample> before [[texture(1)]],texture2d<float,access::sample> after [[texture(2)]],texture2d<float,access::sample> input [[texture(3)]],texture2d<float,access::write> output [[texture(4)]],constant float2 &intervals [[buffer(0)]],uint2 gid [[thread_position_in_grid]]) {
+kernel void denseTemporalAssess(texture2d<float,access::sample> source [[texture(0)]],texture2d<float,access::sample> before [[texture(1)]],texture2d<float,access::sample> after [[texture(2)]],texture2d<float,access::sample> input [[texture(3)]],texture2d<float,access::write> output [[texture(4)]],constant float2 &intervals [[buffer(0)]],constant float2 &exposure [[buffer(1)]],uint2 gid [[thread_position_in_grid]]) {
     uint w=output.get_width(),h=output.get_height();
     if(gid.x>=w||gid.y>=h) return;
     float2 p=float2(gid); float4 field=denseRead(input,p);
@@ -228,7 +228,7 @@ kernel void denseTemporalAssess(texture2d<float,access::sample> source [[texture
     float e0=0,e1=0,held0=0,held1=0;
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
         float2 d=float2(x,y); float a=denseRead(source,p+d).r;
-        e0+=abs(a-denseRead(before,q0+d).r); e1+=abs(a-denseRead(after,q1+d).r);
+        e0+=abs(a-denseRead(before,q0+d).r+exposure.x); e1+=abs(a-denseRead(after,q1+d).r+exposure.y);
         held0+=abs(a-denseRead(before,p+d+(intervals.x<0 ? 0.0f : 1.0f)*field.xy).r);
         held1+=abs(a-denseRead(after,p+d+(intervals.y<0 ? 0.0f : 1.0f)*field.xy).r);
     }
@@ -266,9 +266,9 @@ float2 denseInverse(texture2d<float,access::sample> flow,float2 p,float amount) 
     }
     return q;
 }
-float denseMatch(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 q0,float2 q1) {
+float denseMatch(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 q0,float2 q1,float offset=0) {
     float cost=0;
-    for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) { float2 d=float2(x,y); cost+=abs(denseRead(a,q0+d).r-denseRead(b,q1+d).r); }
+    for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) { float2 d=float2(x,y); cost+=abs(denseRead(a,q0+d).r-denseRead(b,q1+d).r+offset); }
     return cost/9;
 }
 bool denseSurfaceMembership(texture2d<float,access::sample> flow,float2 q,float2 velocity) {
@@ -280,7 +280,7 @@ bool denseSurfaceMembership(texture2d<float,access::sample> flow,float2 q,float2
     float2 delta=q-anchor;
     return length(center+delta.x*gx+delta.y*gy-velocity)<1;
 }
-kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],texture2d<float,access::sample> target [[texture(1)]],texture2d<float,access::sample> flow [[texture(2)]],texture2d<float,access::sample> opposite [[texture(3)]],device atomic_uint *ownership [[buffer(0)]],constant uint &indexBits [[buffer(1)]],constant float &amount [[buffer(2)]],uint2 gid [[thread_position_in_grid]]) {
+kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],texture2d<float,access::sample> target [[texture(1)]],texture2d<float,access::sample> flow [[texture(2)]],texture2d<float,access::sample> opposite [[texture(3)]],device atomic_uint *ownership [[buffer(0)]],constant uint &indexBits [[buffer(1)]],constant float &amount [[buffer(2)]],constant float &offset [[buffer(3)]],uint2 gid [[thread_position_in_grid]]) {
     uint w=source.get_width(),h=source.get_height();
     if(gid.x>=w||gid.y>=h) return;
     float2 q=float2(gid); float4 f=denseRead(flow,q);
@@ -294,7 +294,7 @@ kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],t
     float4 covered=denseRead(flow,end),uncovered=denseRead(opposite,q);
     bool foreground=(paired && covered.w<0 && length(covered.xy-f.xy)>1) || (uncovered.w<0 && length(uncovered.xy+f.xy)>1);
     if(!foreground) return;
-    float cost=paired ? denseMatch(source,target,q,end) : 0;
+    float cost=paired ? denseMatch(source,target,q,end,offset) : 0;
     if(cost>=0.08f) return;
     uint band=((1u<<(32-indexBits))-1u)/4u;
     float quality=(paired ? min(f.z,reverse.z) : f.z)*exp(-20*cost);
@@ -310,7 +310,7 @@ kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],t
         atomic_fetch_max_explicit(&ownership[uint(p.y)*w+uint(p.x)],key,memory_order_relaxed);
     }
 }
-kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],uint2 gid [[thread_position_in_grid]]) {
+kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],constant float &offset [[buffer(4)]],uint2 gid [[thread_position_in_grid]]) {
     uint w=output.get_width(),h=output.get_height();
     if(gid.x>=w||gid.y>=h) return;
     float2 p=float2(gid);
@@ -325,7 +325,7 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     float initialClosure0=length(initial0+denseRead(backward,q0+initial0).xy);
     float initialClosure1=length(initial1-denseRead(forward,q1-initial1).xy);
     if(length(initial0-initial1)>0.5f || initialClosure0>1 || initialClosure1>1) {
-        float best=denseMatch(a,b,q0,q1); int rank=0;
+        float best=denseMatch(a,b,q0,q1,offset); int rank=0;
         const float2 offsets[5]={float2(0),float2(-2,0),float2(2,0),float2(0,-2),float2(0,2)};
         for(int i=0;i<10;++i) {
             float2 velocity=i<5 ? denseRead(forward,initialQ0+offsets[i]).xy : -denseRead(backward,initialQ1+offsets[i-5]).xy;
@@ -337,7 +337,7 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
             bool surface0=has0&&denseSurfaceMembership(forward,a0,velocity);
             bool surface1=has1&&denseSurfaceMembership(backward,b1,-velocity);
             if(has0&&has1) {
-                float cost=denseMatch(a,b,a0,b1);
+                float cost=denseMatch(a,b,a0,b1,offset);
                 if(cost<0.08f && (rank<2 || cost<best)) {
                     rank=2; best=cost; owned=true;
                     ownerValue=(1-t)*denseRead(a,a0).r+t*denseRead(b,b1).r;
@@ -384,14 +384,16 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     if(denseInside(q0,w,h)&&!denseInside(q0+f.xy,w,h)&&denseSurfaceMembership(forward,q0,f.xy)) c0=f.z*exp(-error0*error0);
     if(denseInside(q1,w,h)&&!denseInside(q1+r.xy,w,h)&&denseSurfaceMembership(backward,q1,r.xy)) c1=r.z*exp(-error1*error1);
     // Static protection requires agreement along both transport paths.
-    bool still=abs(av-bv)*16<=av+bv && abs(v0-denseRead(b,q0).r)*16<=v0+denseRead(b,q0).r && abs(v1-denseRead(a,q1).r)*16<=v1+denseRead(a,q1).r;
+    bool still=abs(av-bv+offset)*16<=av+bv && abs(v0-denseRead(b,q0).r+offset)*16<=v0+denseRead(b,q0).r && abs(v1-denseRead(a,q1).r-offset)*16<=v1+denseRead(a,q1).r;
     // A near-periodic moving texture can look static at the original pixel.
     // Do not freeze it when compensation gives a clearly better correspondence.
-    still=still && abs(av-bv)<=2*abs(v0-v1)+1.0f/1023.0f;
+    still=still && abs(av-bv+offset)<=2*abs(v0-v1+offset)+1.0f/1023.0f;
+    // During an exposure change, point-wise equality cannot override a verified moving patch.
+    if(offset!=0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) still=false;
     float weights=(1-t)*c0+t*c1;
     float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : (t<0.5f?av:bv);
     if(owned) { value=ownerValue; weights=ownerConfidence; }
-    if(still) value=av;
+    if(still) value=av+t*offset;
     output.write(uint(clamp(value,0.0f,1.0f)*1023+0.5f),gid);
     reliability.write(still?1.0f:weights,gid);
 }

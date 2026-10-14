@@ -114,6 +114,8 @@ func checkDenseVisibility(collision: Bool=false,stationaryForeground: Bool=false
             project.setBuffer(buffer,offset: 0,index: 0)
             project.setBytes(&bits,length: 4,index: 1)
             project.setBytes(&amount,length: 4,index: 2)
+            var exposure: Float=0
+            project.setBytes(&exposure,length: 4,index: 3)
             project.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             project.endEncoding()
         }
@@ -126,6 +128,8 @@ func checkDenseVisibility(collision: Bool=false,stationaryForeground: Bool=false
         encoder.setBytes(&projection,length: 8,index: 1)
         encoder.setBuffer(ownership0,offset: 0,index: 2)
         encoder.setBuffer(ownership1,offset: 0,index: 3)
+        var offset: Float=0
+        encoder.setBytes(&offset,length: 4,index: 4)
         encoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
         encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
         guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Visibility GPU failure") }
@@ -216,6 +220,8 @@ private func checkDenseTemporalEvidence() throws {
     for (i,image) in [source,before,after,input,output].enumerated() { encoder.setTexture(image,index: i) }
     var intervals=SIMD2<Float>(-1,2)
     encoder.setBytes(&intervals,length: 8,index: 0)
+    var exposure=SIMD2<Float>.zero
+    encoder.setBytes(&exposure,length: 8,index: 1)
     encoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
     encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
     guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Temporal check GPU failure") }
@@ -243,7 +249,27 @@ func checkDenseLighting() throws {
         pixelError+=Double(abs(Int(result.pixels[k])-Int(source[y*w+x-2])-60)); count+=1
     } }
     print("DENSE LIGHTING: shift=4px, brightnessDelta=120, vectorMAE=\(vectorError/Double(count))px, midpointMAE=\(pixelError/Double(count))")
-    precondition(vectorError.isFinite && pixelError.isFinite)
+    let bad=(8..<h-8).flatMap { y in (8..<w-8).map { y*w+$0 } }.filter { abs(Int(result.pixels[$0])-Int(source[$0-2])-60)>20 }
+    for k in bad.prefix(5) { print("LIGHTING PIXEL: index=\(k), actual=\(result.pixels[k]), expected=\(Int(source[k-2])+60), source=\(source[k]), mv=\(result.forward[k]), confidence=\(result.reliability[k]), inverse=\(result.mappingResidual[k])") }
+    precondition(vectorError/Double(count)<0.1 && pixelError/Double(count)<5,"Illumination corrupted known moving detail")
+    let bright=source.map { $0+120 }
+    let stationary=try engine.interpolate(first: data(source),last: data(bright),forward: seed,backward: reverse,time: 0.5)
+    precondition(zip(stationary.pixels,source).allSatisfy { Int($0.0)==Int($0.1)+60 },"Static illumination change acquired false motion")
+    let past=(0..<w*h).map { source[($0/w)*w+min(w-1,$0%w+4)] }
+    let future=(0..<w*h).map { source[($0/w)*w+max(0,$0%w-8)]+120 }
+    let context=DenseMotionPrototype.TemporalContext(before: data(past),after: data(future),beforeInterval: 1,afterInterval: 1)
+    let four=try engine.interpolate(first: data(source),last: data(target),forward: seed,backward: reverse,time: 0.5,context: context)
+    let indices=(8..<h-8).flatMap { y in (8..<w-8).map { y*w+$0 } }
+    let fourError=indices.reduce(0.0) { $0+Double(abs(Int(four.pixels[$1])-Int(source[$1-2])-60)) }/Double(indices.count)
+    print("DENSE LIGHTING FOUR: midpointMAE=\(fourError)")
+    precondition(fourError<5,"Temporal illumination corrupted known moving detail")
+    for delta in [-60,60] {
+        let changed=target.map { UInt16(Int($0)-120+delta) }
+        let sample=try engine.interpolate(first: data(source),last: data(changed),forward: seed,backward: reverse,time: 0.5)
+        let error=indices.reduce(0.0) { $0+Double(abs(Int(sample.pixels[$1])-Int(source[$1-2])-delta/2)) }/Double(indices.count)
+        print("DENSE LIGHTING VARIANT: brightnessDelta=\(delta), midpointMAE=\(error)")
+        precondition(error<5,"Illumination sign or amplitude corrupted moving detail")
+    }
 }
 
 func checkDenseRotation() throws {

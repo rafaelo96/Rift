@@ -120,6 +120,24 @@ public final class DenseMotionPrototype {
         // Identical held neighbors contain no evidence for extrapolating the central motion.
         let context=context.flatMap { $0.before==first && $0.after==last ? nil : $0 }
         let start=DispatchTime.now().uptimeNanoseconds
+        func illuminationOffset(_ target: Data) -> Float {
+            guard inverseSearch else { return 0 }
+            return first.withUnsafeBytes { a in target.withUnsafeBytes { b in
+                var sum=0.0,squares=0.0,count=0
+                for y in stride(from: 0,to: height,by: 8) { for x in stride(from: 0,to: width,by: 8) {
+                    var delta=0.0,n=0
+                    for yy in y..<min(y+8,height) { for xx in x..<min(x+8,width) {
+                        let k=(yy*width+xx)*2
+                        delta+=Double(b.loadUnaligned(fromByteOffset: k,as: UInt16.self))-Double(a.loadUnaligned(fromByteOffset: k,as: UInt16.self)); n+=1
+                    } }
+                    delta/=Double(n); sum+=delta; squares+=delta*delta; count+=1
+                } }
+                let mean=sum/Double(count),variance=max(0,squares/Double(count)-mean*mean)
+                // Compensate a coherent exposure change, not movement-induced local brightness changes.
+                return mean*mean>variance ? Float(mean/1023) : 0
+            } }
+        }
+        let offsets=inputs.map(illuminationOffset)
         let region=MTLRegionMake2D(0,0,width,height)
         for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
         for (i,field) in [forward,backward].enumerated() { field.withUnsafeBytes { bytes in _=memcpy(seeds[i].contents(),bytes.baseAddress!,bytes.count) } }
@@ -134,7 +152,8 @@ public final class DenseMotionPrototype {
         }
         for direction in inputs.indices {
             try encode("denseUpload",[raw[direction],original[direction]],original[direction])
-            try encode("denseAnalysisBlur",[original[direction],images[direction][0]],images[direction][0])
+            var offset=offsets[direction]
+            try encode("denseAnalysisBlur",[original[direction],images[direction][0]],images[direction][0]) { $0.setBytes(&offset,length: 4,index: 0) }
             for level in 1..<images[direction].count { try encode("denseDown",[images[direction][level-1],images[direction][level]],images[direction][level]) }
         }
         var finalFlows: [MTLTexture]=[]
@@ -198,8 +217,10 @@ public final class DenseMotionPrototype {
                 let current=finalFlows[direction]
                 let next=current === flows[direction][0][0] ? flows[direction][0][1] : flows[direction][0][0]
                 var intervals=direction==0 ? SIMD2<Float>(-context.beforeInterval,1+context.afterInterval) : SIMD2<Float>(1+context.beforeInterval,-context.afterInterval)
+                var exposure=SIMD2(offsets[2]-offsets[direction],offsets[3]-offsets[direction])
                 try encode("denseTemporalAssess",[original[direction],original[2],original[3],current,next],next) {
                     $0.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+                    $0.setBytes(&exposure,length: MemoryLayout<SIMD2<Float>>.stride,index: 1)
                 }
                 temporal.append(next)
             }
@@ -222,18 +243,22 @@ public final class DenseMotionPrototype {
                 clear.endEncoding()
                 for direction in 0..<2 {
                     var amount=direction==0 ? time : 1-time
+                    var offset=direction==0 ? offsets[1] : -offsets[1]
                     try encode("denseProject",[original[direction],original[1-direction],finalFlows[direction],finalFlows[1-direction]],output) {
                         $0.setBuffer(ownership[direction],offset: 0,index: 0)
                         $0.setBytes(&indexBits,length: 4,index: 1)
                         $0.setBytes(&amount,length: 4,index: 2)
+                        $0.setBytes(&offset,length: 4,index: 3)
                     }
                 }
             }
+            var offset=offsets[1]
             try encode("denseSynthesize",[original[0],original[1],finalFlows[0],finalFlows[1],output,reliability,mappingResidual],output) {
                 $0.setBytes(&t,length: MemoryLayout<Float>.stride,index: 0)
                 $0.setBytes(&projection,length: 8,index: 1)
                 $0.setBuffer(ownership[0],offset: 0,index: 2)
                 $0.setBuffer(ownership[1],offset: 0,index: 3)
+                $0.setBytes(&offset,length: 4,index: 4)
             }
             command.commit(); command.waitUntilCompleted()
             guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
