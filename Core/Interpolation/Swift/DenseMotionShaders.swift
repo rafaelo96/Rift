@@ -322,16 +322,16 @@ kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],t
         atomic_fetch_max_explicit(&ownership[uint(p.y)*w+uint(p.x)],key,memory_order_relaxed);
     }
 }
-kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],constant float &offset [[buffer(4)]],uint2 gid [[thread_position_in_grid]]) {
+kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],texture2d<float,access::write> coordinates [[texture(7)]],texture2d<float,access::write> blend [[texture(8)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],constant float &offset [[buffer(4)]],uint2 gid [[thread_position_in_grid]]) {
     uint w=output.get_width(),h=output.get_height();
     if(gid.x>=w||gid.y>=h) return;
     float2 p=float2(gid);
     float av=denseRead(a,p).r,bv=denseRead(b,p).r;
-    if(t==0 || t==1) { output.write(uint((t==0?av:bv)*1023+0.5f),gid); reliability.write(1.0f,gid); mappingResidual.write(float4(0),gid); return; }
+    if(t==0 || t==1) { output.write(uint((t==0?av:bv)*1023+0.5f),gid); reliability.write(1.0f,gid); mappingResidual.write(float4(0),gid); coordinates.write(float4(0),gid); blend.write(t,gid); return; }
     float2 q0=denseInverse(forward,p,t),q1=denseInverse(backward,p,1-t);
     const float2 initialQ0=q0,initialQ1=q1;
     float2 initial0=denseRead(forward,q0).xy,initial1=-denseRead(backward,q1).xy;
-    bool owned=false; float ownerValue=0,ownerConfidence=0;
+    bool owned=false; float ownerValue=0,ownerConfidence=0,ownerAlpha=0;
     // Bilinear flow at a layer boundary can hide a large motion discontinuity.
     // Inspect ownership whenever the inverses fail to describe the same path.
     float initialClosure0=length(initial0+denseRead(backward,q0+initial0).xy);
@@ -353,14 +353,14 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
                 if(cost<0.08f && (rank<2 || cost<best)) {
                     rank=2; best=cost; owned=true;
                     ownerValue=(1-t)*denseRead(a,a0).r+t*denseRead(b,b1).r;
-                    ownerConfidence=min(fa.z,fb.z); q0=a0; q1=b1;
+                    ownerConfidence=min(fa.z,fb.z); ownerAlpha=t; q0=a0; q1=b1;
                 }
             } else if(rank<2 && ((surface0&&fa.w<0)||(surface1&&fb.w<0))) {
                 bool fromFirst=surface0&&fa.w<0;
                 float confidence=fromFirst ? fa.z : fb.z;
                 if(rank==0 || confidence>ownerConfidence) {
                     rank=1; owned=true; ownerConfidence=confidence;
-                    ownerValue=fromFirst ? denseRead(a,a0).r : denseRead(b,b1).r;
+                    ownerValue=fromFirst ? denseRead(a,a0).r : denseRead(b,b1).r; ownerAlpha=fromFirst ? 0 : 1;
                     q0=a0; q1=b1;
                 }
             }
@@ -378,7 +378,7 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
             float2 a0=p-t*velocity,b1=p+(1-t)*velocity;
             bool visible0=denseInside(a0,w,h),visible1=denseInside(b1,w,h);
             if(!visible0&&!visible1) continue;
-            bestScore=score; owned=true;
+            bestScore=score; owned=true; ownerAlpha=visible0&&visible1 ? t : (visible0 ? 0 : 1);
             ownerValue=visible0&&visible1 ? (1-t)*denseRead(a,a0).r+t*denseRead(b,b1).r : (visible0 ? denseRead(a,a0).r : denseRead(b,b1).r);
             ownerConfidence=direction==0 ? denseRead(forward,source).z : denseRead(backward,source).z;
             q0=a0; q1=b1;
@@ -404,8 +404,11 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     if(offset!=0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) still=false;
     float weights=(1-t)*c0+t*c1;
     float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : (t<0.5f?av:bv);
-    if(owned) { value=ownerValue; weights=ownerConfidence; }
-    if(still) value=av+t*offset;
+    float alpha=weights>1e-4f ? t*c1/weights : (t<0.5f ? 0 : 1);
+    if(weights<=1e-4f && !owned) { q0=p; q1=p; }
+    if(owned) { value=ownerValue; weights=ownerConfidence; alpha=ownerAlpha; }
+    if(still) { value=av+t*offset; q0=p; q1=p; alpha=offset!=0 ? t : 0; }
+    coordinates.write(float4(q0-p,q1-p),gid); blend.write(alpha,gid);
     output.write(uint(clamp(value,0.0f,1.0f)*1023+0.5f),gid);
     reliability.write(still?1.0f:weights,gid);
 }

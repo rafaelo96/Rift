@@ -15,6 +15,7 @@ public final class WarpEngine {
     private let pipeline: MTLComputePipelineState
     private let nativeLumaPipeline: MTLComputePipelineState
     private let nativeChromaPipeline: MTLComputePipelineState
+    private let denseNativePipeline: MTLComputePipelineState
     private let upscalePipeline: MTLComputePipelineState
     private let chromaDownPipeline: MTLComputePipelineState
     private let chromaWarpPipeline: MTLComputePipelineState
@@ -59,6 +60,7 @@ public final class WarpEngine {
               let nativeChromaFn = library.makeFunction(name: "warpBlendChromaNative") else {
             throw Error.pipeline("missing native-resolution warp functions")
         }
+        guard let denseNativeFn=library.makeFunction(name: "denseNativeRender") else { throw Error.pipeline("missing dense native renderer") }
         guard let upscaleFn = library.makeFunction(name: "upscaleLuma") else {
             throw Error.pipeline("missing upscaleLuma function")
         }
@@ -72,6 +74,7 @@ public final class WarpEngine {
             pipeline = try device.makeComputePipelineState(function: warpFn)
             nativeLumaPipeline = try device.makeComputePipelineState(function: nativeLumaFn)
             nativeChromaPipeline = try device.makeComputePipelineState(function: nativeChromaFn)
+            denseNativePipeline = try device.makeComputePipelineState(function: denseNativeFn)
             upscalePipeline = try device.makeComputePipelineState(function: upscaleFn)
             chromaDownPipeline = try device.makeComputePipelineState(function: cDownFn)
             chromaWarpPipeline = try device.makeComputePipelineState(function: cWarpFn)
@@ -80,6 +83,43 @@ public final class WarpEngine {
         } catch {
             throw Error.pipeline("\(error)")
         }
+    }
+
+    func renderDense(I0: CVPixelBuffer,I1: CVPixelBuffer,t: Float,coordinates: MTLTexture,blend: MTLTexture) -> (CVPixelBuffer?,Double) {
+        let w=CVPixelBufferGetWidth(I0),h=CVPixelBufferGetHeight(I0),format=CVPixelBufferGetPixelFormatType(I0)
+        guard CVPixelBufferGetWidth(I1)==w,CVPixelBufferGetHeight(I1)==h,CVPixelBufferGetPixelFormatType(I1)==format,
+              CVPixelBufferGetPlaneCount(I0)==2,CVPixelBufferGetPlaneCount(I1)==2 else { return (nil,0) }
+        let tenBit: Bool
+        switch format {
+        case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange: tenBit=true
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: tenBit=false
+        default: return (nil,0)
+        }
+        if t==0 { return (I0,0) }; if t==1 { return (I1,0) }
+        guard let cache=textureCache else { return (nil,0) }
+        ensureOutputPool(w: w,h: h,pixelFormat: format)
+        guard let output=acquireOutputBuffer(w: w,h: h,pixelFormat: format),let command=queue.makeCommandBuffer() else { return (nil,0) }
+        let start=DispatchTime.now().uptimeNanoseconds
+        var wrappers: [CVMetalTexture]=[]
+        defer { withExtendedLifetime(wrappers) {} }
+        for plane in 0..<2 {
+            let pw=CVPixelBufferGetWidthOfPlane(I0,plane),ph=CVPixelBufferGetHeightOfPlane(I0,plane)
+            guard CVPixelBufferGetWidthOfPlane(I1,plane)==pw,CVPixelBufferGetHeightOfPlane(I1,plane)==ph else { return (nil,0) }
+            let metalFormat: MTLPixelFormat=plane==0 ? (tenBit ? .r16Uint : .r8Uint) : (tenBit ? .rg16Uint : .rg8Uint)
+            let inputs=[I0,I1,output].map { wrapPlaneTexture($0,plane: plane,format: metalFormat,w: pw,h: ph,cache: cache) }
+            guard let a=inputs[0].1,let b=inputs[1].1,let out=inputs[2].1,let encoder=command.makeComputeCommandEncoder() else { return (nil,0) }
+            wrappers+=inputs.compactMap { $0.0 }
+            encoder.setComputePipelineState(denseNativePipeline)
+            for (i,texture) in [a,b,out,coordinates,blend].enumerated() { encoder.setTexture(texture,index: i) }
+            var bits: UInt32=tenBit ? 1 : 0
+            encoder.setBytes(&bits,length: 4,index: 0)
+            encoder.dispatchThreads(MTLSize(width: pw,height: ph,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+            encoder.endEncoding()
+        }
+        command.commit(); command.waitUntilCompleted()
+        guard command.status == .completed else { return (nil,0) }
+        propagateHDR(from: I0,to: output)
+        return (output,Double(DispatchTime.now().uptimeNanoseconds-start)/1e6)
     }
 
     public func interpolate(I0: [UInt16], I1: [UInt16], mv: [SIMD2<Int32>], width: Int, height: Int, gridW: Int, gridH: Int, blockSize: Int, t: Float, occThresh: Float = 1.0) -> ([UInt16], Double) {

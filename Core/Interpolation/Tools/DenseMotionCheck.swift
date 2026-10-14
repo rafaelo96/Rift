@@ -1,6 +1,53 @@
 import Foundation
 import Metal
+import CoreVideo
 import Interpolation
+
+func checkNativePatchIntegration() throws {
+    for tenBit in [false,true] {
+        let format=tenBit ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        func buffer(_ shift: Int,_ last: Bool) -> CVPixelBuffer {
+            var result: CVPixelBuffer?
+            let attributes=[kCVPixelBufferIOSurfacePropertiesKey as String: [:],kCVPixelBufferMetalCompatibilityKey as String: true] as CFDictionary
+            precondition(CVPixelBufferCreate(nil,64,48,format,attributes,&result)==kCVReturnSuccess)
+            let image=result!
+            CVPixelBufferLockBaseAddress(image,[])
+            for plane in 0..<2 {
+                let w=CVPixelBufferGetWidthOfPlane(image,plane),h=CVPixelBufferGetHeightOfPlane(image,plane)
+                let base=CVPixelBufferGetBaseAddressOfPlane(image,plane)!,stride=CVPixelBufferGetBytesPerRowOfPlane(image,plane)
+                for y in 0..<h { for x in 0..<w {
+                    let q=max(0,x-shift)
+                    let values=plane==0 ? [80+(q*13+y*17+q*y*7)%100] : [last ? 112 : 96,last ? 144 : 160]
+                    for (channel,value) in values.enumerated() {
+                        let k=x*values.count+channel
+                        if tenBit { base.advanced(by: y*stride).assumingMemoryBound(to: UInt16.self)[k]=UInt16(value*4)<<6 }
+                        else { base.advanced(by: y*stride).assumingMemoryBound(to: UInt8.self)[k]=UInt8(value) }
+                    }
+                } }
+            }
+            CVPixelBufferUnlockBaseAddress(image,[])
+            CVBufferSetAttachment(image,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_2020,.shouldPropagate)
+            return image
+        }
+        let first=buffer(0,false),last=buffer(4,true)
+        let engine=try MotionCompensator(config: InterpolationConfig(workWidth: 64,workHeight: 48,temporalGatePx: 0))
+        let result=engine.interpolatePair(I0: first,I1: last,tValues: [0,0.5,1])
+        precondition(result.pixelBuffers.count==3,"Native patch batch did not complete")
+        precondition(result.pixelBuffers[0] === first && result.pixelBuffers[2] === last,"Native patch endpoints changed source buffers")
+        let mid=result.pixelBuffers[1]
+        precondition(mid !== first && mid !== last && CVPixelBufferGetPixelFormatType(mid)==format && CVPixelBufferGetWidth(mid)==64 && CVPixelBufferGetHeight(mid)==48)
+        precondition(CVBufferGetAttachment(mid,kCVImageBufferColorPrimariesKey,nil) != nil,"Native patch output lost color metadata")
+        CVPixelBufferLockBaseAddress(mid,.readOnly)
+        let base=CVPixelBufferGetBaseAddressOfPlane(mid,1)!,stride=CVPixelBufferGetBytesPerRowOfPlane(mid,1)
+        for y in 0..<24 { for x in 0..<32 { for channel in 0..<2 {
+            let value=tenBit ? Int(base.advanced(by: y*stride).assumingMemoryBound(to: UInt16.self)[2*x+channel]>>6)/4 : Int(base.advanced(by: y*stride).assumingMemoryBound(to: UInt8.self)[2*x+channel])
+            precondition(channel==0 ? (96...112).contains(value) : (144...160).contains(value),"Native patch chroma channels lost or mixed")
+        } } }
+        CVPixelBufferUnlockBaseAddress(mid,.readOnly)
+        precondition(engine.interpolatePair(I0: first,I1: last,tValues: [.nan]).pixelBuffers.isEmpty)
+        print("NATIVE PATCH: \(tenBit ? 10 : 8)-bit format, chroma, endpoints and metadata passed; total=\(result.meMS+result.warpMS)ms")
+    }
+}
 
 func checkLargeMotionSearch() throws {
     let width=512,height=128,shift=160
@@ -80,6 +127,7 @@ func checkDenseVisibility(collision: Bool=false,stationaryForeground: Bool=false
     }
     let a=try texture(.r32Float),b=try texture(.r32Float),forward=try texture(.rgba32Float),backward=try texture(.rgba32Float)
     let output=try texture(.r16Uint),confidence=try texture(.r32Float),mapping=try texture(.rg32Float)
+    let coordinates=try texture(.rgba32Float),blend=try texture(.r32Float)
     let region=MTLRegionMake2D(0,0,64,48)
     for (image,offset) in [(a,0),(b,displacement)] {
         let pixels=scene(offset).map { Float($0)/1023 }
@@ -121,7 +169,7 @@ func checkDenseVisibility(collision: Bool=false,stationaryForeground: Bool=false
         }
         guard let encoder=command.makeComputeCommandEncoder() else { throw MotionSearchEngine.EngineError.pipeline("Visibility synthesis encoder failed") }
         encoder.setComputePipelineState(pipeline)
-        for (i,image) in [a,b,forward,backward,output,confidence,mapping].enumerated() { encoder.setTexture(image,index: i) }
+        for (i,image) in [a,b,forward,backward,output,confidence,mapping,coordinates,blend].enumerated() { encoder.setTexture(image,index: i) }
         var t=time
         encoder.setBytes(&t,length: 4,index: 0)
         var projection=SIMD2<UInt32>(bits,1)

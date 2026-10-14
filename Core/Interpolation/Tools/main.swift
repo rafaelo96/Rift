@@ -77,6 +77,11 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_NATIVE_PATCH_CHECK",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkNativePatchIntegration(); exit(0) }
+    catch { print("NATIVE PATCH CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_DENSE_LIGHTING",0)==1 {
     setbuf(stdout,nil)
     do { try checkDenseLighting(); exit(0) }
@@ -2446,6 +2451,7 @@ if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     do {
         let profile = ProcessInfo.processInfo.environment["MV_PROFILE"] ?? "default"
         let config: InterpolationConfig = profile == "hq" ? .fluidHighQuality
+            : profile == "economy" ? .fluidEconomy
             : profile == "fluid" ? .fluid
             : profile == "native-warp-test" ? InterpolationConfig(
                 usesBidirectionalSafetyCheck: false,

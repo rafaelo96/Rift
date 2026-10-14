@@ -33,6 +33,8 @@ public final class DenseMotionPrototype {
     private let output: MTLTexture
     private let reliability: MTLTexture
     private let mappingResidual: MTLTexture
+    private let nativeCoordinates: MTLTexture
+    private let nativeBlend: MTLTexture
     private let variational: Bool
     private let finestIterations: Int
     private let projectedOwnership: Bool
@@ -76,6 +78,8 @@ public final class DenseMotionPrototype {
         output=try texture(.r16Uint,width,height)
         reliability=try texture(.r32Float,width,height)
         mappingResidual=try texture(.rg32Float,width,height)
+        nativeCoordinates=try texture(.rgba32Float,width,height)
+        nativeBlend=try texture(.r32Float,width,height)
         var sizes=[(width,height)]
         while sizes.count<4,let last=sizes.last,last.0>=16,last.1>=16 { sizes.append(((last.0+1)/2,(last.1+1)/2)) }
         images=try (0..<4).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
@@ -99,7 +103,7 @@ public final class DenseMotionPrototype {
 
     /// One bounded pair analysis shared by up to four temporal samples.
     /// The first result's milliseconds includes analysis; subsequent results measure synthesis.
-    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil) throws -> [Result] {
+    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
         guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=4,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               forward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }),backward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }) else {
@@ -257,7 +261,7 @@ public final class DenseMotionPrototype {
                 }
             }
             var offset=offsets[1]
-            try encode("denseSynthesize",[original[0],original[1],finalFlows[0],finalFlows[1],output,reliability,mappingResidual],output) {
+            try encode("denseSynthesize",[original[0],original[1],finalFlows[0],finalFlows[1],output,reliability,mappingResidual,nativeCoordinates,nativeBlend],output) {
                 $0.setBytes(&t,length: MemoryLayout<Float>.stride,index: 0)
                 $0.setBytes(&projection,length: 8,index: 1)
                 $0.setBuffer(ownership[0],offset: 0,index: 2)
@@ -267,6 +271,11 @@ public final class DenseMotionPrototype {
             command.commit(); command.waitUntilCompleted()
             guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
             let elapsed=Double(DispatchTime.now().uptimeNanoseconds-sampleStart)/1e6
+            nativeRenderer?(time,nativeCoordinates,nativeBlend)
+            if !downloadResults {
+                results.append(Result(pixels: [],reliability: [],forward: [],backward: [],mappingResidual: [],milliseconds: elapsed))
+                continue
+            }
             var pixels=[UInt16](repeating: 0,count: width*height),confidence=[Float](repeating: 0,count: width*height)
             pixels.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: width*2,from: region,mipmapLevel: 0) }
             confidence.withUnsafeMutableBytes { reliability.getBytes($0.baseAddress!,bytesPerRow: width*4,from: region,mipmapLevel: 0) }

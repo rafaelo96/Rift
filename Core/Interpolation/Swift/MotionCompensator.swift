@@ -87,6 +87,8 @@ public final class MotionCompensator {
     /// occlusions that one-way block matching cannot synthesize safely.
     private let backValidationME: MotionSearchEngine
     private let warp: WarpEngine
+    private let patchEstimator: DenseMotionPrototype?
+    private let patchReverseME: MotionSearchEngine?
     private let validationWidth: Int
     private let validationHeight: Int
 
@@ -112,6 +114,7 @@ public final class MotionCompensator {
         self.device = device
         self.queue = queue
         self.config = config
+        let patchEnabled=ProcessInfo.processInfo.environment["RIFT_FRAMEPLUS_PATCH"] != "0"
         self.validationWidth = config.workWidth / 2
         self.validationHeight = config.workHeight / 2
         let n = config.workWidth * config.workHeight
@@ -142,7 +145,7 @@ public final class MotionCompensator {
                 lambdaPx: config.lambdaPx,
                 smoothL0: true,
                 gateL0: true,
-                temporalGatePx: config.temporalGatePx
+                temporalGatePx: patchEnabled ? 0 : config.temporalGatePx
             )
 
             // A 16px block in this half-size plane spans 32x32 pixels of the
@@ -161,6 +164,11 @@ public final class MotionCompensator {
                 gateL0: true,
                 temporalGatePx: 0
             )
+            if patchEnabled {
+                self.patchEstimator=try DenseMotionPrototype(width: config.workWidth,height: config.workHeight,blockSize: config.blockSize,inverseSearch: true)
+                self.patchReverseME=try MotionSearchEngine(msl: motionShadersMSL,spec: spec,lambdaPx: config.lambdaPx,smoothL0: true,gateL0: true,temporalGatePx: 0)
+                print("[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)")
+            } else { self.patchEstimator=nil; self.patchReverseME=nil }
         } catch {
             throw Error.engineInitFailed("\(error)")
         }
@@ -178,6 +186,7 @@ public final class MotionCompensator {
     public func resetTemporalState() {
         me.resetTemporalState()
         backValidationME.resetTemporalState()
+        patchReverseME?.resetTemporalState()
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).
@@ -203,10 +212,33 @@ public final class MotionCompensator {
     /// buffers de salida vienen del pool reusable de WarpEngine.
     /// Devuelve buffers vacíos y MS 0 si el par es inválido.
     public func interpolatePair(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float]) -> InterpolationPairResult {
-        guard !tValues.isEmpty else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
+        guard !tValues.isEmpty,tValues.count<=4,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
+              CVPixelBufferGetWidth(I0)==CVPixelBufferGetWidth(I1),CVPixelBufferGetHeight(I0)==CVPixelBufferGetHeight(I1),CVPixelBufferGetPixelFormatType(I0)==CVPixelBufferGetPixelFormatType(I1) else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
 
         guard let luma0 = scaledLuma(I0), let luma1 = scaledLuma(I1) else {
             return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0)
+        }
+        if let dense=patchEstimator,let reverse=patchReverseME {
+            let start=DispatchTime.now().uptimeNanoseconds
+            func normalized(_ data: Data) -> Data {
+                let format=CVPixelBufferGetPixelFormatType(I0)
+                guard format==kCVPixelFormatType_420YpCbCr8BiPlanarFullRange || format==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange else { return data }
+                return data.withUnsafeBytes { bytes in
+                    bytes.bindMemory(to: UInt16.self).map { $0/64 }.withUnsafeBytes { Data($0) }
+                }
+            }
+            let a=normalized(luma0),b=normalized(luma1)
+            _=me.runPair(cur: a,ref: b); let forward=me.downloadMV(level: 0)
+            _=reverse.runPair(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
+            var buffers: [CVPixelBuffer]=[],nativeMS=0.0
+            do {
+                _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,nativeRenderer: { time,coordinates,blend in
+                    let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend)
+                    if let buffer { buffers.append(buffer) }; nativeMS+=cost
+                },downloadResults: false)
+            } catch { print("[Frame+] Native patch interpolation failed: \(error)") }
+            let total=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
+            return InterpolationPairResult(pixelBuffers: buffers.count==tValues.count ? buffers : [],meMS: max(0,total-nativeMS),warpMS: nativeMS)
         }
 
         // Fast-path estático: si el par no cambió (ruido), el frame intermedio
@@ -279,6 +311,10 @@ public final class MotionCompensator {
     /// Interpola un solo frame (camino clásico, una llamada por `t`). Se conserva
     /// para compatibilidad/determinismo; el pipeline usa `interpolatePair`.
     public func interpolateWithTimings(I0: CVPixelBuffer, I1: CVPixelBuffer, t: Float) -> InterpolationResult {
+        if patchEstimator != nil {
+            let result=interpolatePair(I0: I0,I1: I1,tValues: [t])
+            return InterpolationResult(pixelBuffer: result.pixelBuffers.first,meMS: result.meMS,warpMS: result.warpMS,upscaleMS: result.upscaleMS)
+        }
         guard let luma0 = scaledLuma(I0),
               let luma1 = scaledLuma(I1) else {
             return InterpolationResult(pixelBuffer: nil, meMS: 0, warpMS: 0)
