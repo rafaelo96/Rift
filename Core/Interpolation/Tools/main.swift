@@ -77,6 +77,11 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_DENSE_ROTATION",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkDenseRotation(); exit(0) }
+    catch { print("DENSE ROTATION FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_DENSE_CHECK",0)==1 {
     setbuf(stdout,nil)
     do { try checkDenseMotion(variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),inverseSearch: envInt("MV_DENSE_PATCH",0)==1); exit(0) }

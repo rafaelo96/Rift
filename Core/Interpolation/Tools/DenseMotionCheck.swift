@@ -227,6 +227,45 @@ private func checkDenseTemporalEvidence() throws {
     print("DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence")
 }
 
+func checkDenseRotation() throws {
+    let w=96,h=96,angle=0.2,c=cos(angle),s=sin(angle)
+    let center=SIMD2<Double>(47.5,47.5)
+    func texture(_ p: SIMD2<Double>) -> UInt16 {
+        UInt16(clamping: Int((500+160*sin(p.x*0.21)+140*cos(p.y*0.19)+100*sin((p.x+p.y)*0.13)).rounded()))
+    }
+    func rotate(_ p: SIMD2<Double>,_ sign: Double) -> SIMD2<Double> {
+        let q=p-center
+        return center+SIMD2(c*q.x-sign*s*q.y,sign*s*q.x+c*q.y)
+    }
+    let first=(0..<w*h).map { texture(SIMD2(Double($0%w),Double($0/w))) }
+    let last=(0..<w*h).map { texture(rotate(SIMD2(Double($0%w),Double($0/w)),-1)) }
+    let a=(1+c)/2,b=s/2,den=a*a+b*b
+    let truth=(0..<w*h).map { i -> UInt16 in
+        let q=SIMD2(Double(i%w),Double(i/w))-center
+        return texture(center+SIMD2((a*q.x+b*q.y)/den,(-b*q.x+a*q.y)/den))
+    }
+    func seeds(_ sign: Double) -> [SIMD2<Int32>] {
+        (0..<12*12).map { i in
+            let p=SIMD2(Double(i%12*8)+3.5,Double(i/12*8)+3.5)
+            let v=2*(rotate(p,sign)-p)
+            return SIMD2(Int32(v.x.rounded()),Int32(v.y.rounded()))
+        }
+    }
+    func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
+    for patch in [false,true] {
+        let engine=try DenseMotionPrototype(width: w,height: h,inverseSearch: patch)
+        let result=try engine.interpolate(first: data(first),last: data(last),forward: seeds(1),backward: seeds(-1),time: 0.5)
+        var vectorError=0.0,pixelError=0.0,count=0
+        for y in 12..<h-12 { for x in 12..<w-12 {
+            let p=SIMD2(Double(x),Double(y)),v=rotate(p,1)-p,k=y*w+x
+            vectorError+=hypot(Double(result.forward[k].x)-v.x,Double(result.forward[k].y)-v.y)
+            pixelError+=Double(abs(Int(result.pixels[k])-Int(truth[k]))); count+=1
+        } }
+        print("DENSE ROTATION: patches=\(patch), radians=\(angle), vectorMAE=\(vectorError/Double(count))px, midpointMAE=\(pixelError/Double(count)), ms=\(result.milliseconds)")
+        precondition(vectorError.isFinite && pixelError.isFinite)
+    }
+}
+
 func checkPatchSurfaceAggregation() throws {
     guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
     let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
