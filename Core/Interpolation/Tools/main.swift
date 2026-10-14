@@ -1928,6 +1928,23 @@ for i in 0..<pairCount {
                 let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+2],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+2]-frameTimes[i+1])/span))
                 let four=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,context: context)
                 print("DENSE FOUR PAIR: pair=\(i), ms=\(four.reduce(0.0) { $0+$1.milliseconds })")
+                if envInt("MV_DENSE_EVIDENCE",0)==1 {
+                    let field=four[0].forward
+                    let mid=four[1]
+                    var folded=0,unsupported=0,unmapped=0
+                    var foldImage=[UInt8](repeating: 0,count: cur.count)
+                    for y in 1..<workHeight-1 { for x in 1..<workWidth-1 {
+                        let k=y*workWidth+x
+                        let dx=(field[k+1]-field[k-1])*0.5
+                        let dy=(field[k+workWidth]-field[k-workWidth])*0.5
+                        let determinant=(1+0.5*dx.x)*(1+0.5*dy.y)-0.25*dy.x*dx.y
+                        if determinant<=0 { folded+=1; foldImage[k]=255 }
+                        if mid.reliability[k]<0.05 { unsupported+=1 }
+                        if mid.mappingResidual[k].x>1 || mid.mappingResidual[k].y>1 { unmapped+=1 }
+                    } }
+                    print("DENSE GEOMETRY: pair=\(i), folded=\(folded), unsupported=\(unsupported), inverseOver1px=\(unmapped), pixels=\(cur.count)")
+                    precondition(writeGrayPNG(foldImage,width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_folded.png"))
+                }
                 for (time,result) in zip(times,four) {
                     precondition(writeGrayPNG(result.pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_four_t\(time).png"))
                 }
