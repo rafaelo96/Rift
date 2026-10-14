@@ -1943,6 +1943,19 @@ for i in 0..<pairCount {
                         if mid.mappingResidual[k].x>1 || mid.mappingResidual[k].y>1 { unmapped+=1 }
                     } }
                     print("DENSE GEOMETRY: pair=\(i), folded=\(folded), unsupported=\(unsupported), inverseOver1px=\(unmapped), pixels=\(cur.count)")
+                    var seedError=0.0,denseError=0.0,verifiedError=0.0,count=0,verified=0
+                    for y in 1..<workHeight-1 { for x in 1..<workWidth-1 {
+                        let k=y*workWidth+x
+                        let seed=forward[(y/measureBS)*measureGW+x/measureBS]
+                        let sx=x+Int(seed.x/2),sy=y+Int(seed.y/2)
+                        let dx=x+Int(field[k].x.rounded()),dy=y+Int(field[k].y.rounded())
+                        guard sx>=0,sy>=0,sx<workWidth,sy<workHeight,dx>=0,dy>=0,dx<workWidth,dy<workHeight else { continue }
+                        let error=Double(abs(Int(cur[k])-Int(ref[dy*workWidth+dx])))
+                        seedError+=Double(abs(Int(cur[k])-Int(ref[sy*workWidth+sx])))
+                        denseError+=error; count+=1
+                        if field[k].w>=0 && field[k].z>0.5 { verifiedError+=error; verified+=1 }
+                    } }
+                    print("DENSE ENDPOINT MATCH: pair=\(i), seedMAE=\(seedError/Double(max(1,count))), denseMAE=\(denseError/Double(max(1,count))), supportedMAE=\(verifiedError/Double(max(1,verified))), supported=\(verified)/\(count)")
                     precondition(writeGrayPNG(foldImage,width: workWidth,height: workHeight,to: "\(folder)/pair\(i)_folded.png"))
                 }
                 for (time,result) in zip(times,four) {
