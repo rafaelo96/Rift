@@ -58,6 +58,11 @@ kernel void denseLK(texture2d<float,access::sample> a [[texture(0)]],texture2d<f
                 uint width=a.get_width(),height=a.get_height();
                 if(s.x<1||s.y<1||s.x>=float(width-1)||s.y>=float(height-1)) continue;
                 float nv=neighbor==0 ? denseRead(before,s).r : denseRead(after,s).r;
+                // A retained neighbor belongs to its nearest endpoint, not always to the source.
+                float heldScale=scale<0 ? 0.0f : 1.0f;
+                float2 heldPosition=q+heldScale*v;
+                float held=neighbor==0 ? denseRead(before,heldPosition).r : denseRead(after,heldPosition).r;
+                if(abs(av-held)<abs(av-nv)) continue;
                 float nx=neighbor==0 ? denseRead(before,s+float2(1,0)).r-denseRead(before,s-float2(1,0)).r : denseRead(after,s+float2(1,0)).r-denseRead(after,s-float2(1,0)).r;
                 float ny=neighbor==0 ? denseRead(before,s+float2(0,1)).r-denseRead(before,s-float2(0,1)).r : denseRead(after,s+float2(0,1)).r-denseRead(after,s-float2(0,1)).r;
                 float error=av-nv;
@@ -159,13 +164,16 @@ kernel void denseTemporalAssess(texture2d<float,access::sample> source [[texture
     if(gid.x>=w||gid.y>=h) return;
     float2 p=float2(gid); float4 field=denseRead(input,p);
     float2 q0=p+intervals.x*field.xy,q1=p+intervals.y*field.xy;
-    float e0=0,e1=0;
+    float e0=0,e1=0,held0=0,held1=0;
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
         float2 d=float2(x,y); float a=denseRead(source,p+d).r;
         e0+=abs(a-denseRead(before,q0+d).r); e1+=abs(a-denseRead(after,q1+d).r);
+        held0+=abs(a-denseRead(before,p+d+(intervals.x<0 ? 0.0f : 1.0f)*field.xy).r);
+        held1+=abs(a-denseRead(after,p+d+(intervals.y<0 ? 0.0f : 1.0f)*field.xy).r);
     }
     e0=denseInside(q0,w,h) ? e0/9 : 1;
     e1=denseInside(q1,w,h) ? e1/9 : 1;
+    if(field.w>=0 && held0/9<e0 && held1/9<e1) { e0=held0/9; e1=held1/9; }
     // One neighbor may be occluded too; require evidence from at least one.
     float evidence=min(e0,e1);
     field.z*=exp(-20*evidence);

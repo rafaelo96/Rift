@@ -11,3 +11,13 @@ Un caso sintético con traslación de cuatro píxeles y vecinos idénticos repro
 Con ruido alterno de una unidad, el mismo fallo permanece: MAE 68.2878. El diagnóstico `DENSE NOISY HELD` registra este caso sin declararlo resuelto. Ensayos de ponderación por parecido a pose retenida redujeron el error a 37–46, pero no lo resolvieron; además, ampliar el soporte de visibilidad a poses estáticas rompió la comprobación de falsa oclusión. Se descartaron esos cambios de shaders.
 
 La solución pendiente necesita distinguir cadencia y movimiento verificado por regiones antes de usar vecinos para imponer una trayectoria. No está integrado en el reproductor ni demuestra igualdad de fluidez o estabilidad con Motion². La regla de cierre sigue siendo calidad y tiempo real en reproducción, no una mejora de MAE del prototipo.
+
+## Corrección posterior: comprobar el extremo correspondiente
+
+El intento anterior de comprobar vecinos retenidos en las coordenadas del origen era incorrecto para el vecino posterior: este retiene el segundo extremo, no el primero. Ahora LK compara cada vecino tanto con extrapolación como con su extremo correspondiente (desplazamiento cero para intervalo negativo, desplazamiento central para intervalo positivo). Si el extremo explica mejor la muestra, esa muestra no impone velocidad constante. La evaluación temporal admite esta evidencia para correspondencias centrales verificadas, pero nunca la usa para certificar una oclusión.
+
+Caso con ruido de una unidad: MAE 68.2878 → 0.001302 en ocho iteraciones; 0.006510 en cuatro iteraciones; 0.872396 con TV. El caso queda protegido por assert MAE<5. Pasan las comprobaciones existentes, incluidas falsa oclusión, traslación, estáticos, extremos y determinismo.
+
+Avatar, mismas referencias: a 69 s, MAE 8.36066 / 9.28504 / 10.25724; a 300 s, 42.91633 / 30.82777 / 44.94427. La tercera referencia a 300 s empeora ligeramente frente a 44.66275; no se presenta como mejora general. Las poses retenidas de pares adyacentes conservan el dibujo, pero `pair4_four_t0.5.png` en `/tmp/rift-cadence-fixed-300` conserva parches severos durante el cambio de pose. No está listo para integrarse.
+
+Apple M4, análisis más tres síntesis: 66.2–68.9 ms a 69 s, 63.3–70.2 ms a 300 s, con las exclusiones descritas en el informe de superficies. El objetivo de calidad y tiempo real continúa pendiente. Logs `/tmp/rift-cadence-fixed-69.log` y `/tmp/rift-cadence-fixed-300.log`.

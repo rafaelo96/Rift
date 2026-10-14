@@ -347,6 +347,7 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
     let noisyTranslation=try dense.interpolate(first: data(texture),last: data(translated),forward: seed,backward: reverse,time: 0.5,context: noisyHeld)
     let noisyError=interior.reduce(0.0) { sum,index in sum+Double(abs(Int(noisyTranslation.pixels[index])-Int(texture[(index/w)*w+index%w-2]))) }/Double(interior.count)
     print("DENSE NOISY HELD: midpoint pixel MAE=\(noisyError)")
+    precondition(noisyError<5,"Noisy retained neighbors corrupted central-pair motion")
     let odd=try DenseMotionPrototype(width: 65,height: 49,variational: variational,finestIterations: finestIterations)
     let oddPixels: [UInt16]=(0..<65*49).map { UInt16(($0*9)%1000) }
     let oddSeeds=[SIMD2<Int32>](repeating: .zero,count: 9*7)
