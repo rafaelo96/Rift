@@ -30,6 +30,59 @@ kernel void denseSeed(device const int2 *mv [[buffer(0)]],constant uint4 &u [[bu
     uint2 cell=min(uint2((float2(p)+0.5f)*float(u.w)/float(u.z)),u.xy-1);
     output.write(float4(float2(mv[cell.y*u.x+cell.x])/(2.0f*float(u.w)),0,0),p);
 }
+float densePatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 center,float2 v) {
+    float cost=0;
+    for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+        float2 q=center+float2(x,y); float error=denseRead(a,q).r-denseRead(b,q+v).r;
+        cost+=error*error;
+    }
+    return cost/64;
+}
+kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
+    float2 center=float2(p)*4,v=denseRead(seed,center).xy;
+    float best=densePatchCost(a,b,center,v);
+    const float2 neighbors[5]={float2(-4,0),float2(4,0),float2(0,-4),float2(0,4),float2(0)};
+    for(int i=0;i<5;++i) {
+        float2 candidate=i==4 ? float2(0) : denseRead(seed,center+neighbors[i]).xy;
+        float cost=densePatchCost(a,b,center,candidate);
+        if(cost<best) { best=cost; v=candidate; }
+    }
+    float values[64]; float2 gradients[64]; float hxx=0,hxy=0,hyy=0;
+    for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+        int k=(y+4)*8+x+4; float2 q=center+float2(x,y);
+        values[k]=denseRead(a,q).r;
+        float2 g=float2(denseRead(a,q+float2(1,0)).r-denseRead(a,q-float2(1,0)).r,denseRead(a,q+float2(0,1)).r-denseRead(a,q-float2(0,1)).r)*0.5f;
+        gradients[k]=g; hxx+=g.x*g.x; hxy+=g.x*g.y; hyy+=g.y*g.y;
+    }
+    float det=hxx*hyy-hxy*hxy;
+    if(det>1e-8f) for(int iteration=0;iteration<8;++iteration) {
+        float2 rhs=0;
+        for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+            int k=(y+4)*8+x+4;
+            rhs+=gradients[k]*(values[k]-denseRead(b,center+float2(x,y)+v).r);
+        }
+        float2 step=float2(hyy*rhs.x-hxy*rhs.y,hxx*rhs.y-hxy*rhs.x)/det;
+        step/=max(1.0f,length(step)/2.0f);
+        float2 candidate=v+step; float cost=densePatchCost(a,b,center,candidate);
+        if(cost>=best) break;
+        best=cost; v=candidate;
+        if(dot(step,step)<1e-5f) break;
+    }
+    patches.write(float4(v,exp(-20*sqrt(best)),best),p);
+}
+kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=field.get_width()||p.y>=field.get_height()) return;
+    float2 sum=0; float total=0,level=denseRead(a,float2(p)).r;
+    uint2 base=p/4;
+    for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
+        float4 patch=denseRead(patches,float2(base+uint2(x,y)));
+        float error=abs(level-denseRead(b,float2(p)+patch.xy).r);
+        float weight=1/max(0.01f,error);
+        sum+=weight*patch.xy; total+=weight;
+    }
+    field.write(float4(sum/total,1,0),p);
+}
 kernel void denseExpand(texture2d<float,access::sample> coarse [[texture(0)]],texture2d<float,access::write> fine [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=fine.get_width()||p.y>=fine.get_height()) return;
     // Nearest propagation avoids inventing a velocity between two layers.

@@ -79,7 +79,7 @@ let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
 if envInt("MV_DENSE_CHECK",0)==1 {
     setbuf(stdout,nil)
-    do { try checkDenseMotion(variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8)); exit(0) }
+    do { try checkDenseMotion(variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),inverseSearch: envInt("MV_DENSE_PATCH",0)==1); exit(0) }
     catch { print("DENSE CHECK FAILED: \(error)"); exit(3) }
 }
 if envInt("MV_LARGE_CHECK",0)==1 {
@@ -1732,7 +1732,7 @@ let densePrototype: DenseMotionPrototype?
 let denseReverseSearch: MotionSearchEngine?
 do {
     if envInt("MV_DENSE",0)==1 {
-        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),projectedOwnership: envInt("MV_DENSE_OWNERSHIP",1)==1)
+        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),projectedOwnership: envInt("MV_DENSE_OWNERSHIP",1)==1,inverseSearch: envInt("MV_DENSE_PATCH",0)==1)
         denseReverseSearch=try MotionSearchEngine(msl: motionShadersMSL,spec: pyramidSpec,lambdaPx: UInt32(lambdaPx),smoothL0: true,gateL0: true,temporalGatePx: 0)
     } else { densePrototype=nil; denseReverseSearch=nil }
 } catch { fatalError("Dense prototype init failed: \(error)") }

@@ -227,7 +227,7 @@ private func checkDenseTemporalEvidence() throws {
     print("DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence")
 }
 
-func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
+func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSearch: Bool=false) throws {
     for invalid in [0,9] {
         do {
             _=try DenseMotionPrototype(width: 64,height: 48,finestIterations: invalid)
@@ -244,7 +244,7 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
     let w=64,h=48,gw=8,gh=6
     func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
     func error(_ a: [UInt16],_ b: [UInt16]) -> Double { zip(a,b).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(a.count) }
-    let dense=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations)
+    let dense=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations,inverseSearch: inverseSearch)
     let warp=try WarpEngine(msl: warpShadersMSL)
     let first=denseLayerScene(0),last=denseLayerScene(8)
     func field(_ offset: Int,_ direction: Int32) -> [SIMD2<Int32>] {
@@ -270,7 +270,7 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8) throws {
     precondition(four[0].pixels==first && four[2].pixels==last)
     print("DENSE FOUR LAYERS: MAE=\(error(four[1].pixels,denseLayerScene(4)))")
     let noContext=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
-    let fresh=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations).interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
+    let fresh=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations,inverseSearch: inverseSearch).interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
     precondition(noContext.pixels==fresh.pixels && noContext.forward==fresh.forward && noContext.backward==fresh.backward,"Neighbor textures leaked into the next context-free pair")
     for invalid in [DenseMotionPrototype.TemporalContext(before: Data(),after: data(last),beforeInterval: 1,afterInterval: 1),DenseMotionPrototype.TemporalContext(before: data(first),after: data(last),beforeInterval: .nan,afterInterval: 1)] {
         do {
