@@ -85,7 +85,7 @@ public final class WarpEngine {
         }
     }
 
-    func renderDense(I0: CVPixelBuffer,I1: CVPixelBuffer,t: Float,coordinates: MTLTexture,blend: MTLTexture) -> (CVPixelBuffer?,Double) {
+    func renderDense(I0: CVPixelBuffer,I1: CVPixelBuffer,t: Float,coordinates: MTLTexture,blend: MTLTexture,encodingInto externalCommand: MTLCommandBuffer?=nil) -> (CVPixelBuffer?,Double) {
         let w=CVPixelBufferGetWidth(I0),h=CVPixelBufferGetHeight(I0),format=CVPixelBufferGetPixelFormatType(I0)
         guard CVPixelBufferGetWidth(I1)==w,CVPixelBufferGetHeight(I1)==h,CVPixelBufferGetPixelFormatType(I1)==format,
               CVPixelBufferGetPlaneCount(I0)==2,CVPixelBufferGetPlaneCount(I1)==2 else { return (nil,0) }
@@ -98,7 +98,7 @@ public final class WarpEngine {
         if t==0 { return (I0,0) }; if t==1 { return (I1,0) }
         guard let cache=textureCache else { return (nil,0) }
         ensureOutputPool(w: w,h: h,pixelFormat: format)
-        guard let output=acquireOutputBuffer(w: w,h: h,pixelFormat: format),let command=queue.makeCommandBuffer() else { return (nil,0) }
+        guard let output=acquireOutputBuffer(w: w,h: h,pixelFormat: format),let command=externalCommand ?? queue.makeCommandBuffer() else { return (nil,0) }
         let start=DispatchTime.now().uptimeNanoseconds
         var wrappers: [CVMetalTexture]=[]
         defer { withExtendedLifetime(wrappers) {} }
@@ -116,8 +116,14 @@ public final class WarpEngine {
             encoder.dispatchThreads(MTLSize(width: pw,height: ph,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
         }
-        command.commit(); command.waitUntilCompleted()
-        guard command.status == .completed else { return (nil,0) }
+        if externalCommand == nil {
+            command.commit(); command.waitUntilCompleted()
+            guard command.status == .completed else { return (nil,0) }
+        } else {
+            // IOSurface wrappers must survive until the shared submission completes.
+            let retained=wrappers
+            command.addCompletedHandler { _ in withExtendedLifetime(retained) {} }
+        }
         propagateHDR(from: I0,to: output)
         return (output,Double(DispatchTime.now().uptimeNanoseconds-start)/1e6)
     }

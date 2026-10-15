@@ -103,7 +103,7 @@ public final class DenseMotionPrototype {
 
     /// One bounded pair analysis shared by up to four temporal samples.
     /// The first result's milliseconds includes analysis; subsequent results measure synthesis.
-    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
+    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
         guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=4,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               forward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }),backward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }) else {
@@ -268,10 +268,10 @@ public final class DenseMotionPrototype {
                 $0.setBuffer(ownership[1],offset: 0,index: 3)
                 $0.setBytes(&offset,length: 4,index: 4)
             }
+            nativeRenderer?(time,nativeCoordinates,nativeBlend,command)
             command.commit(); command.waitUntilCompleted()
             guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
             let elapsed=Double(DispatchTime.now().uptimeNanoseconds-sampleStart)/1e6
-            nativeRenderer?(time,nativeCoordinates,nativeBlend)
             if !downloadResults {
                 results.append(Result(pixels: [],reliability: [],forward: [],backward: [],mappingResidual: [],milliseconds: elapsed))
                 continue

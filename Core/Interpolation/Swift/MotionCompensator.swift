@@ -215,7 +215,14 @@ public final class MotionCompensator {
         guard !tValues.isEmpty,tValues.count<=4,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               CVPixelBufferGetWidth(I0)==CVPixelBufferGetWidth(I1),CVPixelBufferGetHeight(I0)==CVPixelBufferGetHeight(I1),CVPixelBufferGetPixelFormatType(I0)==CVPixelBufferGetPixelFormatType(I1) else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
 
-        guard let luma0 = scaledLuma(I0), let luma1 = scaledLuma(I1) else {
+        // Both read-only source planes can be resampled independently.
+        var lumas=[Data?](repeating: nil,count: 2)
+        let lumaLock=NSLock()
+        DispatchQueue.concurrentPerform(iterations: 2) { index in
+            let scaled=self.scaledLuma(index==0 ? I0 : I1)
+            lumaLock.lock(); lumas[index]=scaled; lumaLock.unlock()
+        }
+        guard let luma0 = lumas[0], let luma1 = lumas[1] else {
             return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0)
         }
         if let dense=patchEstimator,let reverse=patchReverseME {
@@ -232,11 +239,11 @@ public final class MotionCompensator {
             do {
                 _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
                 _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
-                _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,nativeRenderer: { time,coordinates,blend in
-                    let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend)
+                _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,nativeRenderer: { time,coordinates,blend,command in
+                    let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend,encodingInto: command)
                     if let buffer { buffers.append(buffer) }; nativeMS+=cost
                 },downloadResults: false)
-            } catch { print("[Frame+] Native patch interpolation failed: \(error)") }
+            } catch { buffers.removeAll(); print("[Frame+] Native patch interpolation failed: \(error)") }
             let total=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
             return InterpolationPairResult(pixelBuffers: buffers.count==tValues.count ? buffers : [],meMS: max(0,total-nativeMS),warpMS: nativeMS)
         }
@@ -858,6 +865,8 @@ public final class MotionCompensator {
 
         let dw = config.workWidth
         let dh = config.workHeight
+        // Per-call scratch keeps concurrent source resampling independent.
+        var scaleScratch=[Float](repeating: 0,count: dw*dh)
         var dst = Data(count: dw * dh * MemoryLayout<UInt16>.stride)
         if is10Bit {
             let err: vImage_Error = dst.withUnsafeMutableBytes { dstRaw in
@@ -881,7 +890,7 @@ public final class MotionCompensator {
             // trunca: bit-idéntico a >>6 / <<8 del camino anterior.
             var div: Float = 1.0 / 64.0
             dst.withUnsafeMutableBytes { dstRaw in
-                vdspA.withUnsafeMutableBufferPointer { fa in
+                scaleScratch.withUnsafeMutableBufferPointer { fa in
                     vDSP_vfltu16(dstRaw.bindMemory(to: UInt16.self).baseAddress!, 1,
                                  fa.baseAddress!, 1, vDSP_Length(dw * dh))
                     vDSP_vsmul(fa.baseAddress!, 1, &div,
@@ -917,7 +926,7 @@ public final class MotionCompensator {
             // loop anterior (UInt16(v)<<8).
             var smul: Float = 256.0
             dst.withUnsafeMutableBytes { dstRaw in
-                vdspA.withUnsafeMutableBufferPointer { fa in
+                scaleScratch.withUnsafeMutableBufferPointer { fa in
                     vDSP_vfltu8(tmp, 1,
                                 fa.baseAddress!, 1, vDSP_Length(dw * dh))
                     vDSP_vsmul(fa.baseAddress!, 1, &smul,

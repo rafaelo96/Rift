@@ -66,6 +66,23 @@ func checkNativePatchIntegration() throws {
             precondition(channel==0 ? (96...112).contains(value) : (144...160).contains(value),"Native patch chroma channels lost or mixed")
         } } }
         CVPixelBufferUnlockBaseAddress(mid,.readOnly)
+        func payload(_ image: CVPixelBuffer) -> Data {
+            CVPixelBufferLockBaseAddress(image,.readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(image,.readOnly) }
+            var bytes=Data()
+            for plane in 0..<2 {
+                let base=CVPixelBufferGetBaseAddressOfPlane(image,plane)!,stride=CVPixelBufferGetBytesPerRowOfPlane(image,plane)
+                let rowBytes=CVPixelBufferGetWidthOfPlane(image,plane)*(plane==0 ? 1 : 2)*(tenBit ? 2 : 1)
+                for y in 0..<CVPixelBufferGetHeightOfPlane(image,plane) { bytes.append(base.advanced(by: y*stride).assumingMemoryBound(to: UInt8.self),count: rowBytes) }
+            }
+            return bytes
+        }
+        let reference=payload(mid)
+        for _ in 0..<3 {
+            let batch=engine.interpolatePair(I0: first,I1: last,tValues: [0.25,0.5,0.75]).pixelBuffers
+            precondition(batch.count==3 && payload(batch[1])==reference,"Shared submission or concurrent scaling changed the midpoint")
+            precondition(payload(mid)==reference,"Later synthesis overwrote an earlier output")
+        }
         precondition(engine.interpolatePair(I0: first,I1: last,tValues: [.nan]).pixelBuffers.isEmpty)
         print("NATIVE PATCH: \(tenBit ? 10 : 8)-bit format, chroma, endpoints and metadata passed; total=\(result.meMS+result.warpMS)ms")
     }

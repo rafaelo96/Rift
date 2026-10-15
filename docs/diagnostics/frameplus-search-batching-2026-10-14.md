@@ -22,3 +22,17 @@ At 300 s, batched median is 28.814 ms, maximum 69.101 ms; the first two warmup p
 ## Remaining validation
 
 Benchmark improvements do not establish sustained GUI framerate or Motion² equivalence. Rebuild the separate test app and verify playback. Important deformation cases remain under investigation; no direct Splash comparison is available.
+
+## GUI reproduction and second correction
+
+The first test app sustained a visible decline (60 initially, then 17/3 fps delivery). Detailed runtime stages measured approximately 41–42 ms interpolation per pair, with late samples discarded. Thus the initial twelve-pair/two-output benchmark was insufficient.
+
+A hardware-filtering experiment in native color sampling was rejected: three-output median remained 46.441 ms versus 50.364 ms in the preceding isolated manual-sampling run; it did not provide the needed headroom. The original sampling shader is retained.
+
+Additional changes within Interpolation:
+- Independently resample the two read-only source luma planes concurrently, with per-call vDSP scratch and locked result collection. No cross-pair source cache or unbounded buffer is introduced.
+- Encode native color rendering immediately after dense synthesis into the same command buffer. Wait once per output; retain CVMetalTexture wrappers through GPU completion. Clear all output buffers on command failure. With a shared command, reported warp time covers encoding only; GPU color execution is included in aggregate analysis/total time.
+
+Sequential 12-pair, three-output tests at 69 s (Apple M4, same source/work size): serial scaling/separate synthesis-color submission median 50.364 ms; parallel scaling 37.997 ms; parallel scaling/shared submission 35.561 ms, p95 40.212 ms, maximum 43.756 ms. These are short runs with differing system load and must be checked against sustained playback.
+
+Native integration checks pass for 8/10-bit, including repeated three-output batches: midpoint payload stays byte-identical to the standalone midpoint, and earlier output buffers remain unchanged. Illumination regression metrics remain unchanged. Sustained GUI revalidation follows; these measurements do not establish final visual quality.
