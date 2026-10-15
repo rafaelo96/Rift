@@ -739,10 +739,28 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let rawDuration = env["RIFT_FLUENCY_PROBE_SECONDS"],
            let probeDuration = Int(rawDuration), (10...1800).contains(probeDuration) {
             let exerciseControls = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "1"
+            let exercisePausedSeek = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "pause-seek"
             Task { @MainActor [weak self] in
+                var pausedSeekTarget: Double?
                 for second in 1...probeDuration {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     guard let self, !Task.isCancelled else { return }
+                    if exercisePausedSeek {
+                        switch second {
+                        case 8: self.togglePlay()
+                        case 9:
+                            pausedSeekTarget = self.currentTime + 10
+                            self.seek(to: pausedSeekTarget!)
+                        case 12:
+                            precondition(!self.isPlaying && abs(self.currentTime - pausedSeekTarget!) < 0.01,
+                                         "Seeking while paused resumed playback or lost the destination")
+                        case 13: self.togglePlay()
+                        case 20:
+                            precondition(self.isPlaying && self.currentTime > pausedSeekTarget! + 3 && self.displayRenderingFPS > 0,
+                                         "Playback did not recover after a paused seek")
+                        default: break
+                        }
+                    }
                     if exerciseControls {
                         switch second {
                         case 8, 18: self.togglePictureInPicture()
