@@ -2467,13 +2467,17 @@ if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     var pipelineWarp: [Double] = []
     var pipelineUpscale: [Double] = []
     var pipelineTotal: [Double] = []
+    let requestedOutputs=envInt("MV_PAIR_OUTPUTS",1)
+    precondition((1...4).contains(requestedOutputs),"MV_PAIR_OUTPUTS must be 1...4")
+    let batchTimes: [Float]=requestedOutputs==2 ? [0.4,0.8] : requestedOutputs==3 ? [0.2,0.5,0.8] : [0.125,0.375,0.625,0.875]
     print("\n--- pipeline real (MotionCompensator, ME reducido + warp nativo) ---")
+    print("Requested production outputs per pair: \(requestedOutputs)")
     for i in 0..<pairCount {
         let s = DispatchTime.now().uptimeNanoseconds
         let r: InterpolationResult
-        if envInt("MV_PAIR_OUTPUTS", 1) == 2 {
-            let pair = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: [0.4, 0.8])
-            precondition(pair.pixelBuffers.count == 2, "Incomplete production pair")
+        if requestedOutputs>1 {
+            let pair = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: batchTimes)
+            precondition(pair.pixelBuffers.count == requestedOutputs, "Incomplete production pair")
             r = InterpolationResult(pixelBuffer: pair.pixelBuffers.first,
                 meMS: pair.meMS, warpMS: pair.warpMS, upscaleMS: pair.upscaleMS)
         } else {

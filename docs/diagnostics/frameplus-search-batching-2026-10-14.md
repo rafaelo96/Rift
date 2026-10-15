@@ -27,13 +27,13 @@ Benchmark improvements do not establish sustained GUI framerate or Motion² equi
 
 The first test app sustained a visible decline (60 initially, then 17/3 fps delivery). Detailed runtime stages measured approximately 41–42 ms interpolation per pair, with late samples discarded. Thus the initial twelve-pair/two-output benchmark was insufficient.
 
-A hardware-filtering experiment in native color sampling was rejected: three-output median remained 46.441 ms versus 50.364 ms in the preceding isolated manual-sampling run; it did not provide the needed headroom. The original sampling shader is retained.
+A hardware-filtering experiment in native color sampling was rejected: single-output median remained 46.441 ms versus 50.364 ms in the preceding isolated manual-sampling run; it did not provide the needed headroom. The original sampling shader is retained.
 
 Additional changes within Interpolation:
 - Independently resample the two read-only source luma planes concurrently, with per-call vDSP scratch and locked result collection. No cross-pair source cache or unbounded buffer is introduced.
 - Encode native color rendering immediately after dense synthesis into the same command buffer. Wait once per output; retain CVMetalTexture wrappers through GPU completion. Clear all output buffers on command failure. With a shared command, reported warp time covers encoding only; GPU color execution is included in aggregate analysis/total time.
 
-Sequential 12-pair, three-output tests at 69 s (Apple M4, same source/work size): serial scaling/separate synthesis-color submission median 50.364 ms; parallel scaling 37.997 ms; parallel scaling/shared submission 35.561 ms, p95 40.212 ms, maximum 43.756 ms. These are short runs with differing system load and must be checked against sustained playback.
+Sequential 12-pair, single-output tests at 69 s (Apple M4, same source/work size): serial scaling/separate synthesis-color submission median 50.364 ms; parallel scaling 37.997 ms; parallel scaling/shared submission 35.561 ms, p95 40.212 ms, maximum 43.756 ms. These are short runs with differing system load and must be checked against sustained playback.
 
 Native integration checks pass for 8/10-bit, including repeated three-output batches: midpoint payload stays byte-identical to the standalone midpoint, and earlier output buffers remain unchanged. Illumination regression metrics remain unchanged. Sustained GUI revalidation follows; these measurements do not establish final visual quality.
 
@@ -47,3 +47,7 @@ Rebuilt/repackaged separate test app, signature verified. Built-in `RIFT_FLUENCY
 The renderer metrics support sustained presentation through these windows, but are not an external physical-display capture or a full-film stress test. Significant visual deformation cases remain; the Motion² quality objective is not complete.
 
 Runtime logs: `/tmp/rift-fluency-shared-120.log`, `/tmp/rift-fluency-shared-300.log`; build/package logs `/tmp/rift-test-app-build.log`, `/tmp/rift-native-app-package.log`. The separate test app contains commits `00f4323` and `a8ae44e` plus the pre-existing UI checkout changes described in the integration report.
+
+## Harness correction
+
+`MV_PAIR_OUTPUTS=3` previously fell through to the single-output path. The 50.364 / 37.997 / 35.561 ms exploratory measurements above therefore measure **one output**, not three; their labels have been corrected. They cannot establish the three-output budget. Initial `MV_PAIR_OUTPUTS=2` A/B results and the two sustained app probes are unaffected. The harness now accepts 1–4 outputs, prints the actual requested count, and asserts the complete generated buffer count. Repeat the three-output benchmark with the corrected harness.
