@@ -103,6 +103,7 @@ public final class DenseMotionPrototype {
 
     /// One bounded pair analysis shared by up to four temporal samples.
     /// The first result's milliseconds includes analysis; subsequent results measure synthesis.
+    /// nativeRenderer may encode into the supplied command, but must not submit it.
     public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
         guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=4,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),

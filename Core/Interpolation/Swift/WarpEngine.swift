@@ -85,6 +85,7 @@ public final class WarpEngine {
         }
     }
 
+    /// With an external command, elapsed time measures encoding; the owner waits for GPU completion.
     func renderDense(I0: CVPixelBuffer,I1: CVPixelBuffer,t: Float,coordinates: MTLTexture,blend: MTLTexture,encodingInto externalCommand: MTLCommandBuffer?=nil) -> (CVPixelBuffer?,Double) {
         let w=CVPixelBufferGetWidth(I0),h=CVPixelBufferGetHeight(I0),format=CVPixelBufferGetPixelFormatType(I0)
         guard CVPixelBufferGetWidth(I1)==w,CVPixelBufferGetHeight(I1)==h,CVPixelBufferGetPixelFormatType(I1)==format,
