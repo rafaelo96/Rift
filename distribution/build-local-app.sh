@@ -3,7 +3,7 @@
 set -euo pipefail
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 app_path="${1:-$HOME/Applications/Rift.app}"
-configuration="${RIFT_BUILD_CONFIGURATION:-debug}"
+configuration="${RIFT_BUILD_CONFIGURATION:-release}"
 cd "$project_root"
 swift build -c "$configuration" --product Rift
 bin_path="$(swift build -c "$configuration" --show-bin-path)"

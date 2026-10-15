@@ -2,7 +2,8 @@
 
 Run `distribution/build-local-app.sh` to build and register `~/Applications/Rift.app`.
 An optional first argument chooses another app path; `RIFT_BUILD_CONFIGURATION`
-selects the SwiftPM configuration (default: debug).
+selects the SwiftPM configuration (default: release). Use
+`RIFT_BUILD_CONFIGURATION=debug` explicitly for a development package.
 
 The app declares a Viewer role with Alternate rank for MP4, MOV/QT, M4V, AVI,
 MKV, WebM, MPEG/MPG/MPE and TS/M2TS/MTS. Matroska and WebM are imported UTIs.

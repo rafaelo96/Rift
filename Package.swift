@@ -172,7 +172,9 @@ let package = Package(
         .target(
             name: "Interpolation",
             path: "Core/Interpolation",
-            sources: ["Swift"]
+            sources: ["Swift"],
+            // The real-time CPU preparation must meet the frame budget in Debug too.
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
         // Standalone measurement probe (MVProbe) — reutiliza los archivos del
         // módulo Interpolation via include implícito del path Core/Interpolation
