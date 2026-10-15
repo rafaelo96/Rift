@@ -466,6 +466,29 @@ func checkPatchSurfaceAggregation() throws {
     guard second.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Coherent patch aggregation GPU failure") }
     field.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 64*16,from: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0) }
     precondition(abs(field[24*64+32].x-0.25)<1e-6,"Compatible subpixel trajectories lost aggregation")
+
+    // Both trajectories match the center; only +8 matches its surrounding texture.
+    let textured: [Float]=(0..<3072).map { i in
+        let x=i%64,y=i/64
+        let value=(x*43+y*67+x*y*7)%700+100
+        return Float(value)/1023
+    }
+    var shifted: [Float]=(0..<3072).map { i in
+        let row=(i/64)*64,column=max(0,i%64-8)
+        return textured[row+column]
+    }
+    shifted[24*64+32]=textured[24*64+32]
+    for (image,values) in [(a,textured),(b,shifted)] { values.withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) } }
+    candidates.withUnsafeBytes { patches.replace(region: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 17*16) }
+    let third=queue.makeCommandBuffer()!,thirdEncoder=third.makeComputeCommandEncoder()!
+    thirdEncoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,patches,output].enumerated() { thirdEncoder.setTexture(image,index: i) }
+    thirdEncoder.dispatchThreads(MTLSize(width: 64,height: 48,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    thirdEncoder.endEncoding(); third.commit(); third.waitUntilCompleted()
+    guard third.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Ambiguous patch aggregation GPU failure") }
+    field.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 64*16,from: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0) }
+    print("PATCH SURFACE AMBIGUITY: selected=\(field[24*64+32].x)px, expected=8px")
+    precondition(field[24*64+32].x==8,"An isolated matching pixel defeated the correct textured surface")
 }
 
 func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSearch: Bool=false) throws {

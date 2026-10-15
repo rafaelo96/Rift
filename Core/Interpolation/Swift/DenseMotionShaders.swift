@@ -85,19 +85,26 @@ kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]]
 }
 kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=field.get_width()||p.y>=field.get_height()) return;
-    float2 sum=0; float total=0,level=denseRead(a,float2(p)).r;
+    float2 sum=0; float total=0;
     uint2 base=p/4;
     float2 winner=0; float best=INFINITY;
+    float source[9];
+    for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) source[(y+1)*3+x+1]=denseRead(a,float2(p)+float2(x,y)).r;
+    float4 candidates[4]; float errors[4];
     for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
         float4 patch=denseRead(patches,float2(base+uint2(x,y)));
-        float error=abs(level-denseRead(b,float2(p)+patch.xy).r)+sqrt(max(0.0f,patch.w));
+        float residual=0;
+        for(int yy=-1;yy<=1;++yy) for(int xx=-1;xx<=1;++xx) residual+=abs(source[(yy+1)*3+xx+1]-denseRead(b,float2(p)+patch.xy+float2(xx,yy)).r);
+        residual/=9;
+        candidates[y*2+x]=patch; errors[y*2+x]=residual;
+        float error=residual+sqrt(max(0.0f,patch.w));
         if(error<best) { best=error; winner=patch.xy; }
     }
     for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
-        float4 patch=denseRead(patches,float2(base+uint2(x,y)));
+        float4 patch=candidates[y*2+x];
         // Aggregate only one velocity hypothesis; a layer boundary is not an intermediate motion.
         if(length(patch.xy-winner)>=1) continue;
-        float error=abs(level-denseRead(b,float2(p)+patch.xy).r);
+        float error=errors[y*2+x];
         float weight=1/max(0.01f,error);
         sum+=weight*patch.xy; total+=weight;
     }
