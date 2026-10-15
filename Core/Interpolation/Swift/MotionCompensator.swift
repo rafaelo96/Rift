@@ -228,10 +228,10 @@ public final class MotionCompensator {
                 }
             }
             let a=normalized(luma0),b=normalized(luma1)
-            _=me.runPair(cur: a,ref: b); let forward=me.downloadMV(level: 0)
-            _=reverse.runPair(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
             var buffers: [CVPixelBuffer]=[],nativeMS=0.0
             do {
+                _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
+                _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
                 _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,nativeRenderer: { time,coordinates,blend in
                     let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend)
                     if let buffer { buffers.append(buffer) }; nativeMS+=cost

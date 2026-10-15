@@ -3,7 +3,29 @@ import Metal
 import CoreVideo
 import Interpolation
 
+func checkBatchedMotionSearch() throws {
+    let w=128,h=64
+    let source: [UInt16]=(0..<w*h).map { i in
+        let x=i%w,y=i/w
+        return UInt16((x*43+y*67+x*y*7)%700+100)
+    }
+    let target=(0..<w*h).map { i in source[(i/w)*w+max(0,i%w-4)] }
+    func data(_ pixels: [UInt16]) -> Data { pixels.withUnsafeBytes { Data($0) } }
+    let levels=(0..<4).map { level in LevelSpec(width: w>>level,height: h>>level,blockSize: 8,searchHalfPel: 8,halfPelRefine: level==0,inheritFactor: 2) }
+    for count in [1,4] {
+        let engine=try MotionSearchEngine(msl: motionShadersMSL,spec: Array(levels.prefix(count)),lambdaPx: 1,smoothL0: true,gateL0: true,temporalGatePx: 0)
+        _=engine.runPair(cur: data(source),ref: data(target))
+        let expected=(0..<count).map { engine.downloadMV(level: $0,smoothed: false) }
+        let smooth=engine.downloadMV(level: 0,smoothed: true)
+        _=try engine.runPairBatched(cur: data(source),ref: data(target))
+        for level in 0..<count { precondition(expected[level]==engine.downloadMV(level: level,smoothed: false),"Batched search changed raw vectors") }
+        precondition(smooth==engine.downloadMV(level: 0,smoothed: true),"Batched search changed median/dead-zone vectors")
+        print("BATCHED SEARCH: \(count) levels, raw and filtered vectors identical")
+    }
+}
+
 func checkNativePatchIntegration() throws {
+    try checkBatchedMotionSearch()
     for tenBit in [false,true] {
         let format=tenBit ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         func buffer(_ shift: Int,_ last: Bool) -> CVPixelBuffer {

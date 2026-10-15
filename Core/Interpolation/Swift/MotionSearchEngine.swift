@@ -106,6 +106,9 @@ public final class MotionSearchEngine {
 
     private let device: MTLDevice
     private let queue: MTLCommandQueue
+    private var batchCommand: MTLCommandBuffer?
+    private var batchEncodingFailed=false
+    private let batchSubmissions=ProcessInfo.processInfo.environment["RIFT_PATCH_BATCH_SEARCH"] != "0"
     private let pyramidPSO: MTLComputePipelineState
     private let searchPSO: MTLComputePipelineState
     private let medianPSO: MTLComputePipelineState?
@@ -335,6 +338,34 @@ public final class MotionSearchEngine {
 
     /// Uploads the two L0 luma frames and runs pyramid + search for one pair.
     /// Returns per-stage elapsed ms in SEStage order plus host upload time.
+    /// Same kernels and dependencies, one submission. Stage timing is aggregate in L0.
+    /// Like runPair, calls on an instance must be serialized.
+    public func runPairBatched(cur: Data,ref: Data) throws -> PairTimes {
+        guard let first=spec.first,cur.count==first.width*first.height*2,ref.count==cur.count else { throw EngineError.pipeline("Search batch input geometry mismatch") }
+        guard temporalGatePx==0 && batchSubmissions else { return runPair(cur: cur,ref: ref) }
+        guard batchCommand==nil,let command=queue.makeCommandBuffer() else { throw EngineError.pipeline("Search batch allocation failed") }
+        batchCommand=command; batchEncodingFailed=false
+        defer { batchCommand=nil }
+        let start=DispatchTime.now().uptimeNanoseconds
+        let result=runPair(cur: cur,ref: ref)
+        guard !batchEncodingFailed else { throw EngineError.pipeline("Search batch encoding failed") }
+        command.commit(); command.waitUntilCompleted()
+        guard command.status == .completed else { throw EngineError.pipeline(command.error?.localizedDescription ?? "Search batch GPU failure") }
+        var stages=[Double](repeating: 0,count: SEStage.allCases.count)
+        stages[SEStage.searchL0.rawValue]=max(0,elapsedMS(from: start)-result.uploadMS)
+        return PairTimes(stages: stages,uploadMS: result.uploadMS)
+    }
+
+    private func makeEncoder(_ command: MTLCommandBuffer) -> MTLComputeCommandEncoder? {
+        let encoder=command.makeComputeCommandEncoder()
+        if batchCommand != nil && encoder == nil { batchEncodingFailed=true }
+        return encoder
+    }
+
+    private func finishCommand(_ command: MTLCommandBuffer) {
+        if batchCommand==nil { command.commit(); command.waitUntilCompleted() }
+    }
+
     public func runPair(cur: Data, ref: Data) -> PairTimes {
         var times = [Double](repeating: 0, count: SEStage.allCases.count)
         var uploadMS = 0.0
@@ -358,8 +389,8 @@ public final class MotionSearchEngine {
         // L0 3x3 vector-median smoothing (when enabled).
         if let medianPSO = medianPSO, let smooth = mvBufferSmoothed {
             let start = DispatchTime.now().uptimeNanoseconds
-            guard let cmd = queue.makeCommandBuffer(),
-                  let enc = cmd.makeComputeCommandEncoder() else { return PairTimes(stages: times, uploadMS: uploadMS) }
+            guard let cmd = batchCommand ?? queue.makeCommandBuffer(),
+                  let enc = makeEncoder(cmd) else { return PairTimes(stages: times, uploadMS: uploadMS) }
             enc.setComputePipelineState(medianPSO)
             enc.setBuffer(mvBuffer[0]!, offset: 0, index: 0)
             enc.setBuffer(smooth, offset: 0, index: 1)
@@ -378,8 +409,7 @@ public final class MotionSearchEngine {
                 threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
             )
             enc.endEncoding()
-            cmd.commit()
-            cmd.waitUntilCompleted()
+            finishCommand(cmd)
             times[SEStage.searchL0.rawValue] += elapsedMS(from: start)
         }
         // L0 dead-zone snap (when available): |MV| <= 0.5px → 0, in-place on
@@ -389,8 +419,8 @@ public final class MotionSearchEngine {
         if let deadZonePSO = deadZonePSO,
            let target = mvBufferSmoothed ?? mvBuffer[0] {
             let start = DispatchTime.now().uptimeNanoseconds
-            guard let cmd = queue.makeCommandBuffer(),
-                  let enc = cmd.makeComputeCommandEncoder() else { return PairTimes(stages: times, uploadMS: uploadMS) }
+            guard let cmd = batchCommand ?? queue.makeCommandBuffer(),
+                  let enc = makeEncoder(cmd) else { return PairTimes(stages: times, uploadMS: uploadMS) }
             enc.setComputePipelineState(deadZonePSO)
             enc.setBuffer(target, offset: 0, index: 0)
             var g0 = grids[0]
@@ -408,8 +438,7 @@ public final class MotionSearchEngine {
                 threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
             )
             enc.endEncoding()
-            cmd.commit()
-            cmd.waitUntilCompleted()
+            finishCommand(cmd)
             times[SEStage.searchL0.rawValue] += elapsedMS(from: start)
         }
         // L0 temporal EMA gating (when enabled): blends each block toward the
@@ -420,8 +449,8 @@ public final class MotionSearchEngine {
            let tOut = mvBufferTemporalOut, let tPrev = mvBufferTemporalPrev,
            let smoothedBuf = mvBufferSmoothed {
             let start = DispatchTime.now().uptimeNanoseconds
-            guard let cmd = queue.makeCommandBuffer(),
-                  let enc = cmd.makeComputeCommandEncoder() else { return PairTimes(stages: times, uploadMS: uploadMS) }
+            guard let cmd = batchCommand ?? queue.makeCommandBuffer(),
+                  let enc = makeEncoder(cmd) else { return PairTimes(stages: times, uploadMS: uploadMS) }
             enc.setComputePipelineState(temporalPSO)
             enc.setBuffer(smoothedBuf, offset: 0, index: 0)
             enc.setBuffer(tPrev, offset: 0, index: 1)
@@ -442,8 +471,7 @@ public final class MotionSearchEngine {
                 threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
             )
             enc.endEncoding()
-            cmd.commit()
-            cmd.waitUntilCompleted()
+            finishCommand(cmd)
             // Host-side state roll: this pair's output becomes next pair's `prev`.
             // 8640 × 8B = ~69KB memcpy (~µs) — kept on host to avoid an extra GPU
             // copy pass and to keep the state buffer layout trivially debuggable.
@@ -515,8 +543,8 @@ public final class MotionSearchEngine {
     @discardableResult
     private func runDownsample(from: MTLTexture, to: MTLTexture, level: Int) -> Double {
         let start = DispatchTime.now().uptimeNanoseconds
-        guard let cmd = queue.makeCommandBuffer(),
-              let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        guard let cmd = batchCommand ?? queue.makeCommandBuffer(),
+              let enc = makeEncoder(cmd) else { return 0 }
         enc.setComputePipelineState(pyramidPSO)
         enc.setTexture(from, index: 0)
         enc.setTexture(to, index: 1)
@@ -526,15 +554,14 @@ public final class MotionSearchEngine {
             threadsPerThreadgroup: MTLSize(width: 8, height: 8, depth: 1)
         )
         enc.endEncoding()
-        cmd.commit()
-        cmd.waitUntilCompleted()
+        finishCommand(cmd)
         return elapsedMS(from: start)
     }
 
     private func runSearch(level: Int, inheritedBuffer: MTLBuffer?) -> Double {
         let start = DispatchTime.now().uptimeNanoseconds
-        guard let cmd = queue.makeCommandBuffer(),
-              let enc = cmd.makeComputeCommandEncoder() else { return 0 }
+        guard let cmd = batchCommand ?? queue.makeCommandBuffer(),
+              let enc = makeEncoder(cmd) else { return 0 }
         enc.setComputePipelineState(searchPSO)
         enc.setTexture(curTex[level]!, index: 0)
         enc.setTexture(refTex[level]!, index: 1)
@@ -571,8 +598,7 @@ public final class MotionSearchEngine {
             threadsPerThreadgroup: MTLSize(width: 64, height: 1, depth: 1)
         )
         enc.endEncoding()
-        cmd.commit()
-        cmd.waitUntilCompleted()
+        finishCommand(cmd)
         return elapsedMS(from: start)
     }
 

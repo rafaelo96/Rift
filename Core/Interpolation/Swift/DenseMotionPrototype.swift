@@ -143,7 +143,7 @@ public final class DenseMotionPrototype {
                 return mean*mean>variance ? Float(mean/1023) : 0
             } }
         }
-        let offsets=inputs.map(illuminationOffset)
+        let offsets: [Float]=[0]+inputs.dropFirst().map(illuminationOffset)
         let region=MTLRegionMake2D(0,0,width,height)
         for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
         for (i,field) in [forward,backward].enumerated() { field.withUnsafeBytes { bytes in _=memcpy(seeds[i].contents(),bytes.baseAddress!,bytes.count) } }
