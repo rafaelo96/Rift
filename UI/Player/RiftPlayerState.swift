@@ -2048,6 +2048,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.hasVideo = true
         self.statusMessage = "Ready"
         self.conversionProgress = 1.0
+        // Playback intent survives preroll, even while the display clock is stopped.
+        self.isPlaying = true
         self.persistCurrentSession(force: true)
         if rememberTrackSelections && trackPreferences.shouldRestoreExternalSubtitles {
             self.restoreExternalSubtitles(for: url)
@@ -2194,11 +2196,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                     if let activation = self.pendingSeekActivation,
                        activation.generation == generation {
-                        let requiredFrames = self.interpolationMode == .disabled ? 1 : 2
+                        var requiredFrames = self.interpolationMode == .disabled ? 1 : 2
+                        if activation.shouldResume, self.interpolationMode != .disabled {
+                            requiredFrames = min(4,pool.capacity)
+                        }
                         if pool.count >= requiredFrames {
                             self.pendingSeekActivation = nil
                             if activation.shouldResume {
-                                self.startDisplayLoop(resumeAt: activation.target)
+                                if self.interpolationMode == .disabled {
+                                    self.startDisplayLoop(resumeAt: activation.target)
+                                } else {
+                                    self.startDisplayLoopAfterFramePlusAdmission(resumeAt: activation.target)
+                                }
                             } else if let renderer = self.renderer {
                                 // Show the seek destination without starting the playback clock.
                                 self.enqueueForDisplay(
@@ -2911,6 +2920,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                    log: self.benchLog, type: .info,
                    self.interpolationQuality, selectedCostMS, pairBudgetMS)
             self.resetInterpolationCounters()
+            guard self.isPlaying else { return }
             self.startDisplayLoop(resumeAt: resumeAt ?? self.currentTime)
         }
     }
