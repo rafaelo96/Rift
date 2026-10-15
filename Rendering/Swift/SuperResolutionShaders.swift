@@ -48,11 +48,13 @@ kernel void superResolveLuma(
     uint2 gid [[thread_position_in_grid]])
 {
     if (gid.x >= u.dstW || gid.y >= u.dstH) return;
-    float2 p = (float2(gid) + 0.5) * float2(float(u.srcW), float(u.srcH))
+    // At 1:1 the cubic reconstruction is exactly the source texel.
+    bool identity = u.srcW == u.dstW && u.srcH == u.dstH;
+    float2 p = identity ? float2(gid) : (float2(gid) + 0.5) * float2(float(u.srcW), float(u.srcH))
              / float2(float(u.dstW), float(u.dstH)) - 0.5;
-    float base = bicubic1(input, p, int(u.srcW), int(u.srcH));
     int2 c = int2(round(p));
     float center = sample1(input, c, int(u.srcW), int(u.srcH));
+    float base = identity ? center : bicubic1(input, p, int(u.srcW), int(u.srcH));
     float left = sample1(input, c + int2(-1, 0), int(u.srcW), int(u.srcH));
     float right = sample1(input, c + int2(1, 0), int(u.srcW), int(u.srcH));
     float up = sample1(input, c + int2(0, -1), int(u.srcW), int(u.srcH));
@@ -83,6 +85,10 @@ kernel void superResolveChroma(
     uint2 gid [[thread_position_in_grid]])
 {
     if (gid.x >= u.dstW || gid.y >= u.dstH) return;
+    if (u.srcW == u.dstW && u.srcH == u.dstH) {
+        output.write(input.read(gid), gid);
+        return;
+    }
     float2 p = (float2(gid) + 0.5) * float2(float(u.srcW), float(u.srcH))
              / float2(float(u.dstW), float(u.dstH)) - 0.5;
     p = clamp(p, float2(0), float2(float(u.srcW - 1), float(u.srcH - 1)));
