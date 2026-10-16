@@ -398,6 +398,50 @@ func checkDenseRotation() throws {
     }
 }
 
+func checkTemporalPatchSelection() throws {
+    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
+    let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+    let pipeline=try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchSearch")!)
+    func texture(_ format: MTLPixelFormat,_ w: Int,_ h: Int) -> MTLTexture {
+        let d=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: w,height: h,mipmapped: false)
+        d.storageMode = .shared; d.usage = [.shaderRead,.shaderWrite]
+        return device.makeTexture(descriptor: d)!
+    }
+    let a=texture(.r32Float,64,48),b=texture(.r32Float,64,48),before=texture(.r32Float,64,48),after=texture(.r32Float,64,48)
+    let seed=texture(.rgba32Float,64,48),patches=texture(.rgba32Float,17,13),selected=texture(.rgba32Float,17,13)
+    func frame(_ centers: [Int]) -> [Float] {
+        var pixels=[Float](repeating: 0.1,count: 64*48)
+        for center in centers { for y in 20..<28 { for x in center-4..<center+4 {
+            pixels[y*64+x]=0.25+Float(((x-center+4)*37+(y-20)*61)%100)/200
+        } } }
+        return pixels
+    }
+    for (image,centers) in [(a,[24,40]),(b,[32,40]),(before,[16,40]),(after,[40])] {
+        frame(centers).withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) }
+    }
+    var vectors=[SIMD4<Float>](repeating: SIMD4(16,0,1,0),count: 64*48)
+    for y in 0..<48 { vectors[y*64+20]=SIMD4(8,0,1,0) }
+    vectors.withUnsafeBytes { seed.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*16) }
+    let command=queue.makeCommandBuffer()!,encoder=command.makeComputeCommandEncoder()!
+    encoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,seed,patches,before,after].enumerated() { encoder.setTexture(image,index: i) }
+    var intervals=SIMD2<Float>(-1,2)
+    encoder.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+    encoder.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    encoder.endEncoding()
+    let selection=command.makeComputeCommandEncoder()!
+    selection.setComputePipelineState(try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchTemporalSelect")!))
+    for (i,image) in [a,b,patches,selected,before,after].enumerated() { selection.setTexture(image,index: i) }
+    selection.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+    selection.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    selection.endEncoding(); command.commit(); command.waitUntilCompleted()
+    guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Temporal patch selection GPU failure") }
+    var result=[SIMD4<Float>](repeating: .zero,count: 17*13)
+    result.withUnsafeMutableBytes { selected.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
+    FileHandle.standardOutput.write(Data("TEMPORAL PATCH: two central matches 8/16px; selected=\(result[6*17+6].x)px, expected=8px\n".utf8))
+    precondition(abs(result[6*17+6].x-8)<0.01,"The central pair chose the wrong identical surface despite temporal evidence")
+}
+
 func checkPatchPropagation() throws {
     guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
     let library=try device.makeLibrary(source: denseMotionMSL,options: nil)

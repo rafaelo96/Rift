@@ -83,6 +83,38 @@ kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]]
     }
     output.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
+float denseTemporalPatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> before,texture2d<float,access::sample> after,float2 center,float2 v,float2 intervals) {
+    float cost=densePatchCost(a,b,center,v),evidence=0,weight=0;
+    for(int neighbor=0;neighbor<2;++neighbor) {
+        float interval=intervals[neighbor];
+        if(interval==0) continue;
+        float residual=0,count=0;
+        for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+            float2 q=center+float2(x,y),r=q+interval*v;
+            if(any(r<0)||r.x>float(a.get_width()-1)||r.y>float(a.get_height()-1)) continue;
+            float target=neighbor==0 ? denseRead(before,r).r : denseRead(after,r).r;
+            float error=denseRead(a,q).r-target;
+            residual+=min(error*error,0.01f); count+=1;
+        }
+        if(count>0) {
+            float w=1/max(1.0f,abs(interval));
+            evidence+=w*residual/count; weight+=w;
+        }
+    }
+    return cost+(weight>0 ? 0.5f*evidence/weight : 0);
+}
+kernel void densePatchTemporalSelect(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::sample> before [[texture(4)]],texture2d<float,access::sample> after [[texture(5)]],constant float2 &intervals [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    float2 center=float2(p)*4,v=denseRead(input,float2(p)).xy;
+    float best=denseTemporalPatchCost(a,b,before,after,center,v,intervals);
+    const float2 neighbors[4]={float2(-1,0),float2(1,0),float2(0,-1),float2(0,1)};
+    for(int i=0;i<4;++i) {
+        float2 candidate=denseRead(input,float2(p)+neighbors[i]).xy;
+        float cost=denseTemporalPatchCost(a,b,before,after,center,candidate,intervals);
+        if(cost<best) { best=cost; v=candidate; }
+    }
+    output.write(float4(v,exp(-20*sqrt(best)),best),p);
+}
 kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=field.get_width()||p.y>=field.get_height()) return;
     float2 sum=0; float total=0;

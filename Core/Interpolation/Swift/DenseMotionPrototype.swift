@@ -41,6 +41,7 @@ public final class DenseMotionPrototype {
     private let ownership: [MTLBuffer]
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
+    private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] == "1"
     private let patches: [MTLTexture]
     private let patchScratch: [MTLTexture]
     private let dual: [[MTLTexture]]
@@ -62,7 +63,7 @@ public final class DenseMotionPrototype {
         }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -147,6 +148,23 @@ public final class DenseMotionPrototype {
             } }
         }
         let offsets: [Float]=[0]+inputs.dropFirst().map(illuminationOffset)
+        func sampledDifference(_ i: Int,_ j: Int) -> Float {
+            inputs[i].withUnsafeBytes { a in inputs[j].withUnsafeBytes { b in
+                var sum: Float=0,count: Float=0
+                for y in stride(from: 0,to: height,by: 8) { for x in stride(from: 0,to: width,by: 8) {
+                    let k=(y*width+x)*2
+                    let delta=Float(a.loadUnaligned(fromByteOffset: k,as: UInt16.self))-Float(b.loadUnaligned(fromByteOffset: k,as: UInt16.self))
+                    sum+=abs(delta/1023-(offsets[i]-offsets[j])); count+=1
+                } }
+                return sum/max(1,count)
+            } }
+        }
+        var temporalNeighbors=SIMD2<UInt32>.zero
+        if temporalPatchSearch,context != nil {
+            let heldLimit=max(2.0/1023,sampledDifference(0,1)*0.25)
+            temporalNeighbors=SIMD2(min(sampledDifference(2,0),sampledDifference(2,1))>heldLimit ? 1 : 0,
+                                   min(sampledDifference(3,0),sampledDifference(3,1))>heldLimit ? 1 : 0)
+        }
         let region=MTLRegionMake2D(0,0,width,height)
         for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
         for (i,field) in [forward,backward].enumerated() { field.withUnsafeBytes { bytes in _=memcpy(seeds[i].contents(),bytes.baseAddress!,bytes.count) } }
@@ -193,7 +211,15 @@ public final class DenseMotionPrototype {
                     try encode("densePatchSearch",[images[direction][level],images[1-direction][level],buffers[0],patches[level]],patches[level])
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level]],patchScratch[level])
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patchScratch[level],patches[level]],patches[level])
-                    try encode("densePatchAggregate",[images[direction][level],images[1-direction][level],patches[level],buffers[0]],buffers[0])
+                    var selected=patches[level]
+                    if level>=2,temporalNeighbors.x != 0 || temporalNeighbors.y != 0 {
+                        var evidence=SIMD2(temporalNeighbors.x==0 ? 0 : intervals.x,temporalNeighbors.y==0 ? 0 : intervals.y)
+                        try encode("densePatchTemporalSelect",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level],images[2][level],images[3][level]],patchScratch[level]) {
+                            $0.setBytes(&evidence,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+                        }
+                        selected=patchScratch[level]
+                    }
+                    try encode("densePatchAggregate",[images[direction][level],images[1-direction][level],selected,buffers[0]],buffers[0])
                 } else { for _ in 0..<(level==0 ? finestIterations : 8) {
                     try encode("denseLK",[images[direction][level],images[1-direction][level],buffers[0],buffers[1],images[2][level],images[3][level]],buffers[1]) {
                         $0.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)

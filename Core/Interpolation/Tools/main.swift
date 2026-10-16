@@ -92,6 +92,10 @@ if envInt("MV_DENSE_ROTATION",0)==1 {
     do { try checkDenseRotation(); exit(0) }
     catch { print("DENSE ROTATION FAILED: \(error)"); exit(3) }
 }
+if envInt("MV_PATCH_TEMPORAL_CHECK",0)==1 {
+    do { try checkTemporalPatchSelection(); exit(0) }
+    catch { print("TEMPORAL PATCH CHECK FAILED: \(error)"); exit(1) }
+}
 if envInt("MV_DENSE_CHECK",0)==1 {
     setbuf(stdout,nil)
     do { try checkDenseMotion(variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),inverseSearch: envInt("MV_DENSE_PATCH",0)==1); exit(0) }
