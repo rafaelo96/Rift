@@ -183,7 +183,8 @@ let package = Package(
         .executableTarget(
             name: "MVProbe",
             dependencies: ["Demux", "Decode", "Interpolation"],
-            path: "Core/Interpolation/Tools"
+            path: "Core/Interpolation/Tools",
+            exclude: ["NativeSamplingCheck.swift"]
         ),
         // Core/Scheduler — presentation timing for real + interpolated frames
         // (SDR only, no HDR yet). Consumes FramePool pts, Interpolation MVs.
