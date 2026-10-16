@@ -47,3 +47,5 @@ Short native-input/output cost comparison uses `MV_PROFILE=economy MV_PIPELINE=1
 Artifacts/logs: `/tmp/rift-affine-model-final{69,300}.log` (before detail check), `/tmp/rift-affine-detail-{before,after,oracle,regression,native,lighting}.log`, `/tmp/rift-affine-detail-extended69.log`, `/tmp/rift-affine-detail300.log`, `/tmp/rift-current-extended69.log`, `/tmp/rift-affine-context-budget-{base,model}.log`. The large synthetic gate command is `MV_DENSE_ROTATION=1 MV_ROTATION_LARGE=1 RIFT_PATCH_AFFINE=1 .build/release/MVProbe`.
 
 Next remaining task is correspondence: derive and retain supported surface/deformation candidates from images when original block seeds do not contain that motion. Repeating global photometric replacement, rigid-region voting, or center-only reseeding is not justified by these results. Keep the objective open until both real visual quality and sustained runtime meet it.
+
+Measured native four-source subset (pairs2…11,10 observations): baseline median26.238ms /maximum27.001ms; affine median26.865ms /maximum28.044ms. These short samples suggest modest additional cost on this M4, not a sustained performance guarantee.
