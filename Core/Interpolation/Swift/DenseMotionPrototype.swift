@@ -255,7 +255,8 @@ public final class DenseMotionPrototype {
             assessed.append(next)
         }
         finalFlows=assessed
-        if let context {
+        // Patch search uses temporal evidence for selection, retaining central closure for synthesis.
+        if let context,!inverseSearch {
             var temporal: [MTLTexture]=[]
             for direction in 0..<2 {
                 let current=finalFlows[direction]
