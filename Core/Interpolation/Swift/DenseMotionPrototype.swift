@@ -46,6 +46,7 @@ public final class DenseMotionPrototype {
     private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] != "0"
     private let patches: [MTLTexture]
     private let patchScratch: [MTLTexture]
+    private let patchAlternative: MTLTexture?
     private let dual: [[MTLTexture]]
     private let linear: [MTLTexture]
 
@@ -65,7 +66,7 @@ public final class DenseMotionPrototype {
         }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchAlternative","densePatchSupportSelect","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -89,6 +90,9 @@ public final class DenseMotionPrototype {
         images=try (0..<4).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
         patches=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
         patchScratch=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
+        if inverseSearch,ProcessInfo.processInfo.environment["RIFT_PATCH_REGIONAL"] == "1",let coarse=sizes.last {
+            patchAlternative=try texture(.rgba32Float,(coarse.0+3)/4+1,(coarse.1+3)/4+1)
+        } else { patchAlternative=nil }
         flows=try (0..<2).map { _ in try sizes.map { size in try [texture(.rgba32Float,size.0,size.1),texture(.rgba32Float,size.0,size.1)] } }
         dual=variational ? try (0..<2).map { _ in try [texture(.rgba32Float,width,height),texture(.rgba32Float,width,height)] } : []
         linear=variational ? try (0..<2).map { _ in try texture(.rgba32Float,width,height) } : []
@@ -222,12 +226,18 @@ public final class DenseMotionPrototype {
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level]],patchScratch[level])
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patchScratch[level],patches[level]],patches[level])
                     var selected=patches[level]
+                    if level==images[direction].count-1,let alternative=patchAlternative {
+                        try encode("densePatchAlternative",[images[direction][level],images[1-direction][level],selected,alternative],alternative)
+                        try encode("densePatchSupportSelect",[images[direction][level],images[1-direction][level],selected,patchScratch[level],alternative],patchScratch[level])
+                        selected=patchScratch[level]
+                    }
                     if level>=2,temporalNeighbors.x != 0 || temporalNeighbors.y != 0 {
                         var evidence=SIMD2(temporalNeighbors.x==0 ? 0 : intervals.x,temporalNeighbors.y==0 ? 0 : intervals.y)
-                        try encode("densePatchTemporalSelect",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level],images[2][level],images[3][level]],patchScratch[level]) {
+                        let temporalOutput=selected === patches[level] ? patchScratch[level] : patches[level]
+                        try encode("densePatchTemporalSelect",[images[direction][level],images[1-direction][level],selected,temporalOutput,images[2][level],images[3][level]],temporalOutput) {
                             $0.setBytes(&evidence,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
                         }
-                        selected=patchScratch[level]
+                        selected=temporalOutput
                     }
                     try encode("densePatchAggregate",[images[direction][level],images[1-direction][level],selected,buffers[0]],buffers[0])
                 } else { for _ in 0..<(level==0 ? finestIterations : 8) {

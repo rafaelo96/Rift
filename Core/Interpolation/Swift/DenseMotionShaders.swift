@@ -83,6 +83,44 @@ kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]]
     }
     output.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
+kernel void densePatchAlternative(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> current [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    float2 center=float2(p)*4,v=denseRead(current,float2(p)).xy;
+    if(all(center>=4) && center.x<float(a.get_width()-4) && center.y<float(a.get_height()-4)) {
+        float source[16];
+        for(int y=-4;y<4;y+=2) for(int x=-4;x<4;x+=2) source[((y+4)/2)*4+(x+4)/2]=denseRead(a,center+float2(x,y)).r;
+        float best=INFINITY;
+        for(int cy=4;cy<int(b.get_height())-4;cy+=2) for(int cx=4;cx<int(b.get_width())-4;cx+=2) {
+            float cost=0;
+            for(int y=-4;y<4;y+=2) for(int x=-4;x<4;x+=2) {
+                float error=source[((y+4)/2)*4+(x+4)/2]-denseRead(b,float2(cx+x,cy+y)).r;
+                cost+=error*error;
+            }
+            if(cost<best) { best=cost; v=float2(cx,cy)-center; }
+        }
+    }
+    float cost=densePatchCost(a,b,center,v);
+    output.write(float4(v,exp(-20*sqrt(cost)),cost),p);
+}
+float densePatchRegionalCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 center,float2 v) {
+    float centerCost=densePatchCost(a,b,center,v);
+    // Two supporting patches allow the other two to cross an occlusion boundary.
+    const float2 offsets[4]={float2(-8,0),float2(8,0),float2(0,-8),float2(0,8)};
+    float first=INFINITY,second=INFINITY;
+    for(int i=0;i<4;++i) {
+        float cost=densePatchCost(a,b,center+offsets[i],v);
+        if(cost<first) { second=first; first=cost; } else second=min(second,cost);
+    }
+    return centerCost+0.5f*(first+second);
+}
+kernel void densePatchSupportSelect(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> current [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::sample> alternative [[texture(4)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    float2 center=float2(p)*4,v=denseRead(current,float2(p)).xy;
+    float2 proposal=denseRead(alternative,float2(p)).xy;
+    if(densePatchRegionalCost(a,b,center,proposal)<densePatchRegionalCost(a,b,center,v)) v=proposal;
+    float cost=densePatchCost(a,b,center,v);
+    output.write(float4(v,exp(-20*sqrt(cost)),cost),p);
+}
 float denseTemporalPatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> before,texture2d<float,access::sample> after,float2 center,float2 v,float2 intervals) {
     float cost=densePatchCost(a,b,center,v),evidence=0,weight=0;
     for(int neighbor=0;neighbor<2;++neighbor) {
