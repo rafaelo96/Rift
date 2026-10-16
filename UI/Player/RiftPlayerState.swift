@@ -2793,7 +2793,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// pedidos (1 para 48fps, [1/3,2/3] o [0.5] para el patrón 3:2 de 60fps).
     /// Devuelve los buffers generados + el coste total del par (ME+warp+upscale
     /// de todas las interpolaciones) para el gate de fallback por par.
-    private func interpolatePair(i0: Frame, i1: Frame, tValues: [Float])
+    private func interpolatePair(i0: Frame, i1: Frame, tValues: [Float], before: Frame? = nil, after: Frame? = nil)
         async -> (buffers: InterpolatedBuffersBox, totalMS: Double, meMS: Double, warpMS: Double) {
         guard interpolationMode != .disabled, !isInterpolating else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
         let generation = playbackGeneration
@@ -2824,6 +2824,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         guard let comp = compensator else { return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0) }
 
+        let temporal: InterpolationTemporalContext?
+        let span=i1.pts-i0.pts
+        if let before,let after,span>0,
+           i0.pts-before.pts>0,after.pts-i1.pts>0,
+           abs(span-sourcePeriod)<sourcePeriod*0.5,
+           abs(i0.pts-before.pts-sourcePeriod)<sourcePeriod*0.5,
+           abs(after.pts-i1.pts-sourcePeriod)<sourcePeriod*0.5 {
+            temporal=InterpolationTemporalContext(before: before.pixelBuffer,after: after.pixelBuffer,
+                beforeInterval: Float((i0.pts-before.pts)/span),afterInterval: Float((after.pts-i1.pts)/span))
+        } else { temporal=nil }
         isInterpolating = true
         let jobID = UUID()
         interpolationJobID = jobID
@@ -2833,7 +2843,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // upscale/cbcr/hdr se repite por cada t pedido (1 para 48fps, 2 para
             // el patrón 3:2 de 60fps). Antes llamábamos interpolateWithTimings por
             // cada t — re-ejecutando scaledLuma+ME en pares dobles (~52ms/pair 4K).
-            let r = comp.interpolatePair(I0: i0.pixelBuffer, I1: i1.pixelBuffer, tValues: tValues)
+            let r = comp.interpolatePair(I0: i0.pixelBuffer, I1: i1.pixelBuffer, tValues: tValues, context: temporal)
             // El tiempo del par = coste real transcurrido de todas las interps del par.
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000.0
             return (buffers: InterpolatedBuffersBox(buffers: r.pixelBuffers), totalMS: elapsed, meMS: r.meMS, warpMS: r.warpMS + r.upscaleMS)
@@ -2915,7 +2925,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     let result = await self.interpolatePair(
                         i0: pair.0,
                         i1: pair.1,
-                        tValues: tValues
+                        tValues: tValues,
+                        before: index>0 ? pairs[index-1].0 : nil,
+                        after: index+1<pairs.count ? pairs[index+1].1 : nil
                     )
                     guard !Task.isCancelled, self.playbackGeneration == generation else { return }
                     if index > 0, !result.buffers.buffers.isEmpty {
@@ -2972,6 +2984,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // again by gapFallback. Track whether previous pair emitted `second`
             // so gapFallback can skip the redundant emission.
             var prevPairEmittedSecondSource = false
+            var previousInterpolationSource: Frame?
             var previousEnqueuedPTS: Double = -1
             var lastEnqueuedInvocationID: UInt64 = 0
             var interpInvocationID: UInt64 = 0
@@ -3276,7 +3289,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         tValues = [0.5]
                     }
 
-                    let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues)
+                    let nextSource=pool.frames.first { $0.pts>second.pts+0.000001 }
+                    let result = await self.interpolatePair(i0: first, i1: second, tValues: tValues,
+                        before: previousInterpolationSource, after: nextSource)
+                    previousInterpolationSource=first
                     // La interpolacion puede terminar despues de que un seek la
                     // cancelara. No permitir que ese resultado consuma o encole
                     // sobre el pool y la cola de la generacion nueva.
