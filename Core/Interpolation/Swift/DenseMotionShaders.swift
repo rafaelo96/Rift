@@ -71,48 +71,6 @@ kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],te
     }
     patches.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
-float4 densePatchSum(float4 value,uint lane,uint group,uint groupCount,threadgroup float4 *scratch) {
-    float4 subtotal=simd_sum(value);
-    if(lane==0) scratch[group]=subtotal;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    float4 total=0;
-    for(uint i=0;i<groupCount;++i) total+=scratch[i];
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    return total;
-}
-kernel void densePatchSearchCooperative(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint3 position [[threadgroup_position_in_grid]],uint tid [[thread_index_in_threadgroup]],uint lane [[thread_index_in_simdgroup]],uint group [[simdgroup_index_in_threadgroup]],uint simdWidth [[threads_per_simdgroup]]) {
-    uint2 p=position.xy;
-    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
-    threadgroup float4 scratch[64];
-    uint groups=(64+simdWidth-1)/simdWidth;
-    float2 center=float2(p)*4,q=center+float2(int(tid%8)-4,int(tid/8)-4);
-    float value=denseRead(a,q).r;
-    float2 v=denseRead(seed,center).xy;
-    float error=value-denseRead(b,q+v).r;
-    float best=densePatchSum(float4(error*error,0,0,0),lane,group,groups,scratch).x/64;
-    const float2 neighbors[5]={float2(-4,0),float2(4,0),float2(0,-4),float2(0,4),float2(0)};
-    for(int i=0;i<5;++i) {
-        float2 candidate=i==4 ? float2(0) : denseRead(seed,center+neighbors[i]).xy;
-        error=value-denseRead(b,q+candidate).r;
-        float cost=densePatchSum(float4(error*error,0,0,0),lane,group,groups,scratch).x/64;
-        if(cost<best) { best=cost; v=candidate; }
-    }
-    float2 g=float2(denseRead(a,q+float2(1,0)).r-denseRead(a,q-float2(1,0)).r,denseRead(a,q+float2(0,1)).r-denseRead(a,q-float2(0,1)).r)*0.5f;
-    float3 h=densePatchSum(float4(g.x*g.x,g.x*g.y,g.y*g.y,0),lane,group,groups,scratch).xyz;
-    float det=h.x*h.z-h.y*h.y;
-    if(det>1e-8f) for(int iteration=0;iteration<8;++iteration) {
-        float2 rhs=densePatchSum(float4(g*(value-denseRead(b,q+v).r),0,0),lane,group,groups,scratch).xy;
-        float2 step=float2(h.z*rhs.x-h.y*rhs.y,h.x*rhs.y-h.y*rhs.x)/det;
-        step/=max(1.0f,length(step)/2.0f);
-        float2 candidate=v+step;
-        error=value-denseRead(b,q+candidate).r;
-        float cost=densePatchSum(float4(error*error,0,0,0),lane,group,groups,scratch).x/64;
-        if(cost>=best) break;
-        best=cost; v=candidate;
-        if(dot(step,step)<1e-5f) break;
-    }
-    if(tid==0) patches.write(float4(v,exp(-20*sqrt(best)),best),p);
-}
 kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float2 center=float2(p)*4,v=denseRead(input,float2(p)).xy;

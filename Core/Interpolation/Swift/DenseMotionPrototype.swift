@@ -40,7 +40,6 @@ public final class DenseMotionPrototype {
     private let projectedOwnership: Bool
     private let ownership: [MTLBuffer]
     private let inverseSearch: Bool
-    private let cooperativeSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_COOPERATIVE"] == "1"
     private let patches: [MTLTexture]
     private let patchScratch: [MTLTexture]
     private let dual: [[MTLTexture]]
@@ -62,7 +61,7 @@ public final class DenseMotionPrototype {
         }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchSearchCooperative","densePatchPropagate","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -155,11 +154,7 @@ public final class DenseMotionPrototype {
             encoder.setComputePipelineState(pipeline)
             for (i,texture) in textures.enumerated() { encoder.setTexture(texture,index: i) }
             setup(encoder)
-            if name=="densePatchSearchCooperative" {
-                encoder.dispatchThreadgroups(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 64,height: 1,depth: 1))
-            } else {
-                encoder.dispatchThreads(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
-            }
+            encoder.dispatchThreads(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
         }
         for direction in inputs.indices {
@@ -186,8 +181,7 @@ public final class DenseMotionPrototype {
                     intervals=direction==0 ? SIMD2(-context.beforeInterval,1+context.afterInterval) : SIMD2(1+context.beforeInterval,-context.afterInterval)
                 }
                 if inverseSearch {
-                    let search=cooperativeSearch && pipelines["densePatchSearchCooperative"]!.maxTotalThreadsPerThreadgroup>=64 ? "densePatchSearchCooperative" : "densePatchSearch"
-                    try encode(search,[images[direction][level],images[1-direction][level],buffers[0],patches[level]],patches[level])
+                    try encode("densePatchSearch",[images[direction][level],images[1-direction][level],buffers[0],patches[level]],patches[level])
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level]],patchScratch[level])
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patchScratch[level],patches[level]],patches[level])
                     try encode("densePatchAggregate",[images[direction][level],images[1-direction][level],patches[level],buffers[0]],buffers[0])
