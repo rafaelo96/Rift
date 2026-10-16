@@ -48,34 +48,6 @@ kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],te
         float cost=densePatchCost(a,b,center,candidate);
         if(cost<best) { best=cost; v=candidate; }
     }
-#ifdef RIFT_PATCH_GLOBAL_WIDTH
-    if(a.get_width()==RIFT_PATCH_GLOBAL_WIDTH && all(center>=4) && center.x<float(a.get_width()-4) && center.y<float(a.get_height()-4)) {
-        float source[16];
-        for(int y=-4;y<4;y+=2) for(int x=-4;x<4;x+=2) source[((y+4)/2)*4+(x+4)/2]=denseRead(a,center+float2(x,y)).r;
-        float sparseBest=INFINITY; float2 proposal=v;
-        for(int cy=4;cy<int(b.get_height())-4;cy+=2) for(int cx=4;cx<int(b.get_width())-4;cx+=2) {
-            float cost=0;
-            for(int y=-4;y<4;y+=2) for(int x=-4;x<4;x+=2) {
-                float error=source[((y+4)/2)*4+(x+4)/2]-denseRead(b,float2(cx+x,cy+y)).r;
-                cost+=error*error;
-            }
-            if(cost<sparseBest) { sparseBest=cost; proposal=float2(cx,cy)-center; }
-        }
-        float target[16]; float2 targetCenter=center+proposal;
-        for(int y=-4;y<4;y+=2) for(int x=-4;x<4;x+=2) target[((y+4)/2)*4+(x+4)/2]=denseRead(b,targetCenter+float2(x,y)).r;
-        float reverseBest=INFINITY; float2 returned=0;
-        for(int cy=4;cy<int(a.get_height())-4;cy+=2) for(int cx=4;cx<int(a.get_width())-4;cx+=2) {
-            float cost=0;
-            for(int y=-4;y<4;y+=2) for(int x=-4;x<4;x+=2) {
-                float error=target[((y+4)/2)*4+(x+4)/2]-denseRead(a,float2(cx+x,cy+y)).r;
-                cost+=error*error;
-            }
-            if(cost<reverseBest) { reverseBest=cost; returned=float2(cx,cy); }
-        }
-        float cost=densePatchCost(a,b,center,proposal);
-        if(distance(returned,center)<=2 && cost<best) { best=cost; v=proposal; }
-    }
-#endif
     float values[64]; float2 gradients[64]; float hxx=0,hxy=0,hyy=0;
     for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
         int k=(y+4)*8+x+4; float2 q=center+float2(x,y);
