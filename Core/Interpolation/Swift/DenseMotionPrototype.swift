@@ -39,6 +39,8 @@ public final class DenseMotionPrototype {
     private let finestIterations: Int
     private let projectedOwnership: Bool
     private let ownership: [MTLBuffer]
+    /// Intrusive diagnostic snapshots; callers must serialize access and exclude timings from benchmarks.
+    public var diagnosticObserver: ((String,Int,Int,[SIMD4<Float>])->Void)?
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
     private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] != "0"
@@ -169,6 +171,7 @@ public final class DenseMotionPrototype {
         for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
         for (i,field) in [forward,backward].enumerated() { field.withUnsafeBytes { bytes in _=memcpy(seeds[i].contents(),bytes.baseAddress!,bytes.count) } }
         guard var command=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense command allocation failed") }
+        var traceLabel=""
         func encode(_ name: String,_ textures: [MTLTexture],_ target: MTLTexture,_ setup: (MTLComputeCommandEncoder)->Void = { _ in }) throws {
             guard let encoder=command.makeComputeCommandEncoder(),let pipeline=pipelines[name] else { throw MotionSearchEngine.EngineError.pipeline("Dense encoder allocation failed") }
             encoder.setComputePipelineState(pipeline)
@@ -176,10 +179,16 @@ public final class DenseMotionPrototype {
             setup(encoder)
             encoder.dispatchThreads(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
-            if profileStages {
+            let trace=diagnosticObserver != nil && target.pixelFormat == .rgba32Float
+            if profileStages || trace {
                 command.commit(); command.waitUntilCompleted()
                 guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Dense profiling GPU failure") }
                 gpuStages[name,default: 0]+=(command.gpuEndTime-command.gpuStartTime)*1000
+                if trace {
+                    var field=[SIMD4<Float>](repeating: .zero,count: target.width*target.height)
+                    field.withUnsafeMutableBytes { target.getBytes($0.baseAddress!,bytesPerRow: target.width*16,from: MTLRegionMake2D(0,0,target.width,target.height),mipmapLevel: 0) }
+                    diagnosticObserver?("\(traceLabel)/\(name)",target.width,target.height,field)
+                }
                 guard let next=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense profiling command allocation failed") }
                 command=next
             }
@@ -194,6 +203,7 @@ public final class DenseMotionPrototype {
         for direction in 0..<2 {
             var previous: MTLTexture?
             for level in stride(from: images[direction].count-1,through: 0,by: -1) {
+                traceLabel="d\(direction)/l\(level)"
                 let buffers=flows[direction][level]
                 if let previous=previous { try encode("denseExpand",[previous,buffers[0]],buffers[0]) }
                 else {
@@ -249,6 +259,7 @@ public final class DenseMotionPrototype {
         }
         var assessed: [MTLTexture]=[]
         for direction in 0..<2 {
+            traceLabel="d\(direction)/assessment"
             let current=finalFlows[direction]
             let next=current === flows[direction][0][0] ? flows[direction][0][1] : flows[direction][0][0]
             try encode("denseTVAssess",[images[direction][0],images[1-direction][0],current,next,finalFlows[1-direction]],next)

@@ -1945,7 +1945,21 @@ for i in 0..<pairCount {
             if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+2<frames.count {
                 let span=frameTimes[i+1]-frameTimes[i]
                 let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+2],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+2]-frameTimes[i+1])/span))
+                if i==envInt("MV_DENSE_TRACE_PAIR",-1) {
+                    var sequence=0
+                    dense.diagnosticObserver={ name,w,h,field in
+                        let basename="trace_\(sequence)_"+name.replacingOccurrences(of: "/",with: "_")
+                        let bytes=field.withUnsafeBytes { Data($0) }
+                        try! bytes.write(to: URL(fileURLWithPath: "\(folder)/\(basename).f32"))
+                        print("DENSE TRACE: \(basename) width=\(w) height=\(h)")
+                        sequence+=1
+                    }
+                    for (name,pixels) in [("trace_input0",cur),("trace_input1",ref)] {
+                        precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/\(name).png"))
+                    }
+                }
                 let four=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,context: context)
+                dense.diagnosticObserver=nil
                 print("DENSE FOUR PAIR: pair=\(i), ms=\(four.reduce(0.0) { $0+$1.milliseconds })")
                 if envInt("MV_DENSE_EVIDENCE",0)==1 {
                     let field=four[0].forward

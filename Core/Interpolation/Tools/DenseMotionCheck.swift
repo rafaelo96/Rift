@@ -606,6 +606,16 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSea
     let context=DenseMotionPrototype.TemporalContext(before: data(denseLayerScene(-8)),after: data(denseLayerScene(16)),beforeInterval: 1,afterInterval: 1)
     let four=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,times: [0,0.5,1],context: context)
     precondition(four[0].pixels==first && four[2].pixels==last)
+    var snapshots=0
+    dense.diagnosticObserver={ name,width,height,field in
+        precondition(!name.isEmpty && field.count==width*height)
+        precondition(field.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite && $0.w.isFinite })
+        snapshots+=1
+    }
+    let traced=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,times: [0,0.5,1],context: context)
+    dense.diagnosticObserver=nil
+    precondition(snapshots>0 && traced.map(\.pixels)==four.map(\.pixels) && traced[1].forward==four[1].forward && traced[1].backward==four[1].backward,"Diagnostic snapshots changed interpolation")
+
     print("DENSE FOUR LAYERS: MAE=\(error(four[1].pixels,denseLayerScene(4)))")
     let noContext=try dense.interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
     let fresh=try DenseMotionPrototype(width: w,height: h,variational: variational,finestIterations: finestIterations,inverseSearch: inverseSearch).interpolate(first: data(first),last: data(last),forward: forward,backward: backward,time: 0.5)
