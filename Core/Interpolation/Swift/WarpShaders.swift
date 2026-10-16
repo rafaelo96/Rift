@@ -22,23 +22,38 @@ struct UpscaleUniforms {
     uint fmt10; // 1 = 10-bit (work-plane luma already >>6, write <<6 back), 0 = 8-bit
 };
 
-static inline float4 denseNativeSample(texture2d<uint,access::read> image,float2 p) {
+#if RIFT_NATIVE_HARDWARE
+#define DENSE_NATIVE_INPUT texture2d<float,access::sample>
+#else
+#define DENSE_NATIVE_INPUT texture2d<uint,access::read>
+#endif
+static inline float4 denseNativeSample(DENSE_NATIVE_INPUT image,float2 p,float maximum) {
+#if RIFT_NATIVE_HARDWARE
+    constexpr sampler linear(coord::pixel,address::clamp_to_edge,filter::linear);
+    return image.sample(linear,p+0.5f)*maximum;
+#else
     uint2 size=uint2(image.get_width(),image.get_height());
     p=clamp(p,float2(0),float2(size-1));
     uint2 lo=uint2(floor(p)),hi=min(lo+1,size-1); float2 f=fract(p);
     return mix(mix(float4(image.read(lo)),float4(image.read(uint2(hi.x,lo.y))),f.x),mix(float4(image.read(uint2(lo.x,hi.y))),float4(image.read(hi)),f.x),f.y);
+#endif
 }
-kernel void denseNativeRender(texture2d<uint,access::read> first [[texture(0)]],texture2d<uint,access::read> last [[texture(1)]],texture2d<uint,access::write> output [[texture(2)]],texture2d<float,access::read> coordinates [[texture(3)]],texture2d<float,access::read> blend [[texture(4)]],constant uint &tenBit [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
+kernel void denseNativeRender(DENSE_NATIVE_INPUT first [[texture(0)]],DENSE_NATIVE_INPUT last [[texture(1)]],texture2d<uint,access::write> output [[texture(2)]],texture2d<float,access::read> coordinates [[texture(3)]],texture2d<float,access::read> blend [[texture(4)]],constant uint &tenBit [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float2 scale=float2(coordinates.get_width(),coordinates.get_height())/float2(output.get_width(),output.get_height());
     float2 work=(float2(p)+0.5f)*scale-0.5f;
     // Never interpolate coordinates belonging to different surface hypotheses.
     uint2 cell=uint2(clamp(round(work),float2(0),float2(coordinates.get_width()-1,coordinates.get_height()-1)));
     float4 motion=coordinates.read(cell); float alpha=clamp(blend.read(cell).r,0.0f,1.0f);
-    float4 value=mix(denseNativeSample(first,float2(p)+motion.xy/scale),denseNativeSample(last,float2(p)+motion.zw/scale),alpha);
+    float maximum=tenBit!=0 ? 65535.0f : 255.0f;
+    float4 value;
+    if(alpha<=0) value=denseNativeSample(first,float2(p)+motion.xy/scale,maximum);
+    else if(alpha>=1) value=denseNativeSample(last,float2(p)+motion.zw/scale,maximum);
+    else value=mix(denseNativeSample(first,float2(p)+motion.xy/scale,maximum),denseNativeSample(last,float2(p)+motion.zw/scale,maximum),alpha);
     float unit=tenBit!=0 ? 64.0f : 1.0f;
     output.write(uint4(clamp(round(value/unit)*unit,float4(0),float4(tenBit!=0 ? 65472.0f : 255.0f))),p);
 }
+#undef DENSE_NATIVE_INPUT
 
 struct NativeWarpUniforms {
     uint outW;

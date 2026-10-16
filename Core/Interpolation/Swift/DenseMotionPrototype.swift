@@ -40,6 +40,7 @@ public final class DenseMotionPrototype {
     private let projectedOwnership: Bool
     private let ownership: [MTLBuffer]
     private let inverseSearch: Bool
+    private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
     private let patches: [MTLTexture]
     private let patchScratch: [MTLTexture]
     private let dual: [[MTLTexture]]
@@ -127,6 +128,7 @@ public final class DenseMotionPrototype {
         // Identical held neighbors contain no evidence for extrapolating the central motion.
         let context=context.flatMap { $0.before==first && $0.after==last ? nil : $0 }
         let start=DispatchTime.now().uptimeNanoseconds
+        var gpuStages: [String:Double]=[:]
         func illuminationOffset(_ target: Data) -> Float {
             guard inverseSearch else { return 0 }
             return first.withUnsafeBytes { a in target.withUnsafeBytes { b in
@@ -156,6 +158,13 @@ public final class DenseMotionPrototype {
             setup(encoder)
             encoder.dispatchThreads(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
+            if profileStages {
+                command.commit(); command.waitUntilCompleted()
+                guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Dense profiling GPU failure") }
+                gpuStages[name,default: 0]+=(command.gpuEndTime-command.gpuStartTime)*1000
+                guard let next=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense profiling command allocation failed") }
+                command=next
+            }
         }
         for direction in inputs.indices {
             try encode("denseUpload",[raw[direction],original[direction]],original[direction])
@@ -272,6 +281,7 @@ public final class DenseMotionPrototype {
             nativeRenderer?(time,nativeCoordinates,nativeBlend,command)
             command.commit(); command.waitUntilCompleted()
             guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
+            if profileStages { gpuStages["nativeColor",default: 0]+=(command.gpuEndTime-command.gpuStartTime)*1000 }
             let elapsed=Double(DispatchTime.now().uptimeNanoseconds-sampleStart)/1e6
             if !downloadResults {
                 results.append(Result(pixels: [],reliability: [],forward: [],backward: [],mappingResidual: [],milliseconds: elapsed))
@@ -293,6 +303,10 @@ public final class DenseMotionPrototype {
             guard confidence.allSatisfy({ $0.isFinite }) else { throw MotionSearchEngine.EngineError.pipeline("Nonfinite dense output") }
             guard errors.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else { throw MotionSearchEngine.EngineError.pipeline("Nonfinite dense transport") }
             results.append(Result(pixels: pixels,reliability: confidence,forward: fields[0],backward: fields[1],mappingResidual: errors,milliseconds: elapsed))
+        }
+        if profileStages {
+            let stages=gpuStages.keys.sorted().map { "\($0)=\(String(format: "%.3f",gpuStages[$0]!))ms" }.joined(separator: " ")
+            print("DENSE GPU PROFILE \(width)x\(height) outputs=\(times.count) \(stages)")
         }
         return results
     }

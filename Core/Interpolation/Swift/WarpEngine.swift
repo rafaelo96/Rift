@@ -16,6 +16,7 @@ public final class WarpEngine {
     private let nativeLumaPipeline: MTLComputePipelineState
     private let nativeChromaPipeline: MTLComputePipelineState
     private let denseNativePipeline: MTLComputePipelineState
+    private let nativeHardwareSampling=ProcessInfo.processInfo.environment["RIFT_NATIVE_HARDWARE"] != "0"
     private let upscalePipeline: MTLComputePipelineState
     private let chromaDownPipeline: MTLComputePipelineState
     private let chromaWarpPipeline: MTLComputePipelineState
@@ -49,7 +50,9 @@ public final class WarpEngine {
         
         let library: MTLLibrary
         do {
-            library = try device.makeLibrary(source: msl, options: nil)
+            let options=MTLCompileOptions()
+            options.preprocessorMacros=["RIFT_NATIVE_HARDWARE": NSNumber(value: nativeHardwareSampling)]
+            library = try device.makeLibrary(source: msl, options: options)
         } catch {
             throw Error.libraryCompile("\(error)")
         }
@@ -107,7 +110,8 @@ public final class WarpEngine {
             let pw=CVPixelBufferGetWidthOfPlane(I0,plane),ph=CVPixelBufferGetHeightOfPlane(I0,plane)
             guard CVPixelBufferGetWidthOfPlane(I1,plane)==pw,CVPixelBufferGetHeightOfPlane(I1,plane)==ph else { return (nil,0) }
             let metalFormat: MTLPixelFormat=plane==0 ? (tenBit ? .r16Uint : .r8Uint) : (tenBit ? .rg16Uint : .rg8Uint)
-            let inputs=[I0,I1,output].map { wrapPlaneTexture($0,plane: plane,format: metalFormat,w: pw,h: ph,cache: cache) }
+            let sampleFormat: MTLPixelFormat=plane==0 ? (tenBit ? .r16Unorm : .r8Unorm) : (tenBit ? .rg16Unorm : .rg8Unorm)
+            let inputs=[I0,I1,output].enumerated().map { index,buffer in wrapPlaneTexture(buffer,plane: plane,format: index==2 || !nativeHardwareSampling ? metalFormat : sampleFormat,w: pw,h: ph,cache: cache) }
             guard let a=inputs[0].1,let b=inputs[1].1,let out=inputs[2].1,let encoder=command.makeComputeCommandEncoder() else { return (nil,0) }
             wrappers+=inputs.compactMap { $0.0 }
             encoder.setComputePipelineState(denseNativePipeline)
