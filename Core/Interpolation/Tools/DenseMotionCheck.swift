@@ -369,25 +369,27 @@ func checkDenseLighting() throws {
 }
 
 func checkDenseRotation() throws {
-    let w=96,h=96,angle=0.2,c=cos(angle),s=sin(angle)
-    let center=SIMD2<Double>(47.5,47.5)
+    let large=ProcessInfo.processInfo.environment["MV_ROTATION_LARGE"] == "1"
+    let w=large ? 384 : 96,h=large ? 256 : 96,angle=large ? 0.5 : 0.2,c=cos(angle),s=sin(angle)
+    let displacement=SIMD2<Double>(large ? -96 : 0,large ? -24 : 0)
+    let center=SIMD2<Double>(Double(w-1)/2,Double(h-1)/2)
     func texture(_ p: SIMD2<Double>) -> UInt16 {
         UInt16(clamping: Int((500+160*sin(p.x*0.21)+140*cos(p.y*0.19)+100*sin((p.x+p.y)*0.13)).rounded()))
     }
     func rotate(_ p: SIMD2<Double>,_ sign: Double) -> SIMD2<Double> {
-        let q=p-center
-        return center+SIMD2(c*q.x-sign*s*q.y,sign*s*q.x+c*q.y)
+        let q=p-center-(sign<0 ? displacement : .zero)
+        return center+SIMD2(c*q.x-sign*s*q.y,sign*s*q.x+c*q.y)+(sign>0 ? displacement : .zero)
     }
     let first=(0..<w*h).map { texture(SIMD2(Double($0%w),Double($0/w))) }
     let last=(0..<w*h).map { texture(rotate(SIMD2(Double($0%w),Double($0/w)),-1)) }
     let a=(1+c)/2,b=s/2,den=a*a+b*b
     let truth=(0..<w*h).map { i -> UInt16 in
-        let q=SIMD2(Double(i%w),Double(i/w))-center
+        let q=SIMD2(Double(i%w),Double(i/w))-center-displacement*0.5
         return texture(center+SIMD2((a*q.x+b*q.y)/den,(-b*q.x+a*q.y)/den))
     }
     func seeds(_ sign: Double) -> [SIMD2<Int32>] {
-        (0..<12*12).map { i in
-            let p=SIMD2(Double(i%12*8)+3.5,Double(i/12*8)+3.5)
+        (0..<(w/8)*(h/8)).map { i in
+            let p=SIMD2(Double(i%(w/8)*8)+3.5,Double(i/(w/8)*8)+3.5)
             let v=2*(rotate(p,sign)-p)
             return SIMD2(Int32(v.x.rounded()),Int32(v.y.rounded()))
         }
@@ -398,12 +400,19 @@ func checkDenseRotation() throws {
         let result=try engine.interpolate(first: data(first),last: data(last),forward: seeds(1),backward: seeds(-1),time: 0.5)
         var vectorError=0.0,pixelError=0.0,count=0
         for y in 12..<h-12 { for x in 12..<w-12 {
-            let p=SIMD2(Double(x),Double(y)),v=rotate(p,1)-p,k=y*w+x
+            let p=SIMD2(Double(x),Double(y)),end=rotate(p,1),v=end-p,k=y*w+x
+            let q=p-center-displacement*0.5
+            let midSource=center+SIMD2((a*q.x+b*q.y)/den,(-b*q.x+a*q.y)/den)
+            let midTarget=rotate(midSource,1)
+            guard end.x>=12,end.x<Double(w-12),end.y>=12,end.y<Double(h-12),
+                  midSource.x>=12,midSource.x<Double(w-12),midSource.y>=12,midSource.y<Double(h-12),
+                  midTarget.x>=12,midTarget.x<Double(w-12),midTarget.y>=12,midTarget.y<Double(h-12) else { continue }
             vectorError+=hypot(Double(result.forward[k].x)-v.x,Double(result.forward[k].y)-v.y)
             pixelError+=Double(abs(Int(result.pixels[k])-Int(truth[k]))); count+=1
         } }
-        print("DENSE ROTATION: patches=\(patch), radians=\(angle), vectorMAE=\(vectorError/Double(count))px, midpointMAE=\(pixelError/Double(count)), ms=\(result.milliseconds)")
+        print("DENSE ROTATION: patches=\(patch), radians=\(angle), displacement=\(displacement), vectorMAE=\(vectorError/Double(count))px, midpointMAE=\(pixelError/Double(count)), ms=\(result.milliseconds)")
         precondition(vectorError.isFinite && pixelError.isFinite)
+        if large && patch { precondition(vectorError/Double(count)<3,"Patch refinement lost accurate supplied motion in a known affine scene") }
     }
 }
 

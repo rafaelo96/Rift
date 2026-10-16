@@ -43,6 +43,7 @@ public final class DenseMotionPrototype {
     public var diagnosticObserver: ((String,Int,Int,[SIMD4<Float>])->Void)?
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
+    private let reseedPatches=ProcessInfo.processInfo.environment["RIFT_PATCH_RESEED"] == "1"
     private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] != "0"
     private let patches: [MTLTexture]
     private let patchScratch: [MTLTexture]
@@ -65,7 +66,7 @@ public final class DenseMotionPrototype {
         }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchReseed","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -218,7 +219,15 @@ public final class DenseMotionPrototype {
                     intervals=direction==0 ? SIMD2(-context.beforeInterval,1+context.afterInterval) : SIMD2(1+context.beforeInterval,-context.afterInterval)
                 }
                 if inverseSearch {
+                    if reseedPatches,level<images[direction].count-1 {
+                        var geometry=SIMD4<UInt32>(UInt32(gw),UInt32(gh),UInt32(blockSize),UInt32(1<<level))
+                        try encode("densePatchReseed",[images[direction][level],images[1-direction][level],buffers[0],patches[level]],patches[level]) {
+                            $0.setBuffer(seeds[direction],offset: 0,index: 0)
+                            $0.setBytes(&geometry,length: MemoryLayout<SIMD4<UInt32>>.stride,index: 1)
+                        }
+                    } else {
                     try encode("densePatchSearch",[images[direction][level],images[1-direction][level],buffers[0],patches[level]],patches[level])
+                    }
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patches[level],patchScratch[level]],patchScratch[level])
                     try encode("densePatchPropagate",[images[direction][level],images[1-direction][level],patchScratch[level],patches[level]],patches[level])
                     var selected=patches[level]

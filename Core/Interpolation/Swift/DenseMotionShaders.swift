@@ -38,8 +38,7 @@ float densePatchCost(texture2d<float,access::sample> a,texture2d<float,access::s
     }
     return cost/64;
 }
-kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
-    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
+float4 denseSearchPatch(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> seed,uint2 p,float2 original,bool useOriginal) {
     float2 center=float2(p)*4,v=denseRead(seed,center).xy;
     float best=densePatchCost(a,b,center,v);
     const float2 neighbors[5]={float2(-4,0),float2(4,0),float2(0,-4),float2(0,4),float2(0)};
@@ -47,6 +46,10 @@ kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],te
         float2 candidate=i==4 ? float2(0) : denseRead(seed,center+neighbors[i]).xy;
         float cost=densePatchCost(a,b,center,candidate);
         if(cost<best) { best=cost; v=candidate; }
+    }
+    if(useOriginal) {
+        float cost=densePatchCost(a,b,center,original);
+        if(cost<best) { best=cost; v=original; }
     }
     float values[64]; float2 gradients[64]; float hxx=0,hxy=0,hyy=0;
     for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
@@ -69,7 +72,38 @@ kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],te
         best=cost; v=candidate;
         if(dot(step,step)<1e-5f) break;
     }
-    patches.write(float4(v,exp(-20*sqrt(best)),best),p);
+    return float4(v,exp(-20*sqrt(best)),best);
+}
+kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
+    patches.write(denseSearchPatch(a,b,seed,p,float2(0),false),p);
+}
+kernel void densePatchReseed(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],device const int2 *original [[buffer(0)]],constant uint4 &geometry [[buffer(1)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
+    float2 center=float2(p)*4;
+    uint2 cell=min(uint2((center+0.5f)*float(geometry.w)/float(geometry.z)),geometry.xy-1);
+    float2 candidate=float2(original[cell.y*geometry.x+cell.x])/(2.0f*float(geometry.w));
+    if(all(geometry.xy>=3u)) {
+        uint2 anchor=clamp(cell,uint2(1),geometry.xy-2);
+        float2 mean=0,gx=0,gy=0;
+        for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
+            uint2 q=uint2(int2(anchor)+int2(x,y));
+            float2 v=float2(original[q.y*geometry.x+q.x])*0.5f;
+            mean+=v/9; gx+=float(x)*v/6; gy+=float(y)*v/6;
+        }
+        float residual=0;
+        for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
+            uint2 q=uint2(int2(anchor)+int2(x,y));
+            float2 v=float2(original[q.y*geometry.x+q.x])*0.5f;
+            residual=max(residual,length(v-mean-float(x)*gx-float(y)*gy));
+        }
+        // Reconstruct a continuous affine seed only when all nine blocks support it.
+        if(residual<=1) {
+            float2 delta=(center+0.5f)*float(geometry.w)/float(geometry.z)-0.5f-float2(anchor);
+            candidate=(mean+delta.x*gx+delta.y*gy)/float(geometry.w);
+        }
+    }
+    patches.write(denseSearchPatch(a,b,seed,p,candidate,true),p);
 }
 kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
