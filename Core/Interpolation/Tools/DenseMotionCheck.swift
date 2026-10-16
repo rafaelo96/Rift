@@ -440,6 +440,26 @@ func checkTemporalPatchSelection() throws {
     result.withUnsafeMutableBytes { selected.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
     FileHandle.standardOutput.write(Data("TEMPORAL PATCH: two central matches 8/16px; selected=\(result[6*17+6].x)px, expected=8px\n".utf8))
     precondition(abs(result[6*17+6].x-8)<0.01,"The central pair chose the wrong identical surface despite temporal evidence")
+    // A neighbor trajectory must not replace a better central correspondence.
+    var changed=frame([32,40])
+    for y in 20..<28 { for x in 36..<44 { changed[y*64+x]+=0.02 } }
+    changed.withUnsafeBytes { b.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) }
+    for (image,centers) in [(before,[8,40]),(after,[40,56])] {
+        frame(centers).withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) }
+    }
+    var candidates=[SIMD4<Float>](repeating: SIMD4(16,0,1,0),count: 17*13)
+    candidates[6*17+6]=SIMD4(8,0,1,0)
+    candidates.withUnsafeBytes { patches.replace(region: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 17*16) }
+    let guardedCommand=queue.makeCommandBuffer()!,guardedEncoder=guardedCommand.makeComputeCommandEncoder()!
+    guardedEncoder.setComputePipelineState(try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchTemporalSelect")!))
+    for (i,image) in [a,b,patches,selected,before,after].enumerated() { guardedEncoder.setTexture(image,index: i) }
+    guardedEncoder.setBytes(&intervals,length: MemoryLayout<SIMD2<Float>>.stride,index: 0)
+    guardedEncoder.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    guardedEncoder.endEncoding(); guardedCommand.commit(); guardedCommand.waitUntilCompleted()
+    guard guardedCommand.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Temporal central-fit check GPU failure") }
+    result.withUnsafeMutableBytes { selected.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
+    precondition(abs(result[6*17+6].x-8)<0.01,"Temporal evidence replaced a better central match")
+    print("TEMPORAL PATCH: central correspondence protected against misleading neighbors")
 }
 
 func checkPatchPropagation() throws {

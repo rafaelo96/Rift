@@ -106,10 +106,12 @@ float denseTemporalPatchCost(texture2d<float,access::sample> a,texture2d<float,a
 kernel void densePatchTemporalSelect(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::sample> before [[texture(4)]],texture2d<float,access::sample> after [[texture(5)]],constant float2 &intervals [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float2 center=float2(p)*4,v=denseRead(input,float2(p)).xy;
+    float central=densePatchCost(a,b,center,v);
     float best=denseTemporalPatchCost(a,b,before,after,center,v,intervals);
     const float2 neighbors[4]={float2(-1,0),float2(1,0),float2(0,-1),float2(0,1)};
     for(int i=0;i<4;++i) {
         float2 candidate=denseRead(input,float2(p)+neighbors[i]).xy;
+        if(densePatchCost(a,b,center,candidate)>central+4.0f/(1023.0f*1023.0f)) continue;
         float cost=denseTemporalPatchCost(a,b,before,after,center,candidate,intervals);
         if(cost<best) { best=cost; v=candidate; }
     }
