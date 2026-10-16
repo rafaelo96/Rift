@@ -63,7 +63,8 @@ public final class DenseMotionPrototype {
             guard let buffer=device.makeBuffer(length: width*height*4,options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Ownership allocation failed") }
             return buffer
         }
-        let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+        let proposal=ProcessInfo.processInfo.environment["RIFT_PATCH_GLOBAL"] == "1" ? "#define RIFT_PATCH_GLOBAL_WIDTH \((width+7)/8)\n" : ""
+        let library=try device.makeLibrary(source: proposal+denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
         for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
