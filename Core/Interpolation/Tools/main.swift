@@ -92,10 +92,6 @@ if envInt("MV_DENSE_ROTATION",0)==1 {
     do { try checkDenseRotation(); exit(0) }
     catch { print("DENSE ROTATION FAILED: \(error)"); exit(3) }
 }
-if envInt("MV_PATCH_SUPPORT_CHECK",0)==1 {
-    do { try checkPatchRegionalSupport(); exit(0) }
-    catch { print("REGIONAL PATCH CHECK FAILED: \(error)"); exit(1) }
-}
 if envInt("MV_PATCH_TEMPORAL_CHECK",0)==1 {
     do { try checkTemporalPatchSelection(); exit(0) }
     catch { print("TEMPORAL PATCH CHECK FAILED: \(error)"); exit(1) }

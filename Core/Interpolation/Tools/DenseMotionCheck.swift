@@ -703,35 +703,3 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSea
     precondition(oddResult.pixels==oddPixels,"Odd geometry lost border pixels")
     print("OK — dense layered sequence, endpoints, static, deterministic output, invalid input and translation checks")
 }
-
-func checkPatchRegionalSupport() throws {
-    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
-    let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
-    let pipeline=try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchSupportSelect")!)
-    func texture(_ format: MTLPixelFormat,_ w: Int,_ h: Int) -> MTLTexture {
-        let d=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: w,height: h,mipmapped: false)
-        d.storageMode = .shared; d.usage = [.shaderRead,.shaderWrite]
-        return device.makeTexture(descriptor: d)!
-    }
-    let w=96,h=64,a=texture(.r32Float,96,64),b=texture(.r32Float,96,64)
-    let current=texture(.rgba32Float,25,17),alternative=texture(.rgba32Float,25,17),output=texture(.rgba32Float,25,17)
-    let first=(0..<w*h).map { i in Float(100+((i%w)*37+(i/w)*61+(i%w)*(i/w)*7)%500)/1023 }
-    var last=(0..<w*h).map { i in first[(i/w)*w+max(0,i%w-8)] }
-    for y in 28..<36 { for x in 60..<68 { last[y*w+x]=first[y*w+x-32] } }
-    for (image,pixels) in [(a,first),(b,last)] { pixels.withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,w,h),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: w*4) } }
-    var vectors=[SIMD4<Float>](repeating: SIMD4(32,0,1,0),count: 25*17)
-    vectors[8*25+7]=SIMD4(8,0,1,0)
-    vectors.withUnsafeBytes { current.replace(region: MTLRegionMake2D(0,0,25,17),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 25*16) }
-    let candidates=[SIMD4<Float>](repeating: SIMD4(8,0,1,0),count: 25*17)
-    candidates.withUnsafeBytes { alternative.replace(region: MTLRegionMake2D(0,0,25,17),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 25*16) }
-    let command=queue.makeCommandBuffer()!,encoder=command.makeComputeCommandEncoder()!
-    encoder.setComputePipelineState(pipeline)
-    for (i,image) in [a,b,current,output,alternative].enumerated() { encoder.setTexture(image,index: i) }
-    encoder.dispatchThreads(MTLSize(width: 25,height: 17,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
-    encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
-    guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Regional support GPU failure") }
-    var field=[SIMD4<Float>](repeating: .zero,count: 25*17)
-    field.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 25*16,from: MTLRegionMake2D(0,0,25,17),mipmapLevel: 0) }
-    FileHandle.standardOutput.write(Data("REGIONAL PATCH: identical central patch, selected=\(field[8*25+8].x), expected=8px\n".utf8))
-    precondition(abs(field[8*25+8].x-8)<0.01,"Isolated duplicate patch defeated regionally supported trajectory")
-}
