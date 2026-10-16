@@ -92,6 +92,10 @@ if envInt("MV_DENSE_ROTATION",0)==1 {
     do { try checkDenseRotation(); exit(0) }
     catch { print("DENSE ROTATION FAILED: \(error)"); exit(3) }
 }
+if envInt("MV_PATCH_AFFINE_CHECK",0)==1 {
+    do { try checkPatchAffineCost(); exit(0) }
+    catch { print("AFFINE PATCH CHECK FAILED: \(error)"); exit(1) }
+}
 if envInt("MV_PATCH_TEMPORAL_CHECK",0)==1 {
     do { try checkTemporalPatchSelection(); exit(0) }
     catch { print("TEMPORAL PATCH CHECK FAILED: \(error)"); exit(1) }
@@ -2490,11 +2494,20 @@ if envInt("MV_PIPELINE", 1) == 1 && frameBuffers.count >= pairCount + 1 {
     let batchTimes: [Float]=requestedOutputs==2 ? [0.4,0.8] : requestedOutputs==3 ? [0.2,0.5,0.8] : [0.125,0.375,0.625,0.875]
     print("\n--- pipeline real (MotionCompensator, ME reducido + warp nativo) ---")
     print("Requested production outputs per pair: \(requestedOutputs)")
+    print("Native temporal context requested: \(envInt("MV_PAIR_CONTEXT",0)==1)")
     for i in 0..<pairCount {
         let s = DispatchTime.now().uptimeNanoseconds
         let r: InterpolationResult
         if requestedOutputs>1 {
-            let pair = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: batchTimes)
+            var context: InterpolationTemporalContext?
+            if envInt("MV_PAIR_CONTEXT",0)==1,i>0,i+2<frameBuffers.count {
+                let span=frameTimes[i+1]-frameTimes[i]
+                if span>0 {
+                    context=InterpolationTemporalContext(before: frameBuffers[i-1],after: frameBuffers[i+2],
+                        beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+2]-frameTimes[i+1])/span))
+                }
+            }
+            let pair = mc.interpolatePair(I0: frameBuffers[i], I1: frameBuffers[i + 1], tValues: batchTimes,context: context)
             precondition(pair.pixelBuffers.count == requestedOutputs, "Incomplete production pair")
             r = InterpolationResult(pixelBuffer: pair.pixelBuffers.first,
                 meMS: pair.meMS, warpMS: pair.warpMS, upscaleMS: pair.upscaleMS)

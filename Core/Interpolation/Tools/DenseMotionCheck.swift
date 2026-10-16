@@ -712,3 +712,63 @@ func checkDenseMotion(variational: Bool=false,finestIterations: Int=8,inverseSea
     precondition(oddResult.pixels==oddPixels,"Odd geometry lost border pixels")
     print("OK — dense layered sequence, endpoints, static, deterministic output, invalid input and translation checks")
 }
+
+func checkPatchAffineCost() throws {
+    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
+    let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+    let pipeline=try device.makeComputePipelineState(function: library.makeFunction(name: "densePatchAffine")!)
+    func texture(_ format: MTLPixelFormat,_ w: Int,_ h: Int) -> MTLTexture {
+        let d=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: w,height: h,mipmapped: false)
+        d.storageMode = .shared; d.usage = [.shaderRead,.shaderWrite]
+        return device.makeTexture(descriptor: d)!
+    }
+    let a=texture(.r32Float,64,48),b=texture(.r32Float,64,48),current=texture(.rgba32Float,17,13),output=texture(.rgba32Float,17,13),jacobian=texture(.rgba32Float,17,13),nativeB=texture(.r32Float,64,48)
+    let first: [Float]=(0..<3072).map { i in
+        let x=i%64,y=i/64
+        return Float(100+(x*37+y*61+x*y*7)%500)/1023.0
+    }
+    let last: [Float]=(0..<3072).map { i in first[(i/64)*64+max(0,i%64-8)] }
+    for (image,pixels) in [(a,first),(b,last),(nativeB,last)] { pixels.withUnsafeBytes { image.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) } }
+    let field=[SIMD4<Float>](repeating: SIMD4(8,0,1,1),count: 17*13)
+    field.withUnsafeBytes { current.replace(region: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 17*16) }
+    let seeds=device.makeBuffer(length: 8*6*MemoryLayout<SIMD2<Int32>>.stride,options: .storageModeShared)!
+    memset(seeds.contents(),0,seeds.length)
+    let command=queue.makeCommandBuffer()!,encoder=command.makeComputeCommandEncoder()!
+    encoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,current,output,jacobian,a,nativeB].enumerated() { encoder.setTexture(image,index: i) }
+    var geometry=SIMD4<UInt32>(8,6,8,1)
+    var exposure: Float=0
+    encoder.setBuffer(seeds,offset: 0,index: 0);encoder.setBytes(&geometry,length: 16,index: 1);encoder.setBytes(&exposure,length: 4,index: 2)
+    encoder.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    encoder.endEncoding();command.commit();command.waitUntilCompleted()
+    guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Affine cost GPU failure") }
+    var result=[SIMD4<Float>](repeating: .zero,count: 17*13)
+    result.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
+    FileHandle.standardOutput.write(Data("AFFINE COST: selected=\(result[6*17+8].x), expected=8px despite temporal score\n".utf8))
+    precondition(result[6*17+8].x==8,"Joint temporal score was mistaken for central photometric cost")
+    // A layer boundary must not become a continuous affine surface.
+    let discontinuous: [SIMD2<Int32>]=(0..<48).map { i in SIMD2(i%8<4 ? 0 : 16,0) }
+    discontinuous.withUnsafeBytes { _=memcpy(seeds.contents(),$0.baseAddress!,seeds.length) }
+    let boundaryCommand=queue.makeCommandBuffer()!,boundaryEncoder=boundaryCommand.makeComputeCommandEncoder()!
+    boundaryEncoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,current,output,jacobian,a,nativeB].enumerated() { boundaryEncoder.setTexture(image,index: i) }
+    boundaryEncoder.setBuffer(seeds,offset: 0,index: 0);boundaryEncoder.setBytes(&geometry,length: 16,index: 1);boundaryEncoder.setBytes(&exposure,length: 4,index: 2)
+    boundaryEncoder.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    boundaryEncoder.endEncoding();boundaryCommand.commit();boundaryCommand.waitUntilCompleted()
+    guard boundaryCommand.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Affine boundary GPU failure") }
+    result.withUnsafeMutableBytes { jacobian.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
+    precondition(result[6*17+8] == .zero,"Discontinuous block motions were accepted as an affine surface")
+    print("AFFINE COST: discontinuous surface rejected")
+    memset(seeds.contents(),0,seeds.length)
+    first.withUnsafeBytes { b.replace(region: MTLRegionMake2D(0,0,64,48),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: 64*4) }
+    let detailCommand=queue.makeCommandBuffer()!,detailEncoder=detailCommand.makeComputeCommandEncoder()!
+    detailEncoder.setComputePipelineState(pipeline)
+    for (i,image) in [a,b,current,output,jacobian,a,nativeB].enumerated() { detailEncoder.setTexture(image,index: i) }
+    detailEncoder.setBuffer(seeds,offset: 0,index: 0);detailEncoder.setBytes(&geometry,length: 16,index: 1);detailEncoder.setBytes(&exposure,length: 4,index: 2)
+    detailEncoder.dispatchThreads(MTLSize(width: 17,height: 13,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
+    detailEncoder.endEncoding();detailCommand.commit();detailCommand.waitUntilCompleted()
+    guard detailCommand.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Affine detail GPU failure") }
+    result.withUnsafeMutableBytes { output.getBytes($0.baseAddress!,bytesPerRow: 17*16,from: MTLRegionMake2D(0,0,17,13),mipmapLevel: 0) }
+    FileHandle.standardOutput.write(Data("AFFINE DETAIL: selected=\(result[6*17+8].x), expected=8px from unblurred input\n".utf8))
+    precondition(result[6*17+8].x==8,"Analysis-only match overrode correspondence supported by original detail")
+}

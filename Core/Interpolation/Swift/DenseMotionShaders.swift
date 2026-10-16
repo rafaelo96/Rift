@@ -38,7 +38,8 @@ float densePatchCost(texture2d<float,access::sample> a,texture2d<float,access::s
     }
     return cost/64;
 }
-float4 denseSearchPatch(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> seed,uint2 p,float2 original,bool useOriginal) {
+kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
     float2 center=float2(p)*4,v=denseRead(seed,center).xy;
     float best=densePatchCost(a,b,center,v);
     const float2 neighbors[5]={float2(-4,0),float2(4,0),float2(0,-4),float2(0,4),float2(0)};
@@ -46,10 +47,6 @@ float4 denseSearchPatch(texture2d<float,access::sample> a,texture2d<float,access
         float2 candidate=i==4 ? float2(0) : denseRead(seed,center+neighbors[i]).xy;
         float cost=densePatchCost(a,b,center,candidate);
         if(cost<best) { best=cost; v=candidate; }
-    }
-    if(useOriginal) {
-        float cost=densePatchCost(a,b,center,original);
-        if(cost<best) { best=cost; v=original; }
     }
     float values[64]; float2 gradients[64]; float hxx=0,hxy=0,hyy=0;
     for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
@@ -72,38 +69,7 @@ float4 denseSearchPatch(texture2d<float,access::sample> a,texture2d<float,access
         best=cost; v=candidate;
         if(dot(step,step)<1e-5f) break;
     }
-    return float4(v,exp(-20*sqrt(best)),best);
-}
-kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
-    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
-    patches.write(denseSearchPatch(a,b,seed,p,float2(0),false),p);
-}
-kernel void densePatchReseed(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],device const int2 *original [[buffer(0)]],constant uint4 &geometry [[buffer(1)]],uint2 p [[thread_position_in_grid]]) {
-    if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
-    float2 center=float2(p)*4;
-    uint2 cell=min(uint2((center+0.5f)*float(geometry.w)/float(geometry.z)),geometry.xy-1);
-    float2 candidate=float2(original[cell.y*geometry.x+cell.x])/(2.0f*float(geometry.w));
-    if(all(geometry.xy>=3u)) {
-        uint2 anchor=clamp(cell,uint2(1),geometry.xy-2);
-        float2 mean=0,gx=0,gy=0;
-        for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
-            uint2 q=uint2(int2(anchor)+int2(x,y));
-            float2 v=float2(original[q.y*geometry.x+q.x])*0.5f;
-            mean+=v/9; gx+=float(x)*v/6; gy+=float(y)*v/6;
-        }
-        float residual=0;
-        for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
-            uint2 q=uint2(int2(anchor)+int2(x,y));
-            float2 v=float2(original[q.y*geometry.x+q.x])*0.5f;
-            residual=max(residual,length(v-mean-float(x)*gx-float(y)*gy));
-        }
-        // Reconstruct a continuous affine seed only when all nine blocks support it.
-        if(residual<=1) {
-            float2 delta=(center+0.5f)*float(geometry.w)/float(geometry.z)-0.5f-float2(anchor);
-            candidate=(mean+delta.x*gx+delta.y*gy)/float(geometry.w);
-        }
-    }
-    patches.write(denseSearchPatch(a,b,seed,p,candidate,true),p);
+    patches.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
 kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
@@ -116,6 +82,47 @@ kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]]
         if(cost<best) { best=cost; v=candidate; }
     }
     output.write(float4(v,exp(-20*sqrt(best)),best),p);
+}
+kernel void densePatchAffine(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::write> jacobian [[texture(4)]],texture2d<float,access::sample> detailA [[texture(5)]],texture2d<float,access::sample> detailB [[texture(6)]],device const int2 *seeds [[buffer(0)]],constant uint4 &geometry [[buffer(1)]],constant float &exposure [[buffer(2)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    float4 selected=denseRead(input,float2(p)),gradient=0;
+    float2 center=float2(p)*4;
+    if(all(geometry.xy>=3u)) {
+        uint2 anchor=clamp(uint2((center+0.5f)*float(geometry.w)/float(geometry.z)),uint2(1),geometry.xy-2);
+        float2 mean=0,gx=0,gy=0;
+        for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
+            uint2 q=uint2(int2(anchor)+int2(x,y)); float2 v=float2(seeds[q.y*geometry.x+q.x])*0.5f;
+            mean+=v/9; gx+=float(x)*v/6; gy+=float(y)*v/6;
+        }
+        float residual=0;
+        for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {
+            uint2 q=uint2(int2(anchor)+int2(x,y)); float2 v=float2(seeds[q.y*geometry.x+q.x])*0.5f;
+            residual=max(residual,length(v-mean-float(x)*gx-float(y)*gy));
+        }
+        if(residual<=1) {
+            float2 delta=(center+0.5f)*float(geometry.w)/float(geometry.z)-0.5f-float2(anchor);
+            float2 v=(mean+delta.x*gx+delta.y*gy)/float(geometry.w);
+            float2 dx=gx/float(geometry.z),dy=gy/float(geometry.z);
+            float cost=0;
+            for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+                float2 offset=float2(x,y),q=center+offset;
+                float error=denseRead(a,q).r-denseRead(b,q+v+float(x)*dx+float(y)*dy).r;
+                cost+=error*error/64;
+            }
+            if(cost<densePatchCost(a,b,center,selected.xy)) {
+                float oldDetail=0,newDetail=0,scale=float(geometry.w);
+                for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+                    float2 q=(center+float2(x,y)+0.5f)*scale-0.5f;
+                    float value=denseRead(detailA,q).r;
+                    float oldError=value-denseRead(detailB,q+selected.xy*scale).r+exposure;
+                    float newError=value-denseRead(detailB,q+(v+float(x)*dx+float(y)*dy)*scale).r+exposure;
+                    oldDetail+=oldError*oldError;newDetail+=newError*newError;
+                }
+                if(newDetail<oldDetail) { selected=float4(v,exp(-20*sqrt(cost)),cost); gradient=float4(dx,dy); }
+            }
+        }
+    }
+    output.write(selected,p); jacobian.write(gradient,p);
 }
 float denseTemporalPatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> before,texture2d<float,access::sample> after,float2 center,float2 v,float2 intervals) {
     float cost=densePatchCost(a,b,center,v),evidence=0,weight=0;
@@ -151,8 +158,7 @@ kernel void densePatchTemporalSelect(texture2d<float,access::sample> a [[texture
     }
     output.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
-kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
-    if(p.x>=field.get_width()||p.y>=field.get_height()) return;
+float4 denseAggregatePatch(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> patches,texture2d<float,access::sample> jacobian,bool affine,uint2 p) {
     float2 sum=0; float total=0;
     uint2 base=p/4;
     float2 winner=0; float best=INFINITY;
@@ -161,6 +167,11 @@ kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]]
     float4 candidates[4]; float errors[4];
     for(uint y=0;y<2;++y) for(uint x=0;x<2;++x) {
         float4 patch=denseRead(patches,float2(base+uint2(x,y)));
+        if(affine) {
+            float4 g=denseRead(jacobian,float2(base+uint2(x,y)));
+            float2 delta=float2(p)-float2(base+uint2(x,y))*4;
+            patch.xy+=delta.x*g.xy+delta.y*g.zw;
+        }
         float residual=0;
         for(int yy=-1;yy<=1;++yy) for(int xx=-1;xx<=1;++xx) residual+=abs(source[(yy+1)*3+xx+1]-denseRead(b,float2(p)+patch.xy+float2(xx,yy)).r);
         residual/=9;
@@ -176,7 +187,15 @@ kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]]
         float weight=1/max(0.01f,error);
         sum+=weight*patch.xy; total+=weight;
     }
-    field.write(float4(sum/total,1,0),p);
+    return float4(sum/total,1,0);
+}
+kernel void densePatchAggregate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=field.get_width()||p.y>=field.get_height()) return;
+    field.write(denseAggregatePatch(a,b,patches,patches,false,p),p);
+}
+kernel void densePatchAggregateAffine(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> patches [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],texture2d<float,access::sample> jacobian [[texture(4)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=field.get_width()||p.y>=field.get_height()) return;
+    field.write(denseAggregatePatch(a,b,patches,jacobian,true,p),p);
 }
 kernel void denseExpand(texture2d<float,access::sample> coarse [[texture(0)]],texture2d<float,access::write> fine [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=fine.get_width()||p.y>=fine.get_height()) return;
