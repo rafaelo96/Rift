@@ -83,6 +83,15 @@ func checkNativePatchIntegration() throws {
             precondition(batch.count==3 && payload(batch[1])==reference,"Shared submission or concurrent scaling changed the midpoint")
             precondition(payload(mid)==reference,"Later synthesis overwrote an earlier output")
         }
+        let held=InterpolationTemporalContext(before: first,after: last,beforeInterval: 1,afterInterval: 1)
+        let contextual=engine.interpolatePair(I0: first,I1: last,tValues: [0,0.5,1],context: held)
+        precondition(contextual.pixelBuffers.count==3 && payload(contextual.pixelBuffers[1])==reference,"Held temporal neighbors changed native output")
+        let moving=InterpolationTemporalContext(before: buffer(-4,false),after: buffer(8,true),beforeInterval: 1,afterInterval: 1)
+        let temporalResult=engine.interpolatePair(I0: first,I1: last,tValues: [0.25,0.5,0.75],context: moving)
+        precondition(temporalResult.pixelBuffers.count==3 && temporalResult.pixelBuffers.allSatisfy { CVPixelBufferGetPixelFormatType($0)==format && CVBufferGetAttachment($0,kCVImageBufferColorPrimariesKey,nil) != nil },"Moving context lost native outputs or metadata")
+        let invalid=InterpolationTemporalContext(before: first,after: last,beforeInterval: .nan,afterInterval: 1)
+        let recovered=engine.interpolatePair(I0: first,I1: last,tValues: [0.5],context: invalid)
+        precondition(recovered.pixelBuffers.count==1 && payload(recovered.pixelBuffers[0])==reference,"Invalid context did not fall back to two-frame interpolation")
         precondition(engine.interpolatePair(I0: first,I1: last,tValues: [.nan]).pixelBuffers.isEmpty)
         print("NATIVE PATCH: \(tenBit ? 10 : 8)-bit format, chroma, endpoints and metadata passed; total=\(result.meMS+result.warpMS)ms")
     }

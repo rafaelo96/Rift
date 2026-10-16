@@ -37,6 +37,18 @@ public struct InterpolationPairResult {
     }
 }
 
+/// Optional neighboring source frames; retained only for the current pair.
+public struct InterpolationTemporalContext {
+    public let before: CVPixelBuffer
+    public let after: CVPixelBuffer
+    public let beforeInterval: Float
+    public let afterInterval: Float
+    public init(before: CVPixelBuffer, after: CVPixelBuffer, beforeInterval: Float, afterInterval: Float) {
+        self.before=before; self.after=after
+        self.beforeInterval=beforeInterval; self.afterInterval=afterInterval
+    }
+}
+
 // MARK: - MotionCompensator
 //
 // Punto de entrada público del módulo Interpolation. Envuelve MotionSearchEngine
@@ -88,6 +100,7 @@ public final class MotionCompensator {
     private let backValidationME: MotionSearchEngine
     private let warp: WarpEngine
     private let patchEstimator: DenseMotionPrototype?
+    private var loggedTemporalContext=false
     private let patchReverseME: MotionSearchEngine?
     private let validationWidth: Int
     private let validationHeight: Int
@@ -211,15 +224,23 @@ public final class MotionCompensator {
     /// camino viejo (llamaba interpolateWithTimings dos veces por par). Los
     /// buffers de salida vienen del pool reusable de WarpEngine.
     /// Devuelve buffers vacíos y MS 0 si el par es inválido.
-    public func interpolatePair(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float]) -> InterpolationPairResult {
+    public func interpolatePair(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float], context: InterpolationTemporalContext? = nil) -> InterpolationPairResult {
         guard !tValues.isEmpty,tValues.count<=4,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               CVPixelBufferGetWidth(I0)==CVPixelBufferGetWidth(I1),CVPixelBufferGetHeight(I0)==CVPixelBufferGetHeight(I1),CVPixelBufferGetPixelFormatType(I0)==CVPixelBufferGetPixelFormatType(I1) else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
 
         // Both read-only source planes can be resampled independently.
-        var lumas=[Data?](repeating: nil,count: 2)
+        let context=context.flatMap { neighbor -> InterpolationTemporalContext? in
+            guard patchEstimator != nil,ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] != "0",
+                  neighbor.beforeInterval.isFinite,neighbor.afterInterval.isFinite,
+                  (0.25...4).contains(neighbor.beforeInterval),(0.25...4).contains(neighbor.afterInterval),
+                  [neighbor.before,neighbor.after].allSatisfy({ CVPixelBufferGetWidth($0)==CVPixelBufferGetWidth(I0) && CVPixelBufferGetHeight($0)==CVPixelBufferGetHeight(I0) && CVPixelBufferGetPixelFormatType($0)==CVPixelBufferGetPixelFormatType(I0) }) else { return nil }
+            return neighbor
+        }
+        let sources=[I0,I1]+(context.map { [$0.before,$0.after] } ?? [])
+        var lumas=[Data?](repeating: nil,count: sources.count)
         let lumaLock=NSLock()
-        DispatchQueue.concurrentPerform(iterations: 2) { index in
-            let scaled=self.scaledLuma(index==0 ? I0 : I1)
+        DispatchQueue.concurrentPerform(iterations: sources.count) { index in
+            let scaled=self.scaledLuma(sources[index])
             lumaLock.lock(); lumas[index]=scaled; lumaLock.unlock()
         }
         guard let luma0 = lumas[0], let luma1 = lumas[1] else {
@@ -235,11 +256,19 @@ public final class MotionCompensator {
                 }
             }
             let a=normalized(luma0),b=normalized(luma1)
+            let temporal=context.flatMap { neighbor -> DenseMotionPrototype.TemporalContext? in
+                guard let before=lumas[2],let after=lumas[3] else { return nil }
+                return DenseMotionPrototype.TemporalContext(before: normalized(before),after: normalized(after),beforeInterval: neighbor.beforeInterval,afterInterval: neighbor.afterInterval)
+            }
+            if temporal != nil,!loggedTemporalContext,ProcessInfo.processInfo.environment["RIFT_DIAGNOSTICS"] == "1" {
+                print("[Frame+] Four-source temporal context active on bounded pair")
+                loggedTemporalContext=true
+            }
             var buffers: [CVPixelBuffer]=[],nativeMS=0.0
             do {
                 _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
                 _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
-                _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,nativeRenderer: { time,coordinates,blend,command in
+                _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,context: temporal,nativeRenderer: { time,coordinates,blend,command in
                     let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend,encodingInto: command)
                     if let buffer { buffers.append(buffer) }; nativeMS+=cost
                 },downloadResults: false)

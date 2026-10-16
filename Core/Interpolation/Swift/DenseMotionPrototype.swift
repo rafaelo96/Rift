@@ -41,7 +41,7 @@ public final class DenseMotionPrototype {
     private let ownership: [MTLBuffer]
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
-    private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] == "1"
+    private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] != "0"
     private let patches: [MTLTexture]
     private let patchScratch: [MTLTexture]
     private let dual: [[MTLTexture]]
