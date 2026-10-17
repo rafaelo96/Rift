@@ -50,7 +50,7 @@ public final class DenseMotionPrototype {
     private let oracleEnabled=ProcessInfo.processInfo.environment["RIFT_DENSE_ORACLE"] == "1"
     /// Read-only, once per pair. Requires RIFT_PAIR_CONFIDENCE=1; no disk I/O in this module.
     public var pairConfidenceObserver: ((Int,Int,[SIMD4<Float>])->Void)?
-    /// Offline temporal velocity evidence, normalized to this pair's interval; never used by synthesis.
+    /// Temporal velocity evidence normalized to this pair; read-only in E1, confidence-only in E2.
     public var diagnosticTemporalVectors: [SIMD4<Float>]?
     private let pairConfidence: PairConfidenceDiagnostics?
     private let localConfidence: LocalConfidenceDegradation?

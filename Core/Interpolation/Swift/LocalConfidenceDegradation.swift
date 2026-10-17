@@ -35,7 +35,7 @@ final class LocalConfidenceDegradation {
             float weight=mix(previous.x,target,target>previous.x ? 0.35f : 0.15f);
             weight*=smoothstep(0.844213010f,0.905458547f,score);
             if(weight<1.0f/1023) weight=0;
-            float mode=mix(previous.y,smoothstep(0.01f,0.03f,b.y),0.3f);
+            float mode=smoothstep(0.01f,0.03f,b.y);
             next.write(float4(weight,mode,score,active ? 1 : 0),p);
         }
         kernel void localConfidenceFeather(texture2d<float,access::sample> state [[texture(0)]],texture2d<float,access::write> result [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
