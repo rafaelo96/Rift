@@ -1,17 +1,19 @@
 import Foundation
 import Metal
+import CoreVideo
 
 // Standalone experiment: swiftc builds this with the original and a temporary patched class.
 @main struct RealtimeBudgetBatching {
     static func main() throws {
+        setbuf(stdout,nil)
         guard let device=MTLCreateSystemDefaultDevice() else { fatalError("Metal unavailable") }
         let width=768,height=320,count=width*height
         let first=(0..<count).map { i in UInt16(((i%width)*13+(i/width)*7+(i%31)*19)%1024) }
         let last=(0..<count).map { i in first[(i+5)%count] }
         let a=first.withUnsafeBytes { Data($0) },b=last.withUnsafeBytes { Data($0) }
         let seeds=[SIMD2<Int32>](repeating: .zero,count: ((width+7)/8)*((height+7)/8))
-        let baseline=try DenseMotionPrototype(width: width,height: height,inverseSearch: true)
-        let batched=try RealtimeBudgetDense(width: width,height: height,inverseSearch: true)
+        let baseline=try RealtimeBudgetBaseline(width: width,height: height,inverseSearch: true)
+        let batched=try DenseMotionPrototype(width: width,height: height,inverseSearch: true)
         var baselineMS=[Double](),batchedMS=[Double]()
         for outputCount in [1,2,3,4] {
             let times=(1...outputCount).map { Float($0)/Float(outputCount+1) }
@@ -53,5 +55,60 @@ import Metal
         let y=try batched.interpolate(first: a,last: b,forward: seeds,backward: seeds,times: [0.25,0.5,0.75])
         for (p,q) in zip(x,y) { precondition(p.pixels==q.pixels && p.reliability==q.reliability && p.mappingResidual==q.mappingResidual) }
         print("downloadResults=true preserves all three diagnostic outputs")
+        let outerStart=DispatchTime.now().uptimeNanoseconds
+        let timings=try batched.interpolate(first: a,last: b,forward: seeds,backward: seeds,times: [0.25,0.5,0.75],downloadResults: false)
+        let outerMS=Double(DispatchTime.now().uptimeNanoseconds-outerStart)/1e6
+        let summed=timings.reduce(0.0) { $0+$1.milliseconds }
+        precondition(summed>0 && summed<=outerMS && outerMS-summed<max(2,outerMS*0.25),"Missing pair time")
+        print("pair timing sum=\(summed)ms outer=\(outerMS)ms")
+        try nativeIdentity()
+    }
+
+    static func nativeIdentity() throws {
+        let w=192,h=96
+        func frame(_ format: OSType,_ shift: Int)->CVPixelBuffer {
+            var result: CVPixelBuffer?
+            let attrs=[kCVPixelBufferMetalCompatibilityKey:true,kCVPixelBufferIOSurfacePropertiesKey:[:] ] as CFDictionary
+            precondition(CVPixelBufferCreate(kCFAllocatorDefault,w,h,format,attrs,&result)==kCVReturnSuccess)
+            let image=result!
+            precondition(CVPixelBufferLockBaseAddress(image,[])==kCVReturnSuccess)
+            for plane in 0..<2 {
+                let pw=CVPixelBufferGetWidthOfPlane(image,plane),ph=CVPixelBufferGetHeightOfPlane(image,plane)
+                let stride=CVPixelBufferGetBytesPerRowOfPlane(image,plane),base=CVPixelBufferGetBaseAddressOfPlane(image,plane)!
+                let ten=format==kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+                for yy in 0..<ph { for xx in 0..<(pw*(plane==0 ? 1:2)) {
+                    let value=plane==0 ? 24+(((xx+shift+w)%w)*13+yy*17)%200 : 70+(xx*3+yy*5+shift)%120
+                    if ten { base.storeBytes(of: UInt16(value*4)<<6,toByteOffset: yy*stride+xx*2,as: UInt16.self) }
+                    else { base.storeBytes(of: UInt8(value),toByteOffset: yy*stride+xx,as: UInt8.self) }
+                } }
+            }
+            CVPixelBufferUnlockBaseAddress(image,[])
+            return image
+        }
+        func planes(_ image: CVPixelBuffer)->[Data] {
+            precondition(CVPixelBufferLockBaseAddress(image,.readOnly)==kCVReturnSuccess)
+            defer { CVPixelBufferUnlockBaseAddress(image,.readOnly) }
+            let ten=CVPixelBufferGetPixelFormatType(image)==kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+            return (0..<2).map { p in
+                let row=CVPixelBufferGetWidthOfPlane(image,p)*(p==0 ? 1:2)*(ten ? 2:1)
+                let stride=CVPixelBufferGetBytesPerRowOfPlane(image,p),base=CVPixelBufferGetBaseAddressOfPlane(image,p)!
+                var output=Data()
+                for yy in 0..<CVPixelBufferGetHeightOfPlane(image,p) { output.append(base.advanced(by: yy*stride).assumingMemoryBound(to: UInt8.self),count: row) }
+                return output
+            }
+        }
+        let config=InterpolationConfig(workWidth: w,workHeight: h)
+        for format in [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange] {
+            let original=try RealtimeBudgetOriginalCompensator(config: config),optimized=try MotionCompensator(config: config)
+            let sources=(-1...2).map { frame(format,$0*3) }
+            let context=InterpolationTemporalContext(before: sources[0],after: sources[3],beforeInterval: 1,afterInterval: 1)
+            for positions: [Float] in [[0.5],[0.25,0.5,0.75],[0,0.3,0.7,1]] {
+                let expected=original.interpolatePair(I0: sources[1],I1: sources[2],tValues: positions,context: context)
+                let actual=optimized.interpolatePair(I0: sources[1],I1: sources[2],tValues: positions,context: context)
+                precondition(expected.pixelBuffers.count==positions.count && actual.pixelBuffers.count==positions.count,"Native output missing")
+                for (a,b) in zip(expected.pixelBuffers,actual.pixelBuffers) { precondition(planes(a)==planes(b),"Native pixels changed") }
+            }
+            print("native format=\(format) 8 outputs byte-identical across Y/UV planes with four-source context")
+        }
     }
 }

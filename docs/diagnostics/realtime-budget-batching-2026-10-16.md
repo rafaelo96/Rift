@@ -41,3 +41,13 @@ Una primera corrida sin alternar orden daba 13,97→10,89 ms, y otra a 384×160 
 - `MotionCompensator.meMS` empieza después de scaledLuma, pero `RiftPlayerState` ya mide la llamada completa por fuera. No se encontró un error de admisión por ese motivo.
 - El coste adicional de correspondencias por color (aproximadamente 14→40 ms en el experimento anterior) no se resuelve con esta mejora pequeña.
 - No modifica la elección de superficies: **las deformaciones visuales pendientes siguen siendo problema independiente**. Este candidato libera una pequeña parte del presupuesto; no demuestra equivalencia con Motion².
+
+## Integración verificada (ronda siguiente)
+
+El motor activo ahora agrupa las salidas nativas cuando no hay descarga, perfil por kernel ni observador diagnóstico. Las rutas diagnósticas conservan sus barreras. `Result.milliseconds` contabiliza incrementos del coste acumulado; su suma incluye la espera final y el análisis completo. El caller externo sigue midiendo el coste completo del par.
+
+El harness compara contra el motor del commitad19cd9 y ahora también reconstruye buffers nativos mediante MotionCompensator/WarpEngine reales. Se verificaron16salidas nativas (8porformato), ambasplanasY/UV byte-idénticas: NV12 de8bits y P010 de10bits, con4fuentes y1/3/4posiciones incluyendoextremos. También siguen idénticos los32mapas de coordenadas/mezcla y las descargas diagnósticas. La suma temporal se compara con elapsedexterno. Los wrappersIOSurface ya se retienen con el completionhandler delcommandbuffer; no se modificó esa retención.
+
+Durante la ampliación de la prueba se detectó y corrigió un defecto del generador sintético: desplazamientosnegativos producían valoresUInt8negativos por el módulo con signo. El fallo estabaenelgeneradordeentradas, antesdeinterpolar, y no en el reproductor.
+
+No se afirma mejora visual ni reproducción sostenida a partir de esta integración. La cifra conservadora anterior de1,93% sigue siendo la atribucióncontrolada; corridas posteriores sirven paraidentidad y no para ampliar esa promesa. Registro: /tmp/rift-batching-native-verify2.log.

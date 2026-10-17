@@ -108,7 +108,8 @@ public final class DenseMotionPrototype {
     }
 
     /// One bounded pair analysis shared by up to four temporal samples.
-    /// The first result's milliseconds includes analysis; subsequent results measure synthesis.
+    /// Milliseconds are incremental elapsed costs; their sum covers analysis and all syntheses.
+    /// With batched native output, only the final increment waits for GPU completion.
     /// nativeRenderer may encode into the supplied command, but must not submit it.
     public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
@@ -298,9 +299,11 @@ public final class DenseMotionPrototype {
         }
         var results: [Result]=[]
         var fields: [[SIMD4<Float>]]=[]
+        let batchNative = !downloadResults && !profileStages && diagnosticObserver == nil
+        var accountedMS=0.0
         for (sample,time) in times.enumerated() {
             let sampleStart=sample==0 ? start : DispatchTime.now().uptimeNanoseconds
-            if sample>0 {
+            if sample>0 && !batchNative {
                 guard let nextCommand=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense synthesis command allocation failed") }
                 command=nextCommand
             }
@@ -331,10 +334,15 @@ public final class DenseMotionPrototype {
                 $0.setBytes(&offset,length: 4,index: 4)
             }
             nativeRenderer?(time,nativeCoordinates,nativeBlend,command)
-            command.commit(); command.waitUntilCompleted()
-            guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
+            // The native consumer encodes before shared maps are reused by the next sample.
+            if !batchNative || sample==times.count-1 {
+                command.commit(); command.waitUntilCompleted()
+                guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
+            }
             if profileStages { gpuStages["nativeColor",default: 0]+=(command.gpuEndTime-command.gpuStartTime)*1000 }
-            let elapsed=Double(DispatchTime.now().uptimeNanoseconds-sampleStart)/1e6
+            let cumulativeMS=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
+            let elapsed=batchNative ? max(0,cumulativeMS-accountedMS) : Double(DispatchTime.now().uptimeNanoseconds-sampleStart)/1e6
+            accountedMS=cumulativeMS
             if !downloadResults {
                 results.append(Result(pixels: [],reliability: [],forward: [],backward: [],mappingResidual: [],milliseconds: elapsed))
                 continue
