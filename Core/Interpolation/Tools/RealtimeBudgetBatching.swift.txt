@@ -1,0 +1,57 @@
+import Foundation
+import Metal
+
+// Standalone experiment: swiftc builds this with the original and a temporary patched class.
+@main struct RealtimeBudgetBatching {
+    static func main() throws {
+        guard let device=MTLCreateSystemDefaultDevice() else { fatalError("Metal unavailable") }
+        let width=768,height=320,count=width*height
+        let first=(0..<count).map { i in UInt16(((i%width)*13+(i/width)*7+(i%31)*19)%1024) }
+        let last=(0..<count).map { i in first[(i+5)%count] }
+        let a=first.withUnsafeBytes { Data($0) },b=last.withUnsafeBytes { Data($0) }
+        let seeds=[SIMD2<Int32>](repeating: .zero,count: ((width+7)/8)*((height+7)/8))
+        let baseline=try DenseMotionPrototype(width: width,height: height,inverseSearch: true)
+        let batched=try RealtimeBudgetDense(width: width,height: height,inverseSearch: true)
+        var baselineMS=[Double](),batchedMS=[Double]()
+        for outputCount in [1,2,3,4] {
+            let times=(1...outputCount).map { Float($0)/Float(outputCount+1) }
+            for iteration in 0..<8 {
+                var captures=[[MTLBuffer]]()
+                for mode in (iteration%2==0 ? [0,1] : [1,0]) {
+                    var samples=[MTLBuffer]()
+                    let capture: (Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void = { _,coordinates,blend,command in
+                        // Capture all native synthesis inputs before the next sample reuses them.
+                        let encoder=command.makeBlitCommandEncoder()!
+                        for texture in [coordinates,blend] {
+                            let bytes=texture.pixelFormat == .rgba32Float ? 16 : 4
+                            let row=((width*bytes+255)/256)*256
+                            let buffer=device.makeBuffer(length: row*height,options: .storageModeShared)!
+                            encoder.copy(from: texture,sourceSlice: 0,sourceLevel: 0,sourceOrigin: MTLOrigin(x: 0,y: 0,z: 0),sourceSize: MTLSize(width: width,height: height,depth: 1),to: buffer,destinationOffset: 0,destinationBytesPerRow: row,destinationBytesPerImage: row*height)
+                            samples.append(buffer)
+                        }
+                        encoder.endEncoding()
+                    }
+                    let start=DispatchTime.now().uptimeNanoseconds
+                    if mode==0 {
+                        _=try baseline.interpolate(first: a,last: b,forward: seeds,backward: seeds,times: times,nativeRenderer: capture,downloadResults: false)
+                    } else {
+                        _=try batched.interpolate(first: a,last: b,forward: seeds,backward: seeds,times: times,nativeRenderer: capture,downloadResults: false)
+                    }
+                    let elapsed=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
+                    if iteration>0,outputCount==3 { if mode==0 { baselineMS.append(elapsed) } else { batchedMS.append(elapsed) } }
+                    captures.append(samples)
+                }
+                precondition(captures[0].count==outputCount*2)
+                for (x,y) in zip(captures[0],captures[1]) { precondition(x.length==y.length && memcmp(x.contents(),y.contents(),x.length)==0,"Batching changed synthesis maps") }
+            }
+            print("outputs=\(outputCount) identical coordinates/blend across 8 runs")
+        }
+        func median(_ samples: [Double])->Double { samples.sorted()[samples.count/2] }
+        print("device=\(device.name) synthetic=\(width)x\(height) three-output median original=\(median(baselineMS))ms batched=\(median(batchedMS))ms")
+        // Diagnostic downloads must still report each distinct synthesized image.
+        let x=try baseline.interpolate(first: a,last: b,forward: seeds,backward: seeds,times: [0.25,0.5,0.75])
+        let y=try batched.interpolate(first: a,last: b,forward: seeds,backward: seeds,times: [0.25,0.5,0.75])
+        for (p,q) in zip(x,y) { precondition(p.pixels==q.pixels && p.reliability==q.reliability && p.mappingResidual==q.mappingResidual) }
+        print("downloadResults=true preserves all three diagnostic outputs")
+    }
+}
