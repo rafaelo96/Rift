@@ -151,6 +151,47 @@ func replayTrajectoryDiagnostic(folder: String) throws {
     _=search.runPair(cur: last,ref: first);let backward=search.downloadMV(level: 0)
     let dense=try DenseMotionPrototype(width: w,height: h,inverseSearch: true)
     let baseline=try dense.interpolate(first: first,last: last,forward: forward,backward: backward,time: 0.5,context: context)
+    if let target=env["MV_TRAJECTORY_ORACLE_OUTPUT"] {
+        try FileManager.default.createDirectory(atPath: target,withIntermediateDirectories: true)
+        for (name,values) in [("forward",baseline.forward),("backward",baseline.backward)] {
+            try values.withUnsafeBytes { Data($0) }.write(to: URL(fileURLWithPath: "\(target)/\(name).f32"))
+        }
+        try first.write(to: URL(fileURLWithPath: target+"/source0.u16"));try last.write(to: URL(fileURLWithPath: target+"/source1.u16"))
+        dense.diagnosticFlowOverride={ f,r in
+            var f=f,r=r
+            // Replace exactly the sampled 8x8 source patches. Never fill unsampled gaps.
+            // Reverse footprints are transported by the same reference; conflicts use point order.
+            for reference in refs where reference["level"] as! Int==0 && reference["eligible"] as! Bool {
+                let x=Int(reference["x"] as! UInt32),y=Int(reference["y"] as! UInt32)
+                let dx=reference["dx"] as! Int,dy=reference["dy"] as! Int
+                for yy in y-4..<y+4 { for xx in x-4..<x+4 {
+                    if xx>=0 && xx<w && yy>=0 && yy<h { f[yy*w+xx].x=Float(dx);f[yy*w+xx].y=Float(dy) }
+                    let rx=xx+dx,ry=yy+dy
+                    if rx>=0 && rx<w && ry>=0 && ry<h { r[ry*w+rx].x=Float(-dx);r[ry*w+rx].y=Float(-dy) }
+                } }
+            }
+            return (f,r)
+        }
+        let times: [Float]=[0.25,0.5,0.75]
+        let oracleSamples=try dense.interpolate(first: first,last: last,forward: forward,backward: backward,times: times,context: context)
+        dense.diagnosticFlowOverride=nil
+        let normal=try dense.interpolate(first: first,last: last,forward: forward,backward: backward,times: times,context: context)
+        var records=[[String:Any]]()
+        for (i,time) in times.enumerated() {
+            let actual=oracleSamples[i],current=normal[i]
+            if env["RIFT_DENSE_ORACLE"] != "1" { precondition(actual.pixels==current.pixels && actual.forward==current.forward && actual.backward==current.backward,"Disabled oracle changed output") }
+            try trajectoryPNG(actual.pixels.withUnsafeBytes { Data($0) },w,h,"\(target)/oracle_t\(time).png")
+            try trajectoryPNG(current.pixels.withUnsafeBytes { Data($0) },w,h,"\(target)/current_t\(time).png")
+            records.append(["t":time,"changedPixels":zip(actual.pixels,current.pixels).filter { $0 != $1 }.count])
+        }
+        for (name,values) in [("oracle-forward",oracleSamples[0].forward),("oracle-backward",oracleSamples[0].backward)] {
+            try values.withUnsafeBytes { Data($0) }.write(to: URL(fileURLWithPath: "\(target)/\(name).f32"))
+        }
+        try trajectoryPNG(first,w,h,target+"/original0.png");try trajectoryPNG(last,w,h,target+"/original1.png")
+        try trajectoryJSON(["width":w,"height":h,"pair":pair,"PTS":Array((manifest["sourcePTS"] as! [Double])[pair...pair+1]),"enabled":env["RIFT_DENSE_ORACLE"] == "1","evaluableBlocks":refs.filter { $0["level"] as! Int==0 && $0["eligible"] as! Bool }.count,"patchSize":8,"metadataPolicy":"replace xy only; retain original assessed confidence/visibility","samples":records],target+"/oracle-injection.json")
+        print("ORACLE INJECTION: \(target), enabled=\(env["RIFT_DENSE_ORACLE"] ?? "0")")
+        return
+    }
     var stages=[[String:Any]]()
     func collect(_ name: String,_ width: Int,_ height: Int,_ records: [SIMD4<Float>],_ candidates: Bool) {
         // Forward direction only; reverse trajectory is a separate source-coordinate query.

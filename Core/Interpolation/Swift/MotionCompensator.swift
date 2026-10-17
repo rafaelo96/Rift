@@ -89,6 +89,8 @@ public final class MotionCompensator {
         }
     }
 
+    // Opt-in latency capture under real playback load; file writing is excluded from the sample.
+    private let pairTimingPath=ProcessInfo.processInfo.environment["RIFT_PAIR_TIMING_OUTPUT"]
     public let config: InterpolationConfig
 
     private let device: MTLDevice
@@ -225,6 +227,19 @@ public final class MotionCompensator {
     /// buffers de salida vienen del pool reusable de WarpEngine.
     /// Devuelve buffers vacíos y MS 0 si el par es inválido.
     public func interpolatePair(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float], context: InterpolationTemporalContext? = nil) -> InterpolationPairResult {
+        let diagnosticStart=pairTimingPath == nil ? 0 : DispatchTime.now().uptimeNanoseconds
+        defer {
+            if let path=pairTimingPath {
+                let elapsed=Double(DispatchTime.now().uptimeNanoseconds-diagnosticStart)/1e6
+                if !FileManager.default.fileExists(atPath: path) { _=FileManager.default.createFile(atPath: path,contents: nil) }
+                if let handle=try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
+                    defer { try? handle.close() }
+                    _=try? handle.seekToEnd()
+                    let line="\(DispatchTime.now().uptimeNanoseconds),\(config.workWidth),\(config.workHeight),\(tValues.count),\(elapsed)\n"
+                    try? handle.write(contentsOf: Data(line.utf8))
+                }
+            }
+        }
         guard !tValues.isEmpty,tValues.count<=4,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               CVPixelBufferGetWidth(I0)==CVPixelBufferGetWidth(I1),CVPixelBufferGetHeight(I0)==CVPixelBufferGetHeight(I1),CVPixelBufferGetPixelFormatType(I0)==CVPixelBufferGetPixelFormatType(I1) else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
 

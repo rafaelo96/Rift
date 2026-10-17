@@ -1,0 +1,27 @@
+{
+  "enabled" : true,
+  "evaluableBlocks" : 50,
+  "height" : 480,
+  "metadataPolicy" : "replace xy only; retain original assessed confidence\/visibility",
+  "pair" : 4,
+  "patchSize" : 8,
+  "PTS" : [
+    69.194000000000003,
+    69.236000000000004
+  ],
+  "samples" : [
+    {
+      "changedPixels" : 1118,
+      "t" : 0.25
+    },
+    {
+      "changedPixels" : 1579,
+      "t" : 0.5
+    },
+    {
+      "changedPixels" : 1167,
+      "t" : 0.75
+    }
+  ],
+  "width" : 1152
+}

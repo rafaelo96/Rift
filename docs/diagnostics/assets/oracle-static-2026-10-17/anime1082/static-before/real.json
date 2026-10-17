@@ -1,0 +1,38 @@
+[
+  {
+    "sha256" : "18685dd3be01dde6e616afebd25d30e49a7ba7caff42d118514ef754c31af844",
+    "staticProtected" : 457270,
+    "t" : 0.25,
+    "variant" : "before"
+  },
+  {
+    "sha256" : "6a39d8035046963946225ac8134f9dc3ea32413301703549cfcfd2a96d0615bc",
+    "staticProtected" : 454822,
+    "t" : 0.5,
+    "variant" : "before"
+  },
+  {
+    "sha256" : "2d9d8fa2b0cf58271c5bcd8356f0d63f92fe99f9f8687383ba574a248a267f10",
+    "staticProtected" : 455492,
+    "t" : 0.75,
+    "variant" : "before"
+  },
+  {
+    "sha256" : "18685dd3be01dde6e616afebd25d30e49a7ba7caff42d118514ef754c31af844",
+    "staticProtected" : 457270,
+    "t" : 0.25,
+    "variant" : "after"
+  },
+  {
+    "sha256" : "6a39d8035046963946225ac8134f9dc3ea32413301703549cfcfd2a96d0615bc",
+    "staticProtected" : 454822,
+    "t" : 0.5,
+    "variant" : "after"
+  },
+  {
+    "sha256" : "2d9d8fa2b0cf58271c5bcd8356f0d63f92fe99f9f8687383ba574a248a267f10",
+    "staticProtected" : 455492,
+    "t" : 0.75,
+    "variant" : "after"
+  }
+]

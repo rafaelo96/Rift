@@ -1,0 +1,95 @@
+{
+  "avatar69": {
+    "disabledFlagIdentical": true,
+    "matchesPreviousMidpoint": true,
+    "metrics": {
+      "enabled": true,
+      "evaluableBlocks": 50,
+      "height": 480,
+      "metadataPolicy": "replace xy only; retain original assessed confidence/visibility",
+      "pair": 4,
+      "patchSize": 8,
+      "PTS": [
+        69.194,
+        69.236
+      ],
+      "samples": [
+        {
+          "changedPixels": 1118,
+          "t": 0.25
+        },
+        {
+          "changedPixels": 1579,
+          "t": 0.5
+        },
+        {
+          "changedPixels": 1167,
+          "t": 0.75
+        }
+      ],
+      "width": 1152
+    }
+  },
+  "avatar300": {
+    "disabledFlagIdentical": true,
+    "matchesPreviousMidpoint": true,
+    "metrics": {
+      "enabled": true,
+      "evaluableBlocks": 25,
+      "height": 480,
+      "metadataPolicy": "replace xy only; retain original assessed confidence/visibility",
+      "pair": 4,
+      "patchSize": 8,
+      "PTS": [
+        300.175,
+        300.217
+      ],
+      "samples": [
+        {
+          "changedPixels": 1982,
+          "t": 0.25
+        },
+        {
+          "changedPixels": 2408,
+          "t": 0.5
+        },
+        {
+          "changedPixels": 2217,
+          "t": 0.75
+        }
+      ],
+      "width": 1152
+    }
+  },
+  "anime1082": {
+    "disabledFlagIdentical": true,
+    "matchesPreviousMidpoint": true,
+    "metrics": {
+      "enabled": true,
+      "evaluableBlocks": 41,
+      "height": 480,
+      "metadataPolicy": "replace xy only; retain original assessed confidence/visibility",
+      "pair": 4,
+      "patchSize": 8,
+      "PTS": [
+        1082.206,
+        1082.248
+      ],
+      "samples": [
+        {
+          "changedPixels": 173,
+          "t": 0.25
+        },
+        {
+          "changedPixels": 238,
+          "t": 0.5
+        },
+        {
+          "changedPixels": 227,
+          "t": 0.75
+        }
+      ],
+      "width": 1152
+    }
+  }
+}

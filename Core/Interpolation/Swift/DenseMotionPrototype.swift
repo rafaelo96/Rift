@@ -44,6 +44,10 @@ public final class DenseMotionPrototype {
     /// Requires RIFT_DENSE_CANDIDATES=1 at construction. 16 slots/patch; w=0 unused,
     /// w=1 evaluated/admitted, w=-1 rejected by temporal central-cost gate. Intrusive, offline only.
     public var candidateObserver: ((String,Int,Int,[SIMD4<Float>])->Void)?
+    /// Offline-only, opt-in final-field replacement. Never connected by the player.
+    /// Requires RIFT_DENSE_ORACLE=1; callers serialize access and exclude diagnostic timings.
+    public var diagnosticFlowOverride: (([SIMD4<Float>],[SIMD4<Float>])->([SIMD4<Float>],[SIMD4<Float>]))?
+    private let oracleEnabled=ProcessInfo.processInfo.environment["RIFT_DENSE_ORACLE"] == "1"
     private let candidateTrace: MTLBuffer?
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
@@ -319,6 +323,22 @@ public final class DenseMotionPrototype {
                 temporal.append(next)
             }
             finalFlows=temporal
+        }
+        if oracleEnabled,let override=diagnosticFlowOverride {
+            command.commit(); command.waitUntilCompleted()
+            guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Oracle readback failed") }
+            let fields=finalFlows.map { texture -> [SIMD4<Float>] in
+                var values=[SIMD4<Float>](repeating: .zero,count: width*height)
+                values.withUnsafeMutableBytes { texture.getBytes($0.baseAddress!,bytesPerRow: width*16,from: region,mipmapLevel: 0) }
+                return values
+            }
+            let replacement=override(fields[0],fields[1])
+            for (texture,values) in zip(finalFlows,[replacement.0,replacement.1]) {
+                guard values.count==width*height,values.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite && $0.w.isFinite && abs($0.x)<=Float(width)*2 && abs($0.y)<=Float(height)*2 && $0.z>=0 && $0.z<=1 }) else { throw MotionSearchEngine.EngineError.pipeline("Invalid oracle field") }
+                values.withUnsafeBytes { texture.replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*16) }
+            }
+            guard let next=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Oracle synthesis allocation failed") }
+            command=next
         }
         var results: [Result]=[]
         var fields: [[SIMD4<Float>]]=[]

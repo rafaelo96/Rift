@@ -66,6 +66,12 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if ProcessInfo.processInfo.environment["MV_STATIC_REAL"] != nil {
+    do { try replayStaticProtection();exit(0) } catch { print("STATIC REPLAY FAILED: \(error)");exit(3) }
+}
+if envInt("MV_STATIC_CHECK",0)==1 {
+    do { try checkStaticProtection();exit(0) } catch { print("STATIC CHECK FAILED: \(error)");exit(3) }
+}
 if envInt("MV_TRAJECTORY_CHECK",0)==1 {
     do { try checkTrajectoryDiagnostic(); exit(0) }
     catch { print("TRAJECTORY CHECK FAILED: \(error)");exit(3) }
