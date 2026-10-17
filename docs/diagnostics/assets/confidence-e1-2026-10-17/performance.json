@@ -1,0 +1,50 @@
+[
+  {
+    "flag": "off",
+    "samples": 810,
+    "workPlane": [
+      736,
+      320
+    ],
+    "p50MS": 32.709834,
+    "p95MS": 43.147458,
+    "maxMS": 48.453833,
+    "strongProcessedSamples": 5,
+    "guardEnabled": true,
+    "decodeActive": true,
+    "reference42_23MS": 42.23,
+    "limit44_23MS": 44.23,
+    "withinPlus2MS": true,
+    "temporalAcquisitionIncluded": false,
+    "diagnosticReadbackOrDiskDumpIncluded": false,
+    "chip": "Apple M4",
+    "build": "Release",
+    "warmupExcludedSeconds": 10,
+    "quantile": "empirical nearest-rank",
+    "durationSeconds": 45
+  },
+  {
+    "flag": "on",
+    "samples": 813,
+    "workPlane": [
+      736,
+      320
+    ],
+    "p50MS": 32.296,
+    "p95MS": 43.715041,
+    "maxMS": 51.157125,
+    "strongProcessedSamples": 5,
+    "guardEnabled": true,
+    "decodeActive": true,
+    "reference42_23MS": 42.23,
+    "limit44_23MS": 44.23,
+    "withinPlus2MS": true,
+    "temporalAcquisitionIncluded": false,
+    "diagnosticReadbackOrDiskDumpIncluded": false,
+    "chip": "Apple M4",
+    "build": "Release",
+    "warmupExcludedSeconds": 10,
+    "quantile": "empirical nearest-rank",
+    "durationSeconds": 45
+  }
+]

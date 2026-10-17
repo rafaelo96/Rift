@@ -1,0 +1,6 @@
+BATCHED SEARCH: 1 levels, raw and filtered vectors identical
+BATCHED SEARCH: 4 levels, raw and filtered vectors identical
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+NATIVE PATCH: 8-bit format, chroma, endpoints and metadata passed; total=8.66475ms
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+NATIVE PATCH: 10-bit format, chroma, endpoints and metadata passed; total=8.533458ms

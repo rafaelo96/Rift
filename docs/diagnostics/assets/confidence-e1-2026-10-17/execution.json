@@ -1,0 +1,27 @@
+{
+  "baseRevision": "a9aef01c4c956070abd09ae56b63756f619e7c45",
+  "chip": "Apple M4",
+  "build": "Release",
+  "sourceSHA256": {
+    "Core/Interpolation/Swift/PairConfidenceDiagnostics.swift": "989ac88d5efd11b9f4dc2d72c54b16432e013cf2467f7501acbf628f48778471",
+    "Core/Interpolation/Swift/DenseMotionPrototype.swift": "37dff05b02377a5e3595b35c985bbce28049344ba7f65b1b5ecccdb1ff7b4a9a",
+    "Core/Interpolation/Swift/DenseMotionShaders.swift": "37b557c1c5b94ccb0972b94acb1dcc4d5f2dfe1e0d4da0f4431f8a1c89f53ed7",
+    "Core/Interpolation/Tools/ConfidenceDiagnostic.swift": "d28d4834c11b31b1fc877ce00b1134a2c5b4ec8ec5ba98234358ac10ff0eaf29",
+    "Core/Interpolation/Tools/ConfidenceReport.py": "244550cecbd7302de719ded5f0ba0172cb8e1a21420b3373edc8752c59e4c9c2",
+    "Core/Interpolation/Tools/main.swift": "bbcff79c82d8714566c3523253cc3757b1baac0ca8d524459781bdc5c01c9385"
+  },
+  "binarySHA256": {
+    ".build/release/MVProbe": "af40b41bcf21c8ffde1095edcc76016c6f67ff1ac2b34582ccd6af79f5d3acf4",
+    ".build/release/Rift": "290134374b5eea609e9dc90ec99aa19a28889c58a4b7dc0c46cebc31ceb97d5c"
+  },
+  "staticProtectionShaderUnchanged": true,
+  "userUIFilesPreserved": true,
+  "oncePerPairRecords": 285,
+  "identityOutputs": 573,
+  "canonicalPNGsEqualPreE1": 3,
+  "stationaryControlsZeroJitter": 12,
+  "degradedPixels": 0,
+  "E2Implemented": false,
+  "liveActionSamples": 0,
+  "runtimeTimingExcludesTemporalAcquisition": true
+}

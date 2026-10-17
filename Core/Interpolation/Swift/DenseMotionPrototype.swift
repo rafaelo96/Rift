@@ -48,6 +48,11 @@ public final class DenseMotionPrototype {
     /// Requires RIFT_DENSE_ORACLE=1; callers serialize access and exclude diagnostic timings.
     public var diagnosticFlowOverride: (([SIMD4<Float>],[SIMD4<Float>])->([SIMD4<Float>],[SIMD4<Float>]))?
     private let oracleEnabled=ProcessInfo.processInfo.environment["RIFT_DENSE_ORACLE"] == "1"
+    /// Read-only, once per pair. Requires RIFT_PAIR_CONFIDENCE=1; no disk I/O in this module.
+    public var pairConfidenceObserver: ((Int,Int,[SIMD4<Float>])->Void)?
+    /// Offline temporal velocity evidence, normalized to this pair's interval; never used by synthesis.
+    public var diagnosticTemporalVectors: [SIMD4<Float>]?
+    private let pairConfidence: PairConfidenceDiagnostics?
     private let candidateTrace: MTLBuffer?
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
@@ -72,6 +77,7 @@ public final class DenseMotionPrototype {
             guard let buffer=device.makeBuffer(length: width*height*4,options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Ownership allocation failed") }
             return buffer
         }
+        pairConfidence=ProcessInfo.processInfo.environment["RIFT_PAIR_CONFIDENCE"] == "1" ? try PairConfidenceDiagnostics(device: device,width: width,height: height) : nil
         let candidateMode=ProcessInfo.processInfo.environment["RIFT_DENSE_CANDIDATES"] == "1"
         if candidateMode {
             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
@@ -341,6 +347,7 @@ public final class DenseMotionPrototype {
             guard let next=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Oracle synthesis allocation failed") }
             command=next
         }
+        try pairConfidence?.encode(command: command,images: original,fields: finalFlows,vectors: diagnosticTemporalVectors,offset: offsets[1])
         var results: [Result]=[]
         var fields: [[SIMD4<Float>]]=[]
         let batchNative = !downloadResults && !profileStages && diagnosticObserver == nil && candidateTrace == nil
@@ -427,6 +434,7 @@ public final class DenseMotionPrototype {
             let stages=gpuStages.keys.sorted().map { "\($0)=\(String(format: "%.3f",gpuStages[$0]!))ms" }.joined(separator: " ")
             print("DENSE GPU PROFILE \(width)x\(height) outputs=\(times.count) \(stages)")
         }
+        if let pairConfidence,let observer=pairConfidenceObserver {observer(pairConfidence.width,pairConfidence.height,pairConfidence.read())}
         return results
     }
 }

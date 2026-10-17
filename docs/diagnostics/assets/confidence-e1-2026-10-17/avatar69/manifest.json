@@ -1,0 +1,1446 @@
+{
+  "blockSize" : 8,
+  "content" : "animation; no live-action samples",
+  "fields" : [
+    "fb_px",
+    "sad_texture",
+    "fold_fraction",
+    "inverse_px",
+    "temporal_px",
+    "AB_luma",
+    "texture_sigma",
+    "existing_risk",
+    "truth_MAE_10bit",
+    "pixels"
+  ],
+  "guardEnabled" : true,
+  "height" : 480,
+  "records" : [
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 0,
+      "identitySamples" : 3,
+      "last" : 1,
+      "name" : "span1-pair0",
+      "PTS" : [
+        69.027000000000001,
+        69.069000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : false
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 1,
+      "identitySamples" : 3,
+      "last" : 2,
+      "name" : "span1-pair1",
+      "PTS" : [
+        69.069000000000003,
+        69.111000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 2,
+      "identitySamples" : 3,
+      "last" : 3,
+      "name" : "span1-pair2",
+      "PTS" : [
+        69.111000000000004,
+        69.152000000000001
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 3,
+      "identitySamples" : 3,
+      "last" : 4,
+      "name" : "span1-pair3",
+      "PTS" : [
+        69.152000000000001,
+        69.194000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 4,
+      "identitySamples" : 3,
+      "last" : 5,
+      "name" : "span1-pair4",
+      "PTS" : [
+        69.194000000000003,
+        69.236000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 5,
+      "identitySamples" : 3,
+      "last" : 6,
+      "name" : "span1-pair5",
+      "PTS" : [
+        69.236000000000004,
+        69.278000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 6,
+      "identitySamples" : 3,
+      "last" : 7,
+      "name" : "span1-pair6",
+      "PTS" : [
+        69.278000000000006,
+        69.319000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 7,
+      "identitySamples" : 3,
+      "last" : 8,
+      "name" : "span1-pair7",
+      "PTS" : [
+        69.319000000000003,
+        69.361000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 8,
+      "identitySamples" : 3,
+      "last" : 9,
+      "name" : "span1-pair8",
+      "PTS" : [
+        69.361000000000004,
+        69.403000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 9,
+      "identitySamples" : 3,
+      "last" : 10,
+      "name" : "span1-pair9",
+      "PTS" : [
+        69.403000000000006,
+        69.444000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 10,
+      "identitySamples" : 3,
+      "last" : 11,
+      "name" : "span1-pair10",
+      "PTS" : [
+        69.444000000000003,
+        69.486000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 11,
+      "identitySamples" : 3,
+      "last" : 12,
+      "name" : "span1-pair11",
+      "PTS" : [
+        69.486000000000004,
+        69.528000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 12,
+      "identitySamples" : 3,
+      "last" : 13,
+      "name" : "span1-pair12",
+      "PTS" : [
+        69.528000000000006,
+        69.569000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 13,
+      "identitySamples" : 3,
+      "last" : 14,
+      "name" : "span1-pair13",
+      "PTS" : [
+        69.569000000000003,
+        69.611000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 14,
+      "identitySamples" : 3,
+      "last" : 15,
+      "name" : "span1-pair14",
+      "PTS" : [
+        69.611000000000004,
+        69.653000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 15,
+      "identitySamples" : 3,
+      "last" : 16,
+      "name" : "span1-pair15",
+      "PTS" : [
+        69.653000000000006,
+        69.694999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 16,
+      "identitySamples" : 3,
+      "last" : 17,
+      "name" : "span1-pair16",
+      "PTS" : [
+        69.694999999999993,
+        69.736000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 17,
+      "identitySamples" : 3,
+      "last" : 18,
+      "name" : "span1-pair17",
+      "PTS" : [
+        69.736000000000004,
+        69.778000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 18,
+      "identitySamples" : 3,
+      "last" : 19,
+      "name" : "span1-pair18",
+      "PTS" : [
+        69.778000000000006,
+        69.819999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 19,
+      "identitySamples" : 3,
+      "last" : 20,
+      "name" : "span1-pair19",
+      "PTS" : [
+        69.819999999999993,
+        69.861000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 20,
+      "identitySamples" : 3,
+      "last" : 21,
+      "name" : "span1-pair20",
+      "PTS" : [
+        69.861000000000004,
+        69.903000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 21,
+      "identitySamples" : 3,
+      "last" : 22,
+      "name" : "span1-pair21",
+      "PTS" : [
+        69.903000000000006,
+        69.944999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 22,
+      "identitySamples" : 3,
+      "last" : 23,
+      "name" : "span1-pair22",
+      "PTS" : [
+        69.944999999999993,
+        69.986988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 23,
+      "identitySamples" : 3,
+      "last" : 24,
+      "name" : "span1-pair23",
+      "PTS" : [
+        69.986988888888888,
+        70.028000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 24,
+      "identitySamples" : 3,
+      "last" : 25,
+      "name" : "span1-pair24",
+      "PTS" : [
+        70.028000000000006,
+        70.069999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 25,
+      "identitySamples" : 3,
+      "last" : 26,
+      "name" : "span1-pair25",
+      "PTS" : [
+        70.069999999999993,
+        70.111988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 26,
+      "identitySamples" : 3,
+      "last" : 27,
+      "name" : "span1-pair26",
+      "PTS" : [
+        70.111988888888888,
+        70.153000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 27,
+      "identitySamples" : 3,
+      "last" : 28,
+      "name" : "span1-pair27",
+      "PTS" : [
+        70.153000000000006,
+        70.194999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 28,
+      "identitySamples" : 3,
+      "last" : 29,
+      "name" : "span1-pair28",
+      "PTS" : [
+        70.194999999999993,
+        70.236988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 29,
+      "identitySamples" : 3,
+      "last" : 30,
+      "name" : "span1-pair29",
+      "PTS" : [
+        70.236988888888888,
+        70.278999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 30,
+      "identitySamples" : 3,
+      "last" : 31,
+      "name" : "span1-pair30",
+      "PTS" : [
+        70.278999999999996,
+        70.319999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 31,
+      "identitySamples" : 3,
+      "last" : 32,
+      "name" : "span1-pair31",
+      "PTS" : [
+        70.319999999999993,
+        70.361988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 32,
+      "identitySamples" : 3,
+      "last" : 33,
+      "name" : "span1-pair32",
+      "PTS" : [
+        70.361988888888888,
+        70.403999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 33,
+      "identitySamples" : 3,
+      "last" : 34,
+      "name" : "span1-pair33",
+      "PTS" : [
+        70.403999999999996,
+        70.444999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 34,
+      "identitySamples" : 3,
+      "last" : 35,
+      "name" : "span1-pair34",
+      "PTS" : [
+        70.444999999999993,
+        70.486988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 35,
+      "identitySamples" : 3,
+      "last" : 36,
+      "name" : "span1-pair35",
+      "PTS" : [
+        70.486988888888888,
+        70.528999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 36,
+      "identitySamples" : 3,
+      "last" : 37,
+      "name" : "span1-pair36",
+      "PTS" : [
+        70.528999999999996,
+        70.569999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 37,
+      "identitySamples" : 3,
+      "last" : 38,
+      "name" : "span1-pair37",
+      "PTS" : [
+        70.569999999999993,
+        70.611988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 38,
+      "identitySamples" : 3,
+      "last" : 39,
+      "name" : "span1-pair38",
+      "PTS" : [
+        70.611988888888888,
+        70.653999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 39,
+      "identitySamples" : 3,
+      "last" : 40,
+      "name" : "span1-pair39",
+      "PTS" : [
+        70.653999999999996,
+        70.695999999999998
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 40,
+      "identitySamples" : 3,
+      "last" : 41,
+      "name" : "span1-pair40",
+      "PTS" : [
+        70.695999999999998,
+        70.736988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 41,
+      "identitySamples" : 3,
+      "last" : 42,
+      "name" : "span1-pair41",
+      "PTS" : [
+        70.736988888888888,
+        70.778999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 42,
+      "identitySamples" : 3,
+      "last" : 43,
+      "name" : "span1-pair42",
+      "PTS" : [
+        70.778999999999996,
+        70.820999999999998
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 43,
+      "identitySamples" : 3,
+      "last" : 44,
+      "name" : "span1-pair43",
+      "PTS" : [
+        70.820999999999998,
+        70.861988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 44,
+      "identitySamples" : 3,
+      "last" : 45,
+      "name" : "span1-pair44",
+      "PTS" : [
+        70.861988888888888,
+        70.903999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 45,
+      "identitySamples" : 3,
+      "last" : 46,
+      "name" : "span1-pair45",
+      "PTS" : [
+        70.903999999999996,
+        70.945999999999998
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 46,
+      "identitySamples" : 3,
+      "last" : 47,
+      "name" : "span1-pair46",
+      "PTS" : [
+        70.945999999999998,
+        70.988
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 47,
+      "identitySamples" : 3,
+      "last" : 48,
+      "name" : "span1-pair47",
+      "PTS" : [
+        70.988,
+        71.028999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 1,
+      "temporalAvailable" : false
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 0,
+      "identitySamples" : 1,
+      "last" : 2,
+      "name" : "span2-pair0",
+      "PTS" : [
+        69.027000000000001,
+        69.111000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : false
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 1,
+      "identitySamples" : 1,
+      "last" : 3,
+      "name" : "span2-pair1",
+      "PTS" : [
+        69.069000000000003,
+        69.152000000000001
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 2,
+      "identitySamples" : 1,
+      "last" : 4,
+      "name" : "span2-pair2",
+      "PTS" : [
+        69.111000000000004,
+        69.194000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 3,
+      "identitySamples" : 1,
+      "last" : 5,
+      "name" : "span2-pair3",
+      "PTS" : [
+        69.152000000000001,
+        69.236000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 4,
+      "identitySamples" : 1,
+      "last" : 6,
+      "name" : "span2-pair4",
+      "PTS" : [
+        69.194000000000003,
+        69.278000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 5,
+      "identitySamples" : 1,
+      "last" : 7,
+      "name" : "span2-pair5",
+      "PTS" : [
+        69.236000000000004,
+        69.319000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 6,
+      "identitySamples" : 1,
+      "last" : 8,
+      "name" : "span2-pair6",
+      "PTS" : [
+        69.278000000000006,
+        69.361000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 7,
+      "identitySamples" : 1,
+      "last" : 9,
+      "name" : "span2-pair7",
+      "PTS" : [
+        69.319000000000003,
+        69.403000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 8,
+      "identitySamples" : 1,
+      "last" : 10,
+      "name" : "span2-pair8",
+      "PTS" : [
+        69.361000000000004,
+        69.444000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 9,
+      "identitySamples" : 1,
+      "last" : 11,
+      "name" : "span2-pair9",
+      "PTS" : [
+        69.403000000000006,
+        69.486000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 10,
+      "identitySamples" : 1,
+      "last" : 12,
+      "name" : "span2-pair10",
+      "PTS" : [
+        69.444000000000003,
+        69.528000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 11,
+      "identitySamples" : 1,
+      "last" : 13,
+      "name" : "span2-pair11",
+      "PTS" : [
+        69.486000000000004,
+        69.569000000000003
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 12,
+      "identitySamples" : 1,
+      "last" : 14,
+      "name" : "span2-pair12",
+      "PTS" : [
+        69.528000000000006,
+        69.611000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 13,
+      "identitySamples" : 1,
+      "last" : 15,
+      "name" : "span2-pair13",
+      "PTS" : [
+        69.569000000000003,
+        69.653000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 14,
+      "identitySamples" : 1,
+      "last" : 16,
+      "name" : "span2-pair14",
+      "PTS" : [
+        69.611000000000004,
+        69.694999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 15,
+      "identitySamples" : 1,
+      "last" : 17,
+      "name" : "span2-pair15",
+      "PTS" : [
+        69.653000000000006,
+        69.736000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 16,
+      "identitySamples" : 1,
+      "last" : 18,
+      "name" : "span2-pair16",
+      "PTS" : [
+        69.694999999999993,
+        69.778000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 17,
+      "identitySamples" : 1,
+      "last" : 19,
+      "name" : "span2-pair17",
+      "PTS" : [
+        69.736000000000004,
+        69.819999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 18,
+      "identitySamples" : 1,
+      "last" : 20,
+      "name" : "span2-pair18",
+      "PTS" : [
+        69.778000000000006,
+        69.861000000000004
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 19,
+      "identitySamples" : 1,
+      "last" : 21,
+      "name" : "span2-pair19",
+      "PTS" : [
+        69.819999999999993,
+        69.903000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 20,
+      "identitySamples" : 1,
+      "last" : 22,
+      "name" : "span2-pair20",
+      "PTS" : [
+        69.861000000000004,
+        69.944999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 21,
+      "identitySamples" : 1,
+      "last" : 23,
+      "name" : "span2-pair21",
+      "PTS" : [
+        69.903000000000006,
+        69.986988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 22,
+      "identitySamples" : 1,
+      "last" : 24,
+      "name" : "span2-pair22",
+      "PTS" : [
+        69.944999999999993,
+        70.028000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 23,
+      "identitySamples" : 1,
+      "last" : 25,
+      "name" : "span2-pair23",
+      "PTS" : [
+        69.986988888888888,
+        70.069999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 24,
+      "identitySamples" : 1,
+      "last" : 26,
+      "name" : "span2-pair24",
+      "PTS" : [
+        70.028000000000006,
+        70.111988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 25,
+      "identitySamples" : 1,
+      "last" : 27,
+      "name" : "span2-pair25",
+      "PTS" : [
+        70.069999999999993,
+        70.153000000000006
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 26,
+      "identitySamples" : 1,
+      "last" : 28,
+      "name" : "span2-pair26",
+      "PTS" : [
+        70.111988888888888,
+        70.194999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 27,
+      "identitySamples" : 1,
+      "last" : 29,
+      "name" : "span2-pair27",
+      "PTS" : [
+        70.153000000000006,
+        70.236988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 28,
+      "identitySamples" : 1,
+      "last" : 30,
+      "name" : "span2-pair28",
+      "PTS" : [
+        70.194999999999993,
+        70.278999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 29,
+      "identitySamples" : 1,
+      "last" : 31,
+      "name" : "span2-pair29",
+      "PTS" : [
+        70.236988888888888,
+        70.319999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 30,
+      "identitySamples" : 1,
+      "last" : 32,
+      "name" : "span2-pair30",
+      "PTS" : [
+        70.278999999999996,
+        70.361988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 31,
+      "identitySamples" : 1,
+      "last" : 33,
+      "name" : "span2-pair31",
+      "PTS" : [
+        70.319999999999993,
+        70.403999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 32,
+      "identitySamples" : 1,
+      "last" : 34,
+      "name" : "span2-pair32",
+      "PTS" : [
+        70.361988888888888,
+        70.444999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 33,
+      "identitySamples" : 1,
+      "last" : 35,
+      "name" : "span2-pair33",
+      "PTS" : [
+        70.403999999999996,
+        70.486988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 34,
+      "identitySamples" : 1,
+      "last" : 36,
+      "name" : "span2-pair34",
+      "PTS" : [
+        70.444999999999993,
+        70.528999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 35,
+      "identitySamples" : 1,
+      "last" : 37,
+      "name" : "span2-pair35",
+      "PTS" : [
+        70.486988888888888,
+        70.569999999999993
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 36,
+      "identitySamples" : 1,
+      "last" : 38,
+      "name" : "span2-pair36",
+      "PTS" : [
+        70.528999999999996,
+        70.611988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 37,
+      "identitySamples" : 1,
+      "last" : 39,
+      "name" : "span2-pair37",
+      "PTS" : [
+        70.569999999999993,
+        70.653999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 38,
+      "identitySamples" : 1,
+      "last" : 40,
+      "name" : "span2-pair38",
+      "PTS" : [
+        70.611988888888888,
+        70.695999999999998
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 39,
+      "identitySamples" : 1,
+      "last" : 41,
+      "name" : "span2-pair39",
+      "PTS" : [
+        70.653999999999996,
+        70.736988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 40,
+      "identitySamples" : 1,
+      "last" : 42,
+      "name" : "span2-pair40",
+      "PTS" : [
+        70.695999999999998,
+        70.778999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 41,
+      "identitySamples" : 1,
+      "last" : 43,
+      "name" : "span2-pair41",
+      "PTS" : [
+        70.736988888888888,
+        70.820999999999998
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 42,
+      "identitySamples" : 1,
+      "last" : 44,
+      "name" : "span2-pair42",
+      "PTS" : [
+        70.778999999999996,
+        70.861988888888888
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 43,
+      "identitySamples" : 1,
+      "last" : 45,
+      "name" : "span2-pair43",
+      "PTS" : [
+        70.820999999999998,
+        70.903999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 44,
+      "identitySamples" : 1,
+      "last" : 46,
+      "name" : "span2-pair44",
+      "PTS" : [
+        70.861988888888888,
+        70.945999999999998
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 45,
+      "identitySamples" : 1,
+      "last" : 47,
+      "name" : "span2-pair45",
+      "PTS" : [
+        70.903999999999996,
+        70.988
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : true
+    },
+    {
+      "blockCount" : 8640,
+      "contextUsesHiddenFrame" : false,
+      "first" : 46,
+      "identitySamples" : 1,
+      "last" : 48,
+      "name" : "span2-pair46",
+      "PTS" : [
+        70.945999999999998,
+        71.028999999999996
+      ],
+      "signalCalls" : 1,
+      "span" : 2,
+      "temporalAvailable" : false
+    }
+  ],
+  "width" : 1152
+}

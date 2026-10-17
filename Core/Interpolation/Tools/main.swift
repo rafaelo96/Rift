@@ -66,6 +66,12 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if envInt("MV_CONFIDENCE_CHECK",0)==1 {
+    do {try checkConfidenceDiagnostic();exit(0)} catch {print("CONFIDENCE CHECK FAILED: \(error)");exit(3)}
+}
+if let folder=ProcessInfo.processInfo.environment["MV_CONFIDENCE_WINDOW"] {
+    do {try replayConfidenceDiagnostic(folder: folder);exit(0)} catch {print("CONFIDENCE FAILED: \(error)");exit(3)}
+}
 if envInt("MV_FULL_ORACLE_CHECK",0)==1 {
     do {try checkFullOracle();exit(0)} catch {print("FULL ORACLE FAILED: \(error)");exit(3)}
 }

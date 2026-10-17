@@ -1,0 +1,28 @@
+{
+  "triplets": 141,
+  "adjacentPairs": 144,
+  "tripletBlocks": 1218240,
+  "trainPairs": 54,
+  "testPairs": 60,
+  "embargoedPairs": 27,
+  "trainFirstIndex": "0..17",
+  "testFirstIndex": "27..46",
+  "contentGroups": {
+    "animation": 141,
+    "liveAction": 0
+  },
+  "combination": "Equal mean of six train empirical mid-CDF ranks, omitting unavailable temporal evidence; thresholds trained without test labels. Existing risk is a separate comparator. No learned network/model.",
+  "positiveBlockDefinition": "Real central reconstruction MAE >16 ten-bit codes; alternatives >8 and >32 reported",
+  "thresholds": {
+    "0.01": 0.9583563380663478,
+    "0.02": 0.9439189585770866,
+    "0.05": 0.905458546512312,
+    "0.1": 0.8442130102426776,
+    "0.2": 0.7187323489066408,
+    "0.3": 0.6019473463682455,
+    "0.5": 0.4472580707523064
+  },
+  "signalDefinitions": "See report; canonical midpoint block-center diagnostics, texture from transported 8x8 source patch.",
+  "identityOutputs": 573,
+  "degradedPixels": 0
+}

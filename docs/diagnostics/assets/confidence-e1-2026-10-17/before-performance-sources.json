@@ -1,0 +1,8 @@
+{
+  "Core/Interpolation/Swift/DenseMotionShaders.swift": "37b557c1c5b94ccb0972b94acb1dcc4d5f2dfe1e0d4da0f4431f8a1c89f53ed7",
+  "Core/Interpolation/Swift/DenseMotionPrototype.swift": "37dff05b02377a5e3595b35c985bbce28049344ba7f65b1b5ecccdb1ff7b4a9a",
+  "UI/ContentView.swift": "6586c59a0ae4ca51016ef9d01bd9d40a5564788e4d574f36b8f0c03da3091fec",
+  "UI/Player/FloatingPictureInPicture.swift": "811c0f749709dfd47fdcfcf839d206ecaf9350390ed1e5804a92b2946b64aeae",
+  "UI/Player/RiftPlayerState.swift": "fd26ee8919cbf3a357ef3ed19ecdbca3fe78a016280cbd692481444ce715a781",
+  "UI/RiftApp.swift": "de44b3dd6dec4f3b3a24924158225649cbcc617635241d94bace0f19436fc34e"
+}

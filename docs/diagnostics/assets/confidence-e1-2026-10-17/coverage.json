@@ -1,0 +1,380 @@
+[
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.01,
+    "threshold": 0.9583563380663478,
+    "markedPixelFraction": 4.340277777777778e-05,
+    "maxPairMarkedFraction": 0.0008101851851851852,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.02,
+    "threshold": 0.9439189585770866,
+    "markedPixelFraction": 0.0002314814814814815,
+    "maxPairMarkedFraction": 0.0042824074074074075,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.05,
+    "threshold": 0.905458546512312,
+    "markedPixelFraction": 0.002213541666666666,
+    "maxPairMarkedFraction": 0.03298611111111111,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.1,
+    "threshold": 0.8442130102426776,
+    "markedPixelFraction": 0.01044801311728395,
+    "maxPairMarkedFraction": 0.0962962962962963,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.2,
+    "threshold": 0.7187323489066408,
+    "markedPixelFraction": 0.0671995563271605,
+    "maxPairMarkedFraction": 0.21516203703703704,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.3,
+    "threshold": 0.6019473463682455,
+    "markedPixelFraction": 0.16875964506172839,
+    "maxPairMarkedFraction": 0.34502314814814816,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "targetCalibrationFraction": 0.5,
+    "threshold": 0.4472580707523064,
+    "markedPixelFraction": 0.5147231867283951,
+    "maxPairMarkedFraction": 0.7402777777777778,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.01,
+    "threshold": 0.9583563380663478,
+    "markedPixelFraction": 0.0014529156816390858,
+    "maxPairMarkedFraction": 0.02048611111111111,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.02,
+    "threshold": 0.9439189585770866,
+    "markedPixelFraction": 0.003858845547675335,
+    "maxPairMarkedFraction": 0.04513888888888889,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.05,
+    "threshold": 0.905458546512312,
+    "markedPixelFraction": 0.015243301812450752,
+    "maxPairMarkedFraction": 0.14224537037037038,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.1,
+    "threshold": 0.8442130102426776,
+    "markedPixelFraction": 0.04879334121355398,
+    "maxPairMarkedFraction": 0.27488425925925924,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.2,
+    "threshold": 0.7187323489066408,
+    "markedPixelFraction": 0.17860027580772264,
+    "maxPairMarkedFraction": 0.43449074074074073,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.3,
+    "threshold": 0.6019473463682455,
+    "markedPixelFraction": 0.3448113672182821,
+    "maxPairMarkedFraction": 0.528587962962963,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "targetCalibrationFraction": 0.5,
+    "threshold": 0.4472580707523064,
+    "markedPixelFraction": 0.7150881599684791,
+    "maxPairMarkedFraction": 0.8649305555555555,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.01,
+    "threshold": 0.9583563380663478,
+    "markedPixelFraction": 0.010095968364197532,
+    "maxPairMarkedFraction": 0.14201388888888888,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.02,
+    "threshold": 0.9439189585770866,
+    "markedPixelFraction": 0.02076099537037037,
+    "maxPairMarkedFraction": 0.23333333333333334,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.05,
+    "threshold": 0.905458546512312,
+    "markedPixelFraction": 0.05561342592592592,
+    "maxPairMarkedFraction": 0.5243055555555556,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.1,
+    "threshold": 0.8442130102426776,
+    "markedPixelFraction": 0.11240596064814813,
+    "maxPairMarkedFraction": 0.8134259259259259,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.2,
+    "threshold": 0.7187323489066408,
+    "markedPixelFraction": 0.1895061728395062,
+    "maxPairMarkedFraction": 0.9554398148148148,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.3,
+    "threshold": 0.6019473463682455,
+    "markedPixelFraction": 0.23780623070987653,
+    "maxPairMarkedFraction": 0.9940972222222222,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "targetCalibrationFraction": 0.5,
+    "threshold": 0.4472580707523064,
+    "markedPixelFraction": 0.3849512924382716,
+    "maxPairMarkedFraction": 0.9984953703703704,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.01,
+    "threshold": 0.9583563380663478,
+    "markedPixelFraction": 0.022571907013396373,
+    "maxPairMarkedFraction": 0.1728009259259259,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.02,
+    "threshold": 0.9439189585770866,
+    "markedPixelFraction": 0.0446660756501182,
+    "maxPairMarkedFraction": 0.2847222222222222,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.05,
+    "threshold": 0.905458546512312,
+    "markedPixelFraction": 0.11339883766745469,
+    "maxPairMarkedFraction": 0.5494212962962963,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.1,
+    "threshold": 0.8442130102426776,
+    "markedPixelFraction": 0.21027383766745472,
+    "maxPairMarkedFraction": 0.8144675925925926,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.2,
+    "threshold": 0.7187323489066408,
+    "markedPixelFraction": 0.318395390070922,
+    "maxPairMarkedFraction": 0.9605324074074074,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.3,
+    "threshold": 0.6019473463682455,
+    "markedPixelFraction": 0.37575600866824277,
+    "maxPairMarkedFraction": 0.9938657407407407,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "targetCalibrationFraction": 0.5,
+    "threshold": 0.4472580707523064,
+    "markedPixelFraction": 0.5797749211977936,
+    "maxPairMarkedFraction": 0.9993055555555556,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.01,
+    "threshold": 0.9583563380663478,
+    "markedPixelFraction": 0.0009717399691358025,
+    "maxPairMarkedFraction": 0.04664351851851852,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.02,
+    "threshold": 0.9439189585770866,
+    "markedPixelFraction": 0.0027922453703703703,
+    "maxPairMarkedFraction": 0.13402777777777777,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.05,
+    "threshold": 0.905458546512312,
+    "markedPixelFraction": 0.009854841820987654,
+    "maxPairMarkedFraction": 0.47303240740740743,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.1,
+    "threshold": 0.8442130102426776,
+    "markedPixelFraction": 0.016710069444444444,
+    "maxPairMarkedFraction": 0.8013888888888889,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.2,
+    "threshold": 0.7187323489066408,
+    "markedPixelFraction": 0.025436439043209875,
+    "maxPairMarkedFraction": 0.9599537037037037,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.3,
+    "threshold": 0.6019473463682455,
+    "markedPixelFraction": 0.03402054398148149,
+    "maxPairMarkedFraction": 0.9938657407407407,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "targetCalibrationFraction": 0.5,
+    "threshold": 0.4472580707523064,
+    "markedPixelFraction": 0.052898341049382715,
+    "maxPairMarkedFraction": 0.9967592592592592,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.01,
+    "threshold": 0.9583563380663478,
+    "markedPixelFraction": 0.0017631993695823482,
+    "maxPairMarkedFraction": 0.04189814814814815,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.02,
+    "threshold": 0.9439189585770866,
+    "markedPixelFraction": 0.005649133175728921,
+    "maxPairMarkedFraction": 0.13449074074074074,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.05,
+    "threshold": 0.905458546512312,
+    "markedPixelFraction": 0.020542750197005515,
+    "maxPairMarkedFraction": 0.4878472222222222,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.1,
+    "threshold": 0.8442130102426776,
+    "markedPixelFraction": 0.035296000788022065,
+    "maxPairMarkedFraction": 0.8091435185185185,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.2,
+    "threshold": 0.7187323489066408,
+    "markedPixelFraction": 0.05234436564223799,
+    "maxPairMarkedFraction": 0.9642361111111111,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.3,
+    "threshold": 0.6019473463682455,
+    "markedPixelFraction": 0.061849881796690306,
+    "maxPairMarkedFraction": 0.9939814814814815,
+    "actualDegradedFraction": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "targetCalibrationFraction": 0.5,
+    "threshold": 0.4472580707523064,
+    "markedPixelFraction": 0.11222419227738377,
+    "maxPairMarkedFraction": 0.9966435185185185,
+    "actualDegradedFraction": 0
+  }
+]

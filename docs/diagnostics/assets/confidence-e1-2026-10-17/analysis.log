@@ -1,0 +1,98 @@
+[
+  {
+    "group": "animation",
+    "signal": "fb_px",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.5794117925714691,
+    "Spearman": 0.41715091726101944,
+    "AUROC_MAE_gt8": 0.9147855270805113,
+    "AUROC_MAE_gt16": 0.9298211245421003,
+    "AUROC_MAE_gt32": 0.9321696994990054,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "sad_texture",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.40664546689484754,
+    "Spearman": 0.4148528800548765,
+    "AUROC_MAE_gt8": 0.9006768188421335,
+    "AUROC_MAE_gt16": 0.9208298440918599,
+    "AUROC_MAE_gt32": 0.9281730072504509,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "fold_fraction",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.43171673668929317,
+    "Spearman": 0.4716804014790969,
+    "AUROC_MAE_gt8": 0.8141850453991901,
+    "AUROC_MAE_gt16": 0.8270199624055938,
+    "AUROC_MAE_gt32": 0.8298550217068559,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "inverse_px",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.5371448018425209,
+    "Spearman": 0.44439817108179747,
+    "AUROC_MAE_gt8": 0.8701984052815998,
+    "AUROC_MAE_gt16": 0.8857481808794088,
+    "AUROC_MAE_gt32": 0.8919465510218373,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "temporal_px",
+    "blocks": 518400,
+    "availableFraction": 0.95,
+    "Pearson": 0.5449800256245221,
+    "Spearman": 0.45386338535829385,
+    "AUROC_MAE_gt8": 0.8964346601212688,
+    "AUROC_MAE_gt16": 0.9108671821196768,
+    "AUROC_MAE_gt32": 0.9170540521051052,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "AB_luma",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.7101051023911821,
+    "Spearman": 0.7709431783772103,
+    "AUROC_MAE_gt8": 0.891429701473165,
+    "AUROC_MAE_gt16": 0.8996080889159347,
+    "AUROC_MAE_gt32": 0.9119507694186866,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "existing_risk",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.42862067090564776,
+    "Spearman": 0.6499509131092075,
+    "AUROC_MAE_gt8": 0.854239367838825,
+    "AUROC_MAE_gt16": 0.8572125360465325,
+    "AUROC_MAE_gt32": 0.8514508190133678,
+    "positiveFraction_gt16": 0.13924382716049383
+  },
+  {
+    "group": "animation",
+    "signal": "combined",
+    "blocks": 518400,
+    "availableFraction": 1.0,
+    "Pearson": 0.5507247953042722,
+    "Spearman": 0.5939346330463191,
+    "AUROC_MAE_gt8": 0.9370181450548801,
+    "AUROC_MAE_gt16": 0.9464113006603142,
+    "AUROC_MAE_gt32": 0.9482717404031716,
+    "positiveFraction_gt16": 0.13924382716049383
+  }
+]
