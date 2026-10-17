@@ -123,7 +123,7 @@ assert counts(np.array([0,0]),np.array([1,0]))['precision'] is None
 for name,rows in [('coverage',coverage),('truth',truth),('fixed-roi-per-pair',neighborhood),('visual',visual)]:
  (OUT/f'{name}.json').write_text(json.dumps(rows,indent=2,allow_nan=False)+'\n')
  if rows:
-  with (OUT/f'{name}.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+  with (OUT/f'{name}.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=list(rows[0]),lineterminator='\n');w.writeheader();w.writerows(rows)
 (OUT/'input-sha256.json').write_text(json.dumps(inputs,indent=2)+'\n')
 print(json.dumps(dict(primary=[r for r in coverage if r['span']==1 and r['method'] in ['E1-top10.0','E1-top5.0','E2-final','E2-initial']],truth=truth),indent=2))
 
