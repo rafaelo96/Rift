@@ -1,0 +1,19 @@
+{
+  "AflagOffByteIdentity": true,
+  "BdisabledSyntheticPixelsAndCoordinatesAssertedEqual": true,
+  "BcandidateRecoveredSixSamples": true,
+  "BcandidateStationaryControlCount": 12,
+  "BcandidateMaximumStationaryJitter": 0,
+  "existingReferenceCount": 24,
+  "existingReferenceRegressions": 1,
+  "Baccepted": false,
+  "runtimeBRestored": true,
+  "performanceBudgetPassed": false,
+  "finalSourceHashes": {
+    "Core/Interpolation/Swift/DenseMotionShaders.swift": "5a5e2676872753c8519f80ecbc4f31104fa03eb1b85f6b82995ed180cf13b6df",
+    "Core/Interpolation/Swift/DenseMotionPrototype.swift": "0ff3e2feff44044231cefdeab01884ba1483a6b21cb11b11268471e15eefef52",
+    "Core/Interpolation/Swift/MotionCompensator.swift": "85094334c764b1e0f494db4c1d2c02fbfad462a901b5150af9471c06cfe88dd6",
+    "Core/Interpolation/Tools/StaticProtectionCheck.swift": "be62faacce6970399a5cb68e82e98555d8acec3d64eb699ae0586dc49d098159",
+    "Core/Interpolation/Tools/TrajectoryDiagnostic.swift": "c500225a4002e5254afe212e1270dd9e2f4711662e920ffbd3cedfc61fb6cecc"
+  }
+}

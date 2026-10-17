@@ -89,8 +89,8 @@ public final class MotionCompensator {
         }
     }
 
-    // Opt-in latency capture under real playback load; file writing is excluded from the sample.
-    private let pairTimingPath=ProcessInfo.processInfo.environment["RIFT_PAIR_TIMING_OUTPUT"]
+    // Opt-in latency capture under playback load; diagnostic output is excluded from the sample.
+    private let pairTimingEnabled=ProcessInfo.processInfo.environment["RIFT_PAIR_TIMING"] == "1"
     public let config: InterpolationConfig
 
     private let device: MTLDevice
@@ -227,17 +227,12 @@ public final class MotionCompensator {
     /// buffers de salida vienen del pool reusable de WarpEngine.
     /// Devuelve buffers vacíos y MS 0 si el par es inválido.
     public func interpolatePair(I0: CVPixelBuffer, I1: CVPixelBuffer, tValues: [Float], context: InterpolationTemporalContext? = nil) -> InterpolationPairResult {
-        let diagnosticStart=pairTimingPath == nil ? 0 : DispatchTime.now().uptimeNanoseconds
+        let diagnosticStart=pairTimingEnabled ? DispatchTime.now().uptimeNanoseconds : 0
         defer {
-            if let path=pairTimingPath {
+            if pairTimingEnabled {
                 let elapsed=Double(DispatchTime.now().uptimeNanoseconds-diagnosticStart)/1e6
-                if !FileManager.default.fileExists(atPath: path) { _=FileManager.default.createFile(atPath: path,contents: nil) }
-                if let handle=try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
-                    defer { try? handle.close() }
-                    _=try? handle.seekToEnd()
-                    let line="\(DispatchTime.now().uptimeNanoseconds),\(config.workWidth),\(config.workHeight),\(tValues.count),\(elapsed)\n"
-                    try? handle.write(contentsOf: Data(line.utf8))
-                }
+                let line="RIFT_PAIR_TIMING,\(DispatchTime.now().uptimeNanoseconds),\(config.workWidth),\(config.workHeight),\(tValues.count),\(elapsed)\n"
+                try? FileHandle.standardError.write(contentsOf: Data(line.utf8))
             }
         }
         guard !tValues.isEmpty,tValues.count<=4,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),

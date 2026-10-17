@@ -1,0 +1,194 @@
+[
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 0,
+    "before": 4.149817346643519,
+    "after": 3.9477991174768516,
+    "delta": -0.20201822916666723
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 1,
+    "before": 4.687608506944445,
+    "after": 4.468986906828704,
+    "delta": -0.21862160011574083
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 2,
+    "before": 4.933232060185185,
+    "after": 4.7541702835648145,
+    "delta": -0.1790617766203706
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 3,
+    "before": 5.954468677662037,
+    "after": 5.769337745949074,
+    "delta": -0.1851309317129628
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 4,
+    "before": 5.295052083333333,
+    "after": 5.1205873842592595,
+    "delta": -0.1744646990740737
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 1,
+    "before": 4.625054253472222,
+    "after": 4.406882957175926,
+    "delta": -0.21817129629629672
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 2,
+    "before": 4.691682942708334,
+    "after": 4.5047417534722225,
+    "delta": -0.18694118923611125
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 3,
+    "before": 5.804040075231481,
+    "after": 5.616263382523148,
+    "delta": -0.18777669270833286
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 0,
+    "before": 12.136308232060186,
+    "after": 12.162286603009258,
+    "delta": 0.025978370949072627
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 1,
+    "before": 23.989174623842594,
+    "after": 23.951390697337963,
+    "delta": -0.03778392650463047
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 2,
+    "before": 20.892901837384258,
+    "after": 20.863541666666666,
+    "delta": -0.02936017071759167
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 3,
+    "before": 33.7181640625,
+    "after": 33.66908817997685,
+    "delta": -0.049075882523148096
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 4,
+    "before": 23.83142180266204,
+    "after": 23.779329427083333,
+    "delta": -0.05209237557870594
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 1,
+    "before": 23.352607783564814,
+    "after": 23.314225260416666,
+    "delta": -0.038382523148147385
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 2,
+    "before": 20.988207103587964,
+    "after": 20.958678747106482,
+    "delta": -0.029528356481481666
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 3,
+    "before": 34.38382884837963,
+    "after": 34.33524124710648,
+    "delta": -0.048587601273148096
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 0,
+    "before": 1.313523582175926,
+    "after": 1.2816822193287036,
+    "delta": -0.031841362847222276
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 1,
+    "before": 1.2293963396990741,
+    "after": 1.203271484375,
+    "delta": -0.026124855324074048
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 2,
+    "before": 1.4098054108796296,
+    "after": 1.3783329716435184,
+    "delta": -0.031472439236111205
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 3,
+    "before": 1.4611924913194445,
+    "after": 1.4333640769675926,
+    "delta": -0.027828414351851904
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 4,
+    "before": 1.4345431857638888,
+    "after": 1.3959816261574074,
+    "delta": -0.038561559606481444
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 1,
+    "before": 1.2125,
+    "after": 1.1860695167824074,
+    "delta": -0.02643048321759256
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 2,
+    "before": 1.3991030092592593,
+    "after": 1.3679578993055554,
+    "delta": -0.031145109953703898
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 3,
+    "before": 1.4462239583333334,
+    "after": 1.418509476273148,
+    "delta": -0.02771448206018534
+  }
+]

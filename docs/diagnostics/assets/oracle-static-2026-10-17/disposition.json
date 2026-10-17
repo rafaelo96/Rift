@@ -1,0 +1,17 @@
+{
+  "chip": "Apple M4",
+  "build": "Release",
+  "statusA": "completed sparse photometric-oracle injection; no deformation-resolution claim",
+  "statusB": "both candidates rejected and runtime behavior reverted",
+  "runtimeMatchesCheckpointA": true,
+  "searchSelectionChanged": false,
+  "failedCriteria": [
+    "quantization candidate: 12.5% static-noise jitter",
+    "patch candidate: Avatar300 two-source reference0 MAE regression +0.025978370949072627",
+    "all GUI timing variants: p95 greater than 35ms"
+  ],
+  "sha256": {
+    "Core/Interpolation/Swift/DenseMotionShaders.swift": "5a5e2676872753c8519f80ecbc4f31104fa03eb1b85f6b82995ed180cf13b6df",
+    "Core/Interpolation/Swift/DenseMotionPrototype.swift": "0ff3e2feff44044231cefdeab01884ba1483a6b21cb11b11268471e15eefef52"
+  }
+}

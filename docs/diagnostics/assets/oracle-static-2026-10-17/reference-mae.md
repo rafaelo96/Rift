@@ -1,0 +1,30 @@
+# Per-reference MAE, 10-bit work-plane units
+
+Hidden-frame error is not universally motion truth in held animation, but the requested no-regression gate is enforced conservatively.
+
+| Case | Path | Pair | Before | Candidate | Change |
+| --- | --- | ---: | ---: | ---: | ---: |
+| avatar69 | DENSE GROUND TRUTH | 0 | 4.149817 | 3.947799 | -0.202018 |
+| avatar69 | DENSE GROUND TRUTH | 1 | 4.687609 | 4.468987 | -0.218622 |
+| avatar69 | DENSE GROUND TRUTH | 2 | 4.933232 | 4.754170 | -0.179062 |
+| avatar69 | DENSE GROUND TRUTH | 3 | 5.954469 | 5.769338 | -0.185131 |
+| avatar69 | DENSE GROUND TRUTH | 4 | 5.295052 | 5.120587 | -0.174465 |
+| avatar69 | DENSE FOUR GROUND TRUTH | 1 | 4.625054 | 4.406883 | -0.218171 |
+| avatar69 | DENSE FOUR GROUND TRUTH | 2 | 4.691683 | 4.504742 | -0.186941 |
+| avatar69 | DENSE FOUR GROUND TRUTH | 3 | 5.804040 | 5.616263 | -0.187777 |
+| avatar300 | DENSE GROUND TRUTH | 0 | 12.136308 | 12.162287 | +0.025978 **REGRESSION** |
+| avatar300 | DENSE GROUND TRUTH | 1 | 23.989175 | 23.951391 | -0.037784 |
+| avatar300 | DENSE GROUND TRUTH | 2 | 20.892902 | 20.863542 | -0.029360 |
+| avatar300 | DENSE GROUND TRUTH | 3 | 33.718164 | 33.669088 | -0.049076 |
+| avatar300 | DENSE GROUND TRUTH | 4 | 23.831422 | 23.779329 | -0.052092 |
+| avatar300 | DENSE FOUR GROUND TRUTH | 1 | 23.352608 | 23.314225 | -0.038383 |
+| avatar300 | DENSE FOUR GROUND TRUTH | 2 | 20.988207 | 20.958679 | -0.029528 |
+| avatar300 | DENSE FOUR GROUND TRUTH | 3 | 34.383829 | 34.335241 | -0.048588 |
+| anime1082 | DENSE GROUND TRUTH | 0 | 1.313524 | 1.281682 | -0.031841 |
+| anime1082 | DENSE GROUND TRUTH | 1 | 1.229396 | 1.203271 | -0.026125 |
+| anime1082 | DENSE GROUND TRUTH | 2 | 1.409805 | 1.378333 | -0.031472 |
+| anime1082 | DENSE GROUND TRUTH | 3 | 1.461192 | 1.433364 | -0.027828 |
+| anime1082 | DENSE GROUND TRUTH | 4 | 1.434543 | 1.395982 | -0.038562 |
+| anime1082 | DENSE FOUR GROUND TRUTH | 1 | 1.212500 | 1.186070 | -0.026430 |
+| anime1082 | DENSE FOUR GROUND TRUTH | 2 | 1.399103 | 1.367958 | -0.031145 |
+| anime1082 | DENSE FOUR GROUND TRUTH | 3 | 1.446224 | 1.418509 | -0.027714 |

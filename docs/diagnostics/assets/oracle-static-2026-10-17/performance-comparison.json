@@ -1,0 +1,68 @@
+[
+  {
+    "variant": "baseline",
+    "chip": "Apple M4",
+    "build": "Release",
+    "samples": 809,
+    "workPlane": [
+      736,
+      320
+    ],
+    "warmupExcludedSeconds": 10,
+    "p50MS": 33.782167,
+    "p95MS": 43.287625,
+    "maxMS": 50.421417,
+    "p95Below35MS": false,
+    "outputsPerPair": {
+      "3": 311,
+      "2": 498
+    },
+    "decodeActive": true,
+    "strongRequested": true,
+    "scope": "Whole interpolatePair under GUI decode/Strong/presentation load, excluding separately executing decode/presentation durations and diagnostic file write."
+  },
+  {
+    "variant": "rejected-quantization",
+    "chip": "Apple M4",
+    "build": "Release",
+    "samples": 806,
+    "workPlane": [
+      736,
+      320
+    ],
+    "warmupExcludedSeconds": 10,
+    "p50MS": 33.03775,
+    "p95MS": 42.021458,
+    "maxMS": 49.346541,
+    "p95Below35MS": false,
+    "outputsPerPair": {
+      "3": 309,
+      "2": 497
+    },
+    "decodeActive": true,
+    "strongRequested": true,
+    "scope": "Whole interpolatePair under GUI decode/Strong/presentation load, excluding separately executing decode/presentation durations and diagnostic file write."
+  },
+  {
+    "variant": "rejected-patch",
+    "chip": "Apple M4",
+    "build": "Release",
+    "samples": 806,
+    "workPlane": [
+      736,
+      320
+    ],
+    "warmupExcludedSeconds": 10,
+    "p50MS": 32.742917,
+    "p95MS": 42.563375,
+    "maxMS": 49.936834,
+    "p95Below35MS": false,
+    "outputsPerPair": {
+      "2": 492,
+      "3": 314
+    },
+    "decodeActive": true,
+    "strongRequested": true,
+    "scope": "Whole interpolatePair under GUI decode/Strong/presentation load, excluding separately executing decode/presentation durations and diagnostic file write."
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "chip": "Apple M4",
+  "build": "Release",
+  "samples": 809,
+  "warmupExcludedSeconds": 10,
+  "workPlane": [
+    736,
+    320
+  ],
+  "source": "4K Avatar around 69s",
+  "decodeActive": true,
+  "strongRequested": true,
+  "p50": 33.782167,
+  "p95": 43.287625,
+  "max": 50.421417,
+  "outputsPerPair": {
+    "3": 311,
+    "2": 498
+  },
+  "scope": "Whole interpolatePair call under GUI load; concurrent decode and presentation not summed; logging overhead excluded."
+}

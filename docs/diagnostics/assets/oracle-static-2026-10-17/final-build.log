@@ -1,0 +1,225 @@
+warning: 'rift': found 14 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetBatching.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetCandidate.patch
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceProbe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceRegularized.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceCorrespondenceGraph.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisCheck.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnosticRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectorySurvivalReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/chroma_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/feature_correspondence_probe.py
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Scheduler/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Rendering/Tools/AdmissionCheck.swift
+    /Users/rafael/Documents/Rift/Rendering/Tools/SuperResolutionIdentityCheck.swift
+warning: 'rift': found 23 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Interpolation/Checks/PoolCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/CenteredCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/ContourWarpCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseMotionCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/MotionGridCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/NativeSamplingCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetBatching.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetCandidate.patch
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceProbe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceRegularized.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/StaticProtectionCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceCorrespondenceGraph.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisCheck.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnostic.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnosticRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectorySurvivalReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/chroma_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/feature_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/FramePool/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Demux/CSource/ffmpeg_c.c
+    /Users/rafael/Documents/Rift/Core/Demux/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/DecodeAudio/CSource/ffmpeg_audio.c
+    /Users/rafael/Documents/Rift/Core/DecodeAudio/Tools/main.swift
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Decode/Tools/main.swift
+Building for production...
+[Using on-disk description]
+[1 / 10] Rendering
+[2 / 5] Interpolation
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionCompensator.swift:515:38: warning: result of call to 'withUnsafeMutableBufferPointer' is unused [#NoUsage]
+513 |                                                        rowBytes: w)
+514 |                             for b in 0..<256 { vdspHist[b] = 0 }
+515 |                             vdspHist.withUnsafeMutableBufferPointer { histBuf in
+    |                                      `- warning: result of call to 'withUnsafeMutableBufferPointer' is unused [#NoUsage]
+516 |                                 vImageHistogramCalculation_Planar8(&srcBuf, histBuf.baseAddress!, vImage_Flags(kvImageNoFlags))
+517 |                             }
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:204:22: warning: result of call to 'withUnsafeBytes' is unused [#NoUsage]
+202 |             }
+203 |             guard let buffer = centeredPrevious else { throw EngineError.pipeline("Temporal predictor allocation failed") }
+204 |             previous.withUnsafeBytes { bytes in memcpy(buffer.contents(), bytes.baseAddress!, bytes.count) }
+    |                      `- warning: result of call to 'withUnsafeBytes' is unused [#NoUsage]
+205 |         }
+206 |         if centeredOutput == nil {
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:397:17: warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+395 |             enc.setBuffer(mvBuffer[0]!, offset: 0, index: 0)
+396 |             enc.setBuffer(smooth, offset: 0, index: 1)
+397 |             var g0 = grids[0]
+    |                 `- warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+398 |             var uni = MEUniforms(
+399 |                 level: 0, width: 0, height: 0, blockSize: 0,
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:426:17: warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+424 |             enc.setComputePipelineState(deadZonePSO)
+425 |             enc.setBuffer(target, offset: 0, index: 0)
+426 |             var g0 = grids[0]
+    |                 `- warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+427 |             var uni = MEUniforms(
+428 |                 level: 0, width: 0, height: 0, blockSize: 0,
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:458:17: warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+456 |             enc.setBuffer(tPrev, offset: 0, index: 1)
+457 |             enc.setBuffer(tOut, offset: 0, index: 2)
+458 |             var g0 = grids[0]
+    |                 `- warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+459 |             var uni = MEUniforms(
+460 |                 level: 0, width: 0, height: 0, blockSize: 0,
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[#VariableNeverMutated]: <https://docs.swift.org/compiler/documentation/diagnostics/variable-never-mutated>
+[4 / 7] Interpolation
+[10 / 14] MVProbe-product
+[12 / 16] Rift-product
+/Users/rafael/Documents/Rift/UI/Player/RiftPlayerState.swift:1064:16: warning: main actor-isolated static property 'languageNames' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+1052 |     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
+1053 |     // frecuentes; si no está, se usa streamTitle o índice como fallback.
+1054 |     private static let languageNames: [String: String] = [
+     |                        `- note: static property declared here
+1055 |         "spa": "Español", "eng": "Inglés", "fre": "Francés", "fra": "Francés",
+1056 |         "deu": "Alemán", "ger": "Alemán", "ita": "Italiano", "por": "Portugués",
+     :
+1062 |     private static nonisolated func languageName(for code: String?) -> String? {
+1063 |         guard let code = code?.lowercased() else { return nil }
+1064 |         return languageNames[code]
+     |                `- warning: main actor-isolated static property 'languageNames' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+1065 |     }
+1066 |
+
+/Users/rafael/Documents/Rift/UI/Player/RiftPlayerState.swift:2074:35: warning: reference to captured var 'self' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2072 |                     d.close()
+2073 |                     await MainActor.run {
+2074 |                         guard let self, self.videoOpenRequestID == requestID else { return }
+     |                                   `- warning: reference to captured var 'self' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2075 |                         self.statusMessage = "No video track"
+2076 |                     }
+
+/Users/rafael/Documents/Rift/UI/Player/RiftPlayerState.swift:2107:31: warning: reference to captured var 'self' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2105 |             } catch {
+2106 |                 await MainActor.run {
+2107 |                     guard let self, self.videoOpenRequestID == requestID else { return }
+     |                               `- warning: reference to captured var 'self' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2108 |                     self.statusMessage = "Open failed: \(error.localizedDescription)"
+2109 |                     self.conversionProgress = 0
+
+/Users/rafael/Documents/Rift/UI/Player/RiftPlayerState.swift:2360:41: warning: reference to captured var 'decoded' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2358 |                         return false
+2359 |                     }
+2360 |                     self.totalDecoded = decoded
+     |                                         `- warning: reference to captured var 'decoded' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2361 |                     pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
+2362 |                     self.logDecodedFormatOnce(decodedFrame.pixelBuffer)
+
+/Users/rafael/Documents/Rift/UI/Player/RiftPlayerState.swift:2529:27: warning: reference to captured var 'self' in concurrently-executing code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2527 |             let cues = Self.readSubtitleCues(url: url, trackStreamIndex: streamIndex)
+2528 |             await MainActor.run {
+2529 |                 guard let self,
+     |                           `- warning: reference to captured var 'self' in concurrently-e[15 / 18] Rift-product
+xecuting code; this is an error in the Swift 6 language mode [#SendableClosureCaptures]
+2530 |                       self.subtitleSessionID == sessionID,
+2531 |                       self.sourceURL == url else { return }
+
+[#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
+/Users/rafael/Documents/Rift/Package.swift: Rift-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavformat.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: Rift-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavcodec.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: Rift-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavutil.61.dylib' which was built for newer version 27.0
+[17 / 18] Rift-product
+[18 / 20] Rift-product
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift:1924:13: warning: initialization of immutable value 'g' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+1922 |     let mg = engine.grids.count
+1923 |     for lvl in 0..<mg {
+1924 |         let g = engine.grids[lvl]
+     |             `- warning: initialization of immutable value 'g' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+1925 |         let f = engine.downloadMV(level: lvl, smoothed: false)
+1926 |         let mags = f.map(magpx)
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift:2036:13: warning: initialization of immutable value 'g' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+2034 |
+2035 |     for lvl in 0..<engine.grids.count {
+2036 |         let g = engine.grids[lvl]
+     |             `- warning: initialization of immutable value 'g' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+2037 |         let mvs = engine.downloadMV(level: lvl)
+2038 |         for b in mvs {
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift:2492:9: warning: variable 'emaA' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+2490 |     var flicker = 0
+2491 |     var flickerTot = 0
+2492 |     var emaA: [Double] = []
+     |         `- warning: variable 'emaA' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+2493 |     for bx in 0..<g {
+2494 |         let series = tjFields.map { $0[bx] }
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift:380:14: warning: immutable value 's0' was never used; consider replacing with '_' or removing it [#NoUsage]
+ 378 |     var best = samples[minIdx].s
+ 379 |     if minIdx >= 1 && minIdx < samples.count - 1 {
+ 380 |         let (s0, y0v) = (samples[minIdx - 1].s, samples[minIdx - 1].sad)
+     |              `- warning: immutable value 's0' was never used; consider replacing with '_' or removing it [#NoUsage]
+ 381 |         let (s1, y1v) = (samples[minIdx].s, samples[minIdx].sad)
+ 382 |         let (s2, y2v) = (samples[minIdx + 1].s, samples[minIdx + 1].sad)
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift:382:14: warning: immutable value 's2' was never used; consider replacing with '_' or removing it [#NoUsage]
+ 380 |         let (s0, y0v) = (samples[minIdx - 1].s, samples[minIdx - 1].sad)
+ 381 |         let (s1, y1v) = (samples[minIdx].s, samples[minIdx].sad)
+ 382 |         let (s2, y2v) = (samples[minIdx + 1].s, samples[minIdx + 1].sad)
+     |              `- warning: immutable value 's2' was never used; consider replacing with '_' or removing it [#NoUsage]
+ 383 |         let denom = y0v - 2 * y1v + y2v
+ 384 |         if abs(denom) > 1e-12 {
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseMotionCheck.swift:61:22: warning: 'CVBufferGetAttachment' was deprecated in macOS 12.0: renamed to 'CVBufferCopyAttachment(_:_:_:)' [#DeprecatedDeclaration]
+ 59 |         let mid=result.pixelBuffers[1]
+ 60 |         precondition(mid !== first && mid !== last && CVPixelBufferGetPixelFormatType(mid)==format && CVPixelBufferGetWidth(mid)==64 && CVPixelBufferGetHeight(mid)==48)
+ 61 |         precondition(CVBufferGetAttachment(mid,kCVImageBufferColorPrimariesKey,nil) != nil,"Native patch output lost color metadata")
+    |                      |- warning: 'CVBufferGetAttachment' was deprecated in macOS 12.0: renamed to 'CVBufferCopyAttachment(_:_:_:)' [#DeprecatedDeclaration]
+    |                      `- note: use 'CVBufferCopyAttachment(_:_:_:)' instead
+ 62 |         CVPixelBufferLockBaseAddress(mid,.readOnly)
+ 63 |         let base=CVPixelBufferGetBaseAddressOfPlane(mid,1)!,stride=CVPixelBufferGetBytesPerRowOfPlane(mid,1)
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseMotionCheck.swift:91:150: warning: 'CVBufferGetAttachment' was deprecated in macOS 12.0: renamed to 'CVBufferCopyAttachment(_:_:_:)' [#DeprecatedDeclaration]
+ 89 |         let moving=InterpolationTemporalContext(before: buffer(-4,false),after: buffer(8,true),beforeInterval: 1,afterInterval: 1)
+ 90 |         let temporalResult=engine.interpolatePair(I0: first,I1: last,tValues: [0.25,0.5,0.75],context: moving)
+ 91 |         precondition(temporalResult.pixelBuffers.count==3 && temporalResult.pixelBuffers.allSatisfy { CVPixelBufferGetPixelFormatType($0)==format && CVBufferGetAttachment($0,kCVImageBufferColorPrimariesKey,nil) != nil },"Moving context lost native outputs or metadata")
+    |                                                                                                                                                      |- warning: 'CVBufferGetAttachment' was deprecated in macOS 12.0: renamed to 'CVBufferCopyAttachment(_:_:_:)' [#DeprecatedDeclaration]
+    |                                                                                                                           [19 / 20] MVProbe-product
+                           `- note: use 'CVBufferCopyAttachment(_:_:_:)' instead
+ 92 |         let invalid=InterpolationTemporalContext(before: first,after: last,beforeInterval: .nan,afterInterval: 1)
+ 93 |         let recovered=engine.interpolatePair(I0: first,I1: last,tValues: [0.5],context: invalid)
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[#VariableNeverMutated]: <https://docs.swift.org/compiler/documentation/diagnostics/variable-never-mutated>
+/Users/rafael/Documents/Rift/Package.swift: MVProbe-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavformat.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: MVProbe-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavcodec.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: MVProbe-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavutil.61.dylib' which was built for newer version 27.0
+[22 / 24] MVProbe-product
+[23 / 24] MVProbe-product
+Build complete! (19.16 s)

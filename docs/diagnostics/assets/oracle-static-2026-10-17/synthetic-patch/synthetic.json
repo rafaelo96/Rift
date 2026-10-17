@@ -1,0 +1,104 @@
+{
+  "chip" : "Apple M4",
+  "jitterDefinition" : "fraction of interior pixels differing from stationary source by more than one 10-bit code value",
+  "knownDisplacement" : 4,
+  "mode" : "isolated synthesis; no decode\/Strong timing claim",
+  "motion" : [
+    {
+      "frozenPixels" : 960,
+      "interiorPixels" : 3840,
+      "inverseSourceErrorPx" : 0.5,
+      "mae" : 0.0031824601642695218,
+      "variant" : "before"
+    },
+    {
+      "frozenPixels" : 0,
+      "interiorPixels" : 3840,
+      "inverseSourceErrorPx" : 0,
+      "mae" : 0.00024205954598536972,
+      "variant" : "after"
+    }
+  ],
+  "stationary" : [
+    {
+      "beforeAfterMAE" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0,
+      "wrongMovingField" : false
+    },
+    {
+      "beforeAfterMAE" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0.00097751710563898087,
+      "wrongMovingField" : false
+    },
+    {
+      "beforeAfterMAE" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0,
+      "wrongMovingField" : true
+    },
+    {
+      "beforeAfterMAE" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0.00097751710563898087,
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0,
+      "profile" : "flat",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0.00097751710563898087,
+      "profile" : "flat",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0,
+      "profile" : "gradient",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0.00097751710563898087,
+      "profile" : "gradient",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0,
+      "profile" : "quantized-noise",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0.00097751710563898087,
+      "profile" : "quantized-noise",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0,
+      "profile" : "low-contrast-edge",
+      "wrongMovingField" : true
+    },
+    {
+      "baselineJitter" : 0,
+      "jitterFractionAbove1LSB" : 0,
+      "noise" : 0.00097751710563898087,
+      "profile" : "low-contrast-edge",
+      "wrongMovingField" : true
+    }
+  ]
+}

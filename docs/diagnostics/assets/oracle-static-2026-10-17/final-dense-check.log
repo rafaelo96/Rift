@@ -1,0 +1,45 @@
+PATCH PROPAGATION: wrong 0px candidate recovered as verified 4px neighbor
+PATCH SURFACES: candidates 0/8px, selected=0.0px
+PATCH SURFACE AMBIGUITY: selected=8.0px, expected=8px
+DENSE INVERSE: affine ground truth passed; old fixed-point residual exceeds 1px
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=0, t=0.25, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=0, t=0.5, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=0, t=0.75, MAE=0.015625
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=true, stationaryForeground=false, border=0, t=0.25, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=true, stationaryForeground=false, border=0, t=0.5, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=true, stationaryForeground=false, border=0, t=0.75, MAE=0.010416666666666666
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=true, border=0, t=0.25, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=true, border=0, t=0.5, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=true, border=0, t=0.75, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=1, t=0.25, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=1, t=0.5, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=1, t=0.75, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=2, t=0.25, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=2, t=0.5, MAE=0.0
+Visibility mismatches: 0, first: []
+DENSE VISIBILITY ORACLE: collision=false, stationaryForeground=false, border=2, t=0.75, MAE=0.010416666666666666
+Visibility mismatches: 0, first: []
+DENSE FOUR: false occlusion rejected, moving and static trajectories retain temporal evidence
+DENSE LAYERS: t=0.25, baseline MAE=14.261393229166666, dense MAE=4.429036458333333, ms=3.189291
+DENSE LAYERS: t=0.5, baseline MAE=20.263020833333332, dense MAE=6.450846354166667, ms=1.105167
+DENSE LAYERS: t=0.75, baseline MAE=14.848958333333334, dense MAE=4.665690104166667, ms=1.404791
+DENSE FOUR LAYERS: MAE=6.383463541666667
+DENSE TRANSLATION: mean vector error=0.004474615584513231 px
+DENSE TRANSLATION: original-detail pixel MAE=0.556640625
+DENSE FOUR TRANSLATION: pixel MAE=0.5540364583333334
+DENSE HELD NEIGHBORS: midpoint pixel MAE=0.556640625, two-frame MAE=0.556640625
+DENSE NOISY HELD: midpoint pixel MAE=0.556640625
+OK — dense layered sequence, endpoints, static, deterministic output, invalid input and translation checks

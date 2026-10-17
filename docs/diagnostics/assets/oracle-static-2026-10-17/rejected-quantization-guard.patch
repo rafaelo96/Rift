@@ -1,0 +1,32 @@
+diff --git a/Core/Interpolation/Swift/DenseMotionPrototype.swift b/Core/Interpolation/Swift/DenseMotionPrototype.swift
+index 2b34315..e580427 100644
+--- a/Core/Interpolation/Swift/DenseMotionPrototype.swift
++++ b/Core/Interpolation/Swift/DenseMotionPrototype.swift
+@@ -77,7 +77,8 @@ public final class DenseMotionPrototype {
+             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
+             candidateTrace=trace
+         } else { candidateTrace=nil }
+-        let library=try device.makeLibrary(source: (candidateMode ? "#define DENSE_CANDIDATES 1\n" : "")+denseMotionMSL,options: nil)
++        let staticMotion=ProcessInfo.processInfo.environment["RIFT_STATIC_MOTION_GUARD"] == "1"
++        let library=try device.makeLibrary(source: (candidateMode ? "#define DENSE_CANDIDATES 1\n" : "")+(staticMotion ? "#define DENSE_STATIC_MOTION 1\n" : "")+denseMotionMSL,options: nil)
+         var compiled: [String:MTLComputePipelineState]=[:]
+         for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
+diff --git a/Core/Interpolation/Swift/DenseMotionShaders.swift b/Core/Interpolation/Swift/DenseMotionShaders.swift
+index d4aa70d..b6455b4 100644
+--- a/Core/Interpolation/Swift/DenseMotionShaders.swift
++++ b/Core/Interpolation/Swift/DenseMotionShaders.swift
+@@ -522,6 +522,13 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
+     still=still && abs(av-bv+offset)<=2*abs(v0-v1+offset)+1.0f/1023.0f;
+     // During an exposure change, point-wise equality cannot override a verified moving patch.
+     if(offset!=0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) still=false;
++#ifdef DENSE_STATIC_MOTION
++    // Point equality can alias moving detail. Trust reciprocal motion only when its patch fits
++    // at least as well as the static patch within one source quantization code value.
++    if(still && offset==0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) {
++        if(denseMatch(a,b,q0,q1,offset)<=denseMatch(a,b,p,p,offset)+1.0f/1023.0f) still=false;
++    }
++#endif
+     float weights=(1-t)*c0+t*c1;
+     float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : (t<0.5f?av:bv);
+     float alpha=weights>1e-4f ? t*c1/weights : (t<0.5f ? 0 : 1);

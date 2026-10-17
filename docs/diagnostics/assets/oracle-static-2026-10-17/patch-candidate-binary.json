@@ -1,0 +1,6 @@
+{
+  "sha256": "338013ed42807b4765d55be8a244d57eb50de10e6389fad33428a270963edb91",
+  "guard": "8x8 L1 cost <80% of static cost; consistent supported flow",
+  "enabledByEnvironment": "RIFT_STATIC_MOTION_GUARD=1",
+  "status": "rejected due to measured reference regression"
+}

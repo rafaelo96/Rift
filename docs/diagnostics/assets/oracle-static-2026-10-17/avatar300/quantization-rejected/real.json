@@ -1,0 +1,38 @@
+[
+  {
+    "sha256" : "328ff1c7c62d703c594926ef9834193afdc6b98d98b5c2803c3503a9a6d1337b",
+    "staticProtected" : 121365,
+    "t" : 0.25,
+    "variant" : "before"
+  },
+  {
+    "sha256" : "8a7e5d0cf5e7baf547991dcd96f59ce7daf2a1daee94306dc883a470d440633c",
+    "staticProtected" : 120737,
+    "t" : 0.5,
+    "variant" : "before"
+  },
+  {
+    "sha256" : "7d242e58a028e59130c98b266dcd6438357641aeee9429f842f0714636a645d4",
+    "staticProtected" : 126354,
+    "t" : 0.75,
+    "variant" : "before"
+  },
+  {
+    "sha256" : "432f6988dd892bd91950338e4e0783bd868022ff515b793f76ee62f95dd010e5",
+    "staticProtected" : 51991,
+    "t" : 0.25,
+    "variant" : "after"
+  },
+  {
+    "sha256" : "1d778f4c5c23324a6037abd3b4a9aeae5ffe80c91ce1c8f57a096a9c871f7634",
+    "staticProtected" : 52842,
+    "t" : 0.5,
+    "variant" : "after"
+  },
+  {
+    "sha256" : "cdd07e050da925845b3f25a3e7ebcff1b75f3fca1e6f6a93f485afefed603778",
+    "staticProtected" : 56942,
+    "t" : 0.75,
+    "variant" : "after"
+  }
+]

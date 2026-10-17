@@ -1,0 +1,65 @@
+[
+  {
+    "case": "avatar69",
+    "t": 0.25,
+    "changedPixels8bit": 12689,
+    "meanAbsoluteChange8bit": 0.04616066261574074,
+    "maxChange8bit": 31
+  },
+  {
+    "case": "avatar69",
+    "t": 0.5,
+    "changedPixels8bit": 15778,
+    "meanAbsoluteChange8bit": 0.0520580150462963,
+    "maxChange8bit": 37
+  },
+  {
+    "case": "avatar69",
+    "t": 0.75,
+    "changedPixels8bit": 17634,
+    "meanAbsoluteChange8bit": 0.050855396412037034,
+    "maxChange8bit": 33
+  },
+  {
+    "case": "avatar300",
+    "t": 0.25,
+    "changedPixels8bit": 5663,
+    "meanAbsoluteChange8bit": 0.01044017650462963,
+    "maxChange8bit": 6
+  },
+  {
+    "case": "avatar300",
+    "t": 0.5,
+    "changedPixels8bit": 8064,
+    "meanAbsoluteChange8bit": 0.014827473958333334,
+    "maxChange8bit": 6
+  },
+  {
+    "case": "avatar300",
+    "t": 0.75,
+    "changedPixels8bit": 10819,
+    "meanAbsoluteChange8bit": 0.019840494791666666,
+    "maxChange8bit": 8
+  },
+  {
+    "case": "anime1082",
+    "t": 0.25,
+    "changedPixels8bit": 4591,
+    "meanAbsoluteChange8bit": 0.008622685185185185,
+    "maxChange8bit": 7
+  },
+  {
+    "case": "anime1082",
+    "t": 0.5,
+    "changedPixels8bit": 8468,
+    "meanAbsoluteChange8bit": 0.016008391203703703,
+    "maxChange8bit": 7
+  },
+  {
+    "case": "anime1082",
+    "t": 0.75,
+    "changedPixels8bit": 13195,
+    "meanAbsoluteChange8bit": 0.02496021412037037,
+    "maxChange8bit": 7
+  }
+]

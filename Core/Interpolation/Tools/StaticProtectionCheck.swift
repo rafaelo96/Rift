@@ -77,15 +77,22 @@ func checkStaticProtection() throws {
     let env=ProcessInfo.processInfo.environment,root=env["MV_STATIC_OUTPUT"]!
     try FileManager.default.createDirectory(atPath: root,withIntermediateDirectories: true)
     let baselineSource=try String(contentsOfFile: env["MV_STATIC_BASELINE"]!,encoding: .utf8)
-    let candidate=denseMotionMSL
+    let candidateSource=try env["MV_STATIC_CANDIDATE_MSL"].map { try String(contentsOfFile: $0,encoding: .utf8) } ?? denseMotionMSL
+    let candidate=(env["RIFT_STATIC_MOTION_GUARD"] == "1" ? "#define DENSE_STATIC_MOTION 1\n" : "")+candidateSource
     let w=96,h=64,n=w*h,d=Float(4)
     let baseline=try StaticSynthesisProbe(source: baselineSource,width: w,height: h),updated=try StaticSynthesisProbe(source: candidate,width: w,height: h)
     func signal(_ x: Float,_ y: Float) -> Float { 0.55+0.012*cos(x*Float.pi/4)+0.004*sin(y*0.37) }
     let a=(0..<n).map { signal(Float($0%w),Float($0/w)) },b=(0..<n).map { signal(Float($0%w)-d,Float($0/w)) }
     let f=Array(repeating: SIMD4<Float>(d,0,1,0),count: n),r=Array(repeating: SIMD4<Float>(-d,0,1,0),count: n)
+    staticSave(a.map { UInt16(($0*1023).rounded()) },w,h,root+"/synthetic-originalA.png")
+    staticSave(b.map { UInt16(($0*1023).rounded()) },w,h,root+"/synthetic-originalB.png")
+    staticSave((0..<n).map { UInt16((signal(Float($0%w)-d/2,Float($0/w))*1023).rounded()) },w,h,root+"/synthetic-truth.png")
     var results=[[String:Any]]()
+    var baselinePixels=[UInt16](),baselineCoordinates=[SIMD4<Float>]()
     for (name,probe) in [("before",baseline),("after",updated)] {
         let result=try probe.render(a: a,b: b,f: f,r: r,time: 0.5)
+        if name=="before" { baselinePixels=result.pixels;baselineCoordinates=result.coordinates }
+        if name=="after" && env["RIFT_STATIC_MOTION_GUARD"] != "1" { precondition(result.pixels==baselinePixels && result.coordinates==baselineCoordinates,"Disabled static candidate changed output") }
         var mae=0.0,frozen=0,count=0,vectorError=0.0
         for y in 8..<h-8 { for x in 8..<w-8 {
             let k=y*w+x;mae+=abs(Double(result.pixels[k])/1023-Double(signal(Float(x)-d/2,Float(y))))
@@ -112,6 +119,24 @@ func checkStaticProtection() throws {
         precondition(jitter<0.01,"Stationary content jitter >=1%")
         stationary.append(["wrongMovingField":movingField,"noise":noise,"jitterFractionAbove1LSB":jitter,"beforeAfterMAE":delta/Double(count)])
     } }
+    for profile in ["flat","gradient","quantized-noise","low-contrast-edge"] { for profileNoise in [Float(0),Float(1.0/1023)] {
+        let source=(0..<n).map { i -> Float in
+            let x=Float(i%w),y=Float(i/w)
+            if profile=="flat" { return 0.55 }
+            if profile=="gradient" { return 0.5+x*0.0003+y*0.0001 }
+            if profile=="low-contrast-edge" { return 0.5+(i%w<w/2 ? 0 : 0.004) }
+            var v=UInt32(i)&*1664525&+1013904223;v ^= v>>13;return 0.55+Float(Int(v%3)-1)/1023
+        }
+        let target=source.enumerated().map { $0.element+($0.offset%2==0 ? profileNoise : -profileNoise) }
+        let before=try baseline.render(a: source,b: target,f: f,r: r,time: 0.5),after=try updated.render(a: source,b: target,f: f,r: r,time: 0.5)
+        var bad=0,badBefore=0,count=0
+        for y in 8..<h-8 { for x in 8..<w-8 {
+            let k=y*w+x,truth=Int((source[k]*1023).rounded());if abs(Int(after.pixels[k])-truth)>1 { bad+=1 };if abs(Int(before.pixels[k])-truth)>1 { badBefore+=1 };count+=1
+        } }
+        let jitter=Double(bad)/Double(count)
+        stationary.append(["profile":profile,"noise":profileNoise,"wrongMovingField":true,"jitterFractionAbove1LSB":jitter,"baselineJitter":Double(badBefore)/Double(count)])
+        if env["MV_STATIC_STRICT_STATIONARY"]=="1" { precondition(jitter<0.01,"Stationary profile jitter >=1%") }
+    } }
     let result: [String:Any]=["chip":MTLCreateSystemDefaultDevice()!.name,"knownDisplacement":4,"motion":results,"stationary":stationary,"jitterDefinition":"fraction of interior pixels differing from stationary source by more than one 10-bit code value","mode":"isolated synthesis; no decode/Strong timing claim"]
     try JSONSerialization.data(withJSONObject: result,options: [.prettyPrinted,.sortedKeys]).write(to: URL(fileURLWithPath: root+"/synthetic.json"))
     print("STATIC SYNTHETIC: \(results)")
@@ -133,7 +158,7 @@ func replayStaticProtection() throws {
     let a=try luma("source0"),b=try luma("source1"),f=try field("forward"),r=try field("backward")
     let baselineSource=try String(contentsOfFile: env["MV_STATIC_BASELINE"]!,encoding: .utf8)
     var records=[[String:Any]]()
-    for (name,source) in [("before",baselineSource),("after",denseMotionMSL)] {
+    for (name,source) in [("before",baselineSource),("after",(env["RIFT_STATIC_MOTION_GUARD"] == "1" ? "#define DENSE_STATIC_MOTION 1\n" : "")+(try env["MV_STATIC_CANDIDATE_MSL"].map { try String(contentsOfFile: $0,encoding: .utf8) } ?? denseMotionMSL))] {
         let probe=try StaticSynthesisProbe(source: source,width: w,height: h)
         for time: Float in [0.25,0.5,0.75] {
             let result=try probe.render(a: a,b: b,f: f,r: r,time: time,nativeTenBit: true)

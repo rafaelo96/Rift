@@ -1,0 +1,14 @@
+{
+  "chip": "Apple M4",
+  "samples": 806,
+  "warmupExcludedSeconds": 10,
+  "workPlane": [
+    736,
+    320
+  ],
+  "p50": 33.03775,
+  "p95": 42.021458,
+  "max": 49.346541,
+  "candidate": "rejected quantization-budget guard",
+  "binarySHA256": "0777612e1041ed958c4aa014780bdc68465b11e3fcc669ce2e4897cc761b4452"
+}
