@@ -772,35 +772,3 @@ func checkPatchAffineCost() throws {
     FileHandle.standardOutput.write(Data("AFFINE DETAIL: selected=\(result[6*17+8].x), expected=8px from unblurred input\n".utf8))
     precondition(result[6*17+8].x==8,"Analysis-only match overrode correspondence supported by original detail")
 }
-
-// Equal-luminance trajectories must be separated by chroma throughout refinement.
-func checkChromaCorrespondence() throws {
-    let width=128,height=96
-    var y=[UInt16](repeating: 0,count: width*height)
-    var firstUV=[SIMD2<Float>](repeating: .zero,count: width*height)
-    var lastUV=firstUV
-    for row in 0..<height { for x in 0..<width {
-        y[row*width+x]=UInt16(200+((x%8)*37+(row%8)*61)%500)
-        firstUV[row*width+x]=SIMD2(0.2+Float(x)/256,0.3+Float(row)/384)
-        lastUV[row*width+x]=SIMD2(0.2+Float(max(0,x-8))/256,0.3+Float(row)/384)
-    } }
-    let pixels=y.withUnsafeBytes { Data($0) }
-    let uv=[firstUV,lastUV].map { $0.withUnsafeBytes { Data($0) } }
-    let seeds=(0..<(width/8*height/8)).map { SIMD2<Int32>((($0%(width/8))/4)%2==0 ? 32 : 16,0) }
-    let luma=try DenseMotionPrototype(width: width,height: height,inverseSearch: true)
-    let color=try DenseMotionPrototype(width: width,height: height,inverseSearch: true,colorMatching: true)
-    let baseline=try luma.interpolate(first: pixels,last: pixels,forward: seeds,backward: seeds.map { SIMD2(-$0.x,-$0.y) },times: [0.5])[0]
-    let result=try color.interpolate(first: pixels,last: pixels,forward: seeds,backward: seeds.map { SIMD2(-$0.x,-$0.y) },times: [0.5],correspondenceChroma: uv)[0]
-    func error(_ field: [SIMD4<Float>]) -> Float {
-        var total: Float=0,count: Float=0
-        for row in 24..<height-24 { for x in 32..<width-32 { total+=abs(field[row*width+x].x-8);count+=1 } }
-        return total/count
-    }
-    let before=error(baseline.forward),after=error(result.forward)
-    print("CHROMA CORRESPONDENCE: luma error=\(before), color error=\(after) px")
-    precondition(after<1 && before>3,"Chroma ambiguity regression")
-    do {
-        _=try color.interpolate(first: pixels,last: pixels,forward: seeds,backward: seeds,times: [0.5],correspondenceChroma: [Data(),Data()])
-        preconditionFailure("Invalid chroma accepted")
-    } catch { print("CHROMA CORRESPONDENCE: invalid input rejected") }
-}

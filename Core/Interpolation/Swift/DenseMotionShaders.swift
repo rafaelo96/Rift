@@ -8,37 +8,22 @@ constexpr sampler linearPixel(coord::pixel,address::clamp_to_edge,filter::linear
 float4 denseRead(texture2d<float,access::sample> image,float2 p) { return image.sample(linearPixel,p+0.5f); }
 kernel void denseUpload(texture2d<uint,access::read> input [[texture(0)]],texture2d<float,access::write> output [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
-    output.write(float4(float(input.read(p).r)/1023.0f,0,0,0),p);
-}
-kernel void denseUploadColor(texture2d<uint,access::read> input [[texture(0)]],texture2d<float,access::read> chroma [[texture(1)]],texture2d<float,access::write> output [[texture(2)]],uint2 p [[thread_position_in_grid]]) {
-    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
-    output.write(float4(float(input.read(p).r)/1023.0f,chroma.read(p).rg,0),p);
+    output.write(float(input.read(p).r)/1023.0f,p);
 }
 kernel void denseDown(texture2d<float,access::sample> input [[texture(0)]],texture2d<float,access::write> output [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float2 q=float2(p)*2+0.5f;
     const float weights[5]={1,4,6,4,1};
-#ifdef DENSE_COLOR
-    float4 v=0;
-    for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x) v+=weights[x+2]*weights[y+2]*denseRead(input,q+float2(x,y))/256;
-#else
     float v=0;
     for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x) v+=weights[x+2]*weights[y+2]*denseRead(input,q+float2(x,y)).r/256;
-#endif
     output.write(v,p);
 }
 kernel void denseAnalysisBlur(texture2d<float,access::sample> input [[texture(0)]],texture2d<float,access::write> output [[texture(1)]],constant float &offset [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     const float weights[5]={1,4,6,4,1};
-#ifdef DENSE_COLOR
-    float4 value=0;
-    for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x) value+=weights[x+2]*weights[y+2]*denseRead(input,float2(p)+float2(x,y))/256;
-    output.write(value-float4(offset,0,0,0),p);
-#else
     float value=0;
     for(int y=-2;y<=2;++y) for(int x=-2;x<=2;++x) value+=weights[x+2]*weights[y+2]*denseRead(input,float2(p)+float2(x,y)).r/256;
     output.write(value-offset,p);
-#endif
 }
 kernel void denseSeed(device const int2 *mv [[buffer(0)]],constant uint4 &u [[buffer(1)]],texture2d<float,access::write> output [[texture(0)]],uint2 p [[thread_position_in_grid]]) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
@@ -48,14 +33,8 @@ kernel void denseSeed(device const int2 *mv [[buffer(0)]],constant uint4 &u [[bu
 float densePatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 center,float2 v) {
     float cost=0;
     for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
-        float2 q=center+float2(x,y);
-#ifdef DENSE_COLOR
-        float3 error=denseRead(a,q).rgb-denseRead(b,q+v).rgb;
-        cost+=dot(error,error);
-#else
-        float error=denseRead(a,q).r-denseRead(b,q+v).r;
+        float2 q=center+float2(x,y); float error=denseRead(a,q).r-denseRead(b,q+v).r;
         cost+=error*error;
-#endif
     }
     return cost/64;
 }
@@ -195,13 +174,6 @@ float4 denseAggregatePatch(texture2d<float,access::sample> a,texture2d<float,acc
         }
         float residual=0;
         for(int yy=-1;yy<=1;++yy) for(int xx=-1;xx<=1;++xx) residual+=abs(source[(yy+1)*3+xx+1]-denseRead(b,float2(p)+patch.xy+float2(xx,yy)).r);
-#ifdef DENSE_COLOR
-        for(int yy=-1;yy<=1;++yy) for(int xx=-1;xx<=1;++xx) {
-            float2 q=float2(p)+float2(xx,yy);
-            float2 delta=abs(denseRead(a,q).gb-denseRead(b,q+patch.xy).gb);
-            residual+=delta.x+delta.y;
-        }
-#endif
         residual/=9;
         candidates[y*2+x]=patch; errors[y*2+x]=residual;
         float error=residual+sqrt(max(0.0f,patch.w));
