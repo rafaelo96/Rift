@@ -1,0 +1,112 @@
+import Foundation
+import Metal
+import CoreGraphics
+import ImageIO
+
+@main struct SurfaceSynthesisRender {
+    static func main() throws {
+        let args=CommandLine.arguments
+        guard args.count==6 else { fatalError("Usage: render first.png last.png forward.f32 backward.f32 output-directory") }
+        func load(_ path:String) throws -> (Int,Int,[Float]) {
+            guard let source=CGImageSourceCreateWithURL(URL(fileURLWithPath:path) as CFURL,nil),let image=CGImageSourceCreateImageAtIndex(source,0,nil),image.bitsPerPixel==8,image.bitsPerComponent==8,let bytes=image.dataProvider?.data else { fatalError("8-bit grayscale PNG required: \(path)") }
+            let w=image.width,h=image.height
+            guard w>=8,h>=8,w<=2048,h<=2048 else { fatalError("Bounded 8..2048 image required") }
+            let p=CFDataGetBytePtr(bytes)!
+            return (w,h,(0..<w*h).map { Float(p[($0/w)*image.bytesPerRow+$0%w])/255 })
+        }
+        let (w,h,first)=try load(args[1]),(w1,h1,last)=try load(args[2])
+        guard w==w1,h==h1,let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { fatalError("Matching inputs and Metal device required") }
+        let n=w*h
+        func loadFlow(_ path:String) throws -> [SIMD4<Float>] {
+            let data=try Data(contentsOf:URL(fileURLWithPath:path))
+            guard data.count==n*16 else { fatalError("Expected \(n*16) field bytes, got \(data.count)") }
+            let values=data.withUnsafeBytes { bytes in (0..<n).map { bytes.loadUnaligned(fromByteOffset:$0*16,as:SIMD4<Float>.self) } }
+            guard values.allSatisfy({$0.x.isFinite && $0.y.isFinite && $0.z.isFinite && $0.w.isFinite && abs($0.x)<8192 && abs($0.y)<8192 && $0.z>=0 && $0.z<=1}) else { fatalError("Invalid flow payload") }
+            return values
+        }
+        let fields=try [loadFlow(args[3]),loadFlow(args[4])]
+        var shader=denseMotionMSL
+        let variant=ProcessInfo.processInfo.environment["SURFACE_INVERSE_VARIANT"] ?? "current"
+        if variant=="newton" { shader=shader.replacingOccurrences(of:"step/=max(1.0f,length(step)/4.0f);",with:"") }
+        else if variant != "current" { fatalError("Unknown inverse variant") }
+        let library=try device.makeLibrary(source:shader,options:nil)
+        let project=try device.makeComputePipelineState(function:library.makeFunction(name:"denseProject")!)
+        let synth=try device.makeComputePipelineState(function:library.makeFunction(name:"denseSynthesize")!)
+        func texture(_ format:MTLPixelFormat)->MTLTexture {
+            let d=MTLTextureDescriptor.texture2DDescriptor(pixelFormat:format,width:w,height:h,mipmapped:false)
+            d.storageMode = .shared;d.usage=[.shaderRead,.shaderWrite]
+            return device.makeTexture(descriptor:d)!
+        }
+        func upload<T>(_ values:[T],_ format:MTLPixelFormat)->MTLTexture {
+            let image=texture(format)
+            values.withUnsafeBytes { image.replace(region:MTLRegionMake2D(0,0,w,h),mipmapLevel:0,withBytes:$0.baseAddress!,bytesPerRow:w*MemoryLayout<T>.stride) };return image
+        }
+        func save(_ values:[UInt16],_ path:String) {
+            let bytes=values.map { UInt8(min(255,(UInt32($0)*255+511)/1023)) }
+            let provider=CGDataProvider(data:Data(bytes) as CFData)!
+            let image=CGImage(width:w,height:h,bitsPerComponent:8,bitsPerPixel:8,bytesPerRow:w,space:CGColorSpaceCreateDeviceGray(),bitmapInfo:CGBitmapInfo(rawValue:0),provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent)!
+            let destination=CGImageDestinationCreateWithURL(URL(fileURLWithPath:path) as CFURL,"public.png" as CFString,1,nil)!
+            CGImageDestinationAddImage(destination,image,nil);precondition(CGImageDestinationFinalize(destination))
+        }
+        let outputURL=URL(fileURLWithPath:args[5]);try FileManager.default.createDirectory(at:outputURL,withIntermediateDirectories:true)
+        let a=upload(first,.r32Float),b=upload(last,.r32Float)
+        var f=upload(fields[0],.rgba32Float),r=upload(fields[1],.rgba32Float)
+        let reassess=ProcessInfo.processInfo.environment["SURFACE_REASSESS"]=="1"
+        if reassess {
+            let blurred=[texture(.r32Float),texture(.r32Float)],assessed=[texture(.rgba32Float),texture(.rgba32Float)]
+            let blur=try device.makeComputePipelineState(function:library.makeFunction(name:"denseAnalysisBlur")!)
+            let assess=try device.makeComputePipelineState(function:library.makeFunction(name:"denseTVAssess")!)
+            let command=queue.makeCommandBuffer()!
+            for (i,input) in [a,b].enumerated() {
+                let e=command.makeComputeCommandEncoder()!;e.setComputePipelineState(blur)
+                e.setTexture(input,index:0);e.setTexture(blurred[i],index:1)
+                var offset=Float(0);e.setBytes(&offset,length:4,index:0)
+                e.dispatchThreads(MTLSize(width:w,height:h,depth:1),threadsPerThreadgroup:MTLSize(width:16,height:8,depth:1));e.endEncoding()
+            }
+            for direction in 0..<2 {
+                let e=command.makeComputeCommandEncoder()!;e.setComputePipelineState(assess)
+                for (i,image) in (direction==0 ? [blurred[0],blurred[1],f,assessed[0],r] : [blurred[1],blurred[0],r,assessed[1],f]).enumerated() {e.setTexture(image,index:i)}
+                e.dispatchThreads(MTLSize(width:w,height:h,depth:1),threadsPerThreadgroup:MTLSize(width:16,height:8,depth:1));e.endEncoding()
+            }
+            command.commit();command.waitUntilCompleted()
+            guard command.status == .completed else {fatalError("Assessment GPU failure")}
+            f=assessed[0];r=assessed[1]
+        }
+        var records=[[String:Any]]()
+        for time in [Float(0.25),0.5,0.75] {
+            let output=texture(.r16Uint),confidence=texture(.r32Float),residual=texture(.rg32Float),coordinates=texture(.rgba32Float),blend=texture(.r32Float)
+            let owners=(0..<2).map {_ in device.makeBuffer(length:n*4,options:.storageModeShared)!}
+            for owner in owners { memset(owner.contents(),0,n*4) }
+            let command=queue.makeCommandBuffer()!
+            var bits=UInt32(ceil(log2(Double(n+1)))),offset=Float(0)
+            func dispatch(_ e:MTLComputeCommandEncoder) { e.dispatchThreads(MTLSize(width:w,height:h,depth:1),threadsPerThreadgroup:MTLSize(width:16,height:8,depth:1));e.endEncoding() }
+            for direction in 0..<2 {
+                let e=command.makeComputeCommandEncoder()!;e.setComputePipelineState(project)
+                for (i,image) in (direction==0 ? [a,b,f,r] : [b,a,r,f]).enumerated() {e.setTexture(image,index:i)}
+                var amount=direction==0 ? time : 1-time
+                e.setBuffer(owners[direction],offset:0,index:0);e.setBytes(&bits,length:4,index:1);e.setBytes(&amount,length:4,index:2);e.setBytes(&offset,length:4,index:3);dispatch(e)
+            }
+            let e=command.makeComputeCommandEncoder()!;e.setComputePipelineState(synth)
+            for (i,image) in [a,b,f,r,output,confidence,residual,coordinates,blend].enumerated() {e.setTexture(image,index:i)}
+            var t=time,projection=SIMD2<UInt32>(bits,1)
+            e.setBytes(&t,length:4,index:0);e.setBytes(&projection,length:8,index:1);e.setBuffer(owners[0],offset:0,index:2);e.setBuffer(owners[1],offset:0,index:3);e.setBytes(&offset,length:4,index:4);dispatch(e)
+            command.commit();command.waitUntilCompleted();if let error=command.error {throw error}
+            var pixels=[UInt16](repeating:0,count:n),errors=[SIMD2<Float>](repeating:.zero,count:n)
+            pixels.withUnsafeMutableBytes {output.getBytes($0.baseAddress!,bytesPerRow:w*2,from:MTLRegionMake2D(0,0,w,h),mipmapLevel:0)}
+            errors.withUnsafeMutableBytes {residual.getBytes($0.baseAddress!,bytesPerRow:w*8,from:MTLRegionMake2D(0,0,w,h),mipmapLevel:0)}
+            save(pixels,outputURL.appendingPathComponent("t\(time).png").path)
+            let bad=errors.filter {$0.x>1 || $0.y>1}.count
+            records.append(["t":time,"inverseResidualAbove1px":bad,"meanResidual":errors.reduce(0.0){$0+Double($1.x+$1.y)}/Double(n*2)])
+        }
+        var folds=[Int]()
+        for flow in fields {
+            var count=0
+            for y in 1..<h-1 {for x in 1..<w-1 {
+                let gx=(flow[y*w+x+1]-flow[y*w+x-1])*0.5,gy=(flow[(y+1)*w+x]-flow[(y-1)*w+x])*0.5
+                if (1+gx.x)*(1+gy.y)-gy.x*gx.y<=0 {count+=1}
+            }};folds.append(count)
+        }
+        let data=try JSONSerialization.data(withJSONObject:["width":w,"height":h,"variant":variant,"reassessed":reassess,"endpointFoldedPixels":folds,"frames":records,"timing":"Not a playback benchmark; includes diagnostic uploads/downloads"],options:[.sortedKeys,.prettyPrinted])
+        try data.write(to:outputURL.appendingPathComponent("metrics.json"));FileHandle.standardOutput.write(data)
+    }
+}

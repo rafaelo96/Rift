@@ -1,0 +1,27 @@
+{
+  "endpointFoldedPixels" : [
+    52084,
+    73868
+  ],
+  "frames" : [
+    {
+      "inverseResidualAbove1px" : 359252,
+      "meanResidual" : 22.748194076051114,
+      "t" : 0.25
+    },
+    {
+      "inverseResidualAbove1px" : 361820,
+      "meanResidual" : 17.168159429892977,
+      "t" : 0.5
+    },
+    {
+      "inverseResidualAbove1px" : 358475,
+      "meanResidual" : 17.556462292629469,
+      "t" : 0.75
+    }
+  ],
+  "height" : 480,
+  "timing" : "Not a playback benchmark; includes diagnostic uploads\/downloads",
+  "variant" : "current",
+  "width" : 1152
+}
