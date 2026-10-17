@@ -1,0 +1,32 @@
+[
+  {
+    "case": "avatar69",
+    "span": 1,
+    "maxReconstructedRiskDifference": 7.641909738342889e-08
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "maxReconstructedRiskDifference": 1.242600911055547e-07
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "maxReconstructedRiskDifference": 1.5402767417072027e-07
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "maxReconstructedRiskDifference": 1.5107003115133466e-07
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "maxReconstructedRiskDifference": 0
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "maxReconstructedRiskDifference": 0
+  }
+]

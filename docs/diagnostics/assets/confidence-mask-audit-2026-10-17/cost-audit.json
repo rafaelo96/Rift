@@ -1,0 +1,156 @@
+{
+  "runs": [
+    {
+      "state": "off",
+      "run": 1,
+      "pairs": 454,
+      "p95MS": 44.9615,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 0,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "off",
+      "run": 2,
+      "pairs": 454,
+      "p95MS": 44.825375,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 0,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "off",
+      "run": 3,
+      "pairs": 455,
+      "p95MS": 44.46025,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 0,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "off",
+      "run": 4,
+      "pairs": 455,
+      "p95MS": 44.081166,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 0,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "off",
+      "run": 5,
+      "pairs": 455,
+      "p95MS": 45.238208,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 0,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "on",
+      "run": 1,
+      "pairs": 448,
+      "p95MS": 55.09675,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 5,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "on",
+      "run": 2,
+      "pairs": 454,
+      "p95MS": 53.070083,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 5,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "on",
+      "run": 3,
+      "pairs": 455,
+      "p95MS": 53.128542,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 5,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "on",
+      "run": 4,
+      "pairs": 455,
+      "p95MS": 52.5595,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 5,
+      "strongProcessedLogLines": 5
+    },
+    {
+      "state": "on",
+      "run": 5,
+      "pairs": 453,
+      "p95MS": 52.42475,
+      "acquisitionMS": null,
+      "confidenceMS": null,
+      "blendMS": null,
+      "realAcquisitionLogLines": 5,
+      "strongProcessedLogLines": 5
+    }
+  ],
+  "groups": {
+    "off": {
+      "median": 44.825375,
+      "minimum": 44.081166,
+      "maximum": 45.238208,
+      "IQR": 0.5012499999999989,
+      "stdPopulation": 0.4033162904086062
+    },
+    "on": {
+      "median": 53.070083,
+      "minimum": 52.42475,
+      "maximum": 55.09675,
+      "IQR": 0.5690420000000032,
+      "stdPopulation": 0.960755954395079
+    }
+  },
+  "deltaOfMediansMS": 8.244707999999996,
+  "pairedP95DeltasMS": [
+    10.13525,
+    8.244707999999996,
+    8.668292000000001,
+    8.478333999999997,
+    7.186542000000003
+  ],
+  "pairedDeltaDispersion": {
+    "median": 8.478333999999997,
+    "minimum": 7.186542000000003,
+    "maximum": 10.13525,
+    "IQR": 0.4235840000000053,
+    "stdPopulation": 0.9470053389472304
+  },
+  "stageTimingRecords": 0,
+  "denseProfileLines": 0,
+  "recordedTimingFields": [
+    "tag",
+    "uptimeNS",
+    "workWidth",
+    "workHeight",
+    "subframeCount",
+    "totalWallMS"
+  ],
+  "conclusion": "Stage breakdown not identifiable from existing recordings; no new runs or E2 activation."
+}

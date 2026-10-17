@@ -1,0 +1,15 @@
+markedBeforeMAE10bit,markedAfterMAE10bit,case,span,region,markedPixels,maskPixels,changedPixels,markedMeanPreviewCodeChange,crop
+,,avatar69,1,pan-background,0,20480,0,,avatar69-pan-background-span1.png
+,,avatar69,1,crossing-bison,0,20480,0,,avatar69-crossing-bison-span1.png
+,,avatar69,1,blur-foreground,0,24576,0,,avatar69-blur-foreground-span1.png
+,,avatar69,2,pan-background,0,20480,0,,avatar69-pan-background-span2.png
+,,avatar69,2,crossing-bison,0,20480,0,,avatar69-crossing-bison-span2.png
+,,avatar69,2,blur-foreground,0,24576,0,,avatar69-blur-foreground-span2.png
+,,avatar300,1,face-contour,3584,20480,230,0.10853794642857142,avatar300-face-contour-span1.png
+,,avatar300,1,clothing-contour,1920,20480,1257,8.276041666666666,avatar300-clothing-contour-span1.png
+23.297286987304688,22.691303253173828,avatar300,2,face-contour,9728,20480,1279,0.18349095394736842,avatar300-face-contour-span2.png
+56.325862884521484,29.107934951782227,avatar300,2,clothing-contour,4864,20480,1629,6.733347039473684,avatar300-clothing-contour-span2.png
+,,anime1082,1,bird-contour,0,13824,0,,anime1082-bird-contour-span1.png
+,,anime1082,1,landscape-pan,0,20480,0,,anime1082-landscape-pan-span1.png
+,,anime1082,2,bird-contour,0,13824,0,,anime1082-bird-contour-span2.png
+,,anime1082,2,landscape-pan,0,20480,0,,anime1082-landscape-pan-span2.png
