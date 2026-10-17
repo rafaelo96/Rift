@@ -1,0 +1,14 @@
+{
+  "sixRecovered": 6,
+  "stationaryControls": 12,
+  "jitterFractionAllControls": 0,
+  "referenceComparisons": 24,
+  "worstReferenceRelativeDeltaPercent": 0.21405497003155194,
+  "disabledPNGsIdentical": 204,
+  "disabledSyntheticPixelsAndCoordinatesIdentical": true,
+  "afterP95MS": 42.231083,
+  "performanceAccepted": true,
+  "separate35MSGoalMet": false,
+  "visual300s": "Inspected all eight hidden-frame references in face/clothing crops, plus pair4 at .25/.5/.75: no new visible deformation; existing severe fragmentation remains. Luma previews only.",
+  "runtimeFlag": "RIFT_STATIC_MOTION_GUARD=1; defaults off"
+}

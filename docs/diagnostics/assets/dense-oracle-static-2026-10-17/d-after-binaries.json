@@ -1,0 +1,8 @@
+{
+  ".build/release/Rift": "c0fa3e4a9942d836e8db7c1959c1dbb30a4954119f86808ddb48d122a0a46951",
+  ".build/release/MVProbe": "68cb7c1dc7940ce5626a53ec365d4f2eebc4572d1a0d92bd8eca19f21c331221",
+  "UI/ContentView.swift": "6586c59a0ae4ca51016ef9d01bd9d40a5564788e4d574f36b8f0c03da3091fec",
+  "UI/Player/FloatingPictureInPicture.swift": "811c0f749709dfd47fdcfcf839d206ecaf9350390ed1e5804a92b2946b64aeae",
+  "UI/Player/RiftPlayerState.swift": "fd26ee8919cbf3a357ef3ed19ecdbca3fe78a016280cbd692481444ce715a781",
+  "UI/RiftApp.swift": "de44b3dd6dec4f3b3a24924158225649cbcc617635241d94bace0f19436fc34e"
+}

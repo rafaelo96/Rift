@@ -396,6 +396,15 @@ float denseMatch(texture2d<float,access::sample> a,texture2d<float,access::sampl
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) { float2 d=float2(x,y); cost+=abs(denseRead(a,q0+d).r-denseRead(b,q1+d).r+offset); }
     return cost/9;
 }
+#ifdef DENSE_STATIC_MOTION
+float denseStaticPatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 q0,float2 q1) {
+    float cost=0;
+    for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+        float2 d=float2(x,y); cost+=abs(denseRead(a,q0+d).r-denseRead(b,q1+d).r);
+    }
+    return cost/64;
+}
+#endif
 bool denseSurfaceMembership(texture2d<float,access::sample> flow,float2 q,float2 velocity) {
     float2 anchor=round(q),center=denseRead(flow,anchor).xy;
     if(length(center-velocity)<1) return true;
@@ -522,6 +531,13 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     still=still && abs(av-bv+offset)<=2*abs(v0-v1+offset)+1.0f/1023.0f;
     // During an exposure change, point-wise equality cannot override a verified moving patch.
     if(offset!=0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) still=false;
+#ifdef DENSE_STATIC_MOTION
+    // Point equality can alias motion. Require reciprocal, supported flow and a substantial
+    // 8x8 patch improvement before overriding static protection; noise-level ties stay static.
+    if(still && offset==0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) {
+        if(denseStaticPatchCost(a,b,q0,q1)<0.8f*denseStaticPatchCost(a,b,p,p)) still=false;
+    }
+#endif
     float weights=(1-t)*c0+t*c1;
     float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : (t<0.5f?av:bv);
     float alpha=weights>1e-4f ? t*c1/weights : (t<0.5f ? 0 : 1);

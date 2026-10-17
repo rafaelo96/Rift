@@ -1,0 +1,61 @@
+warning: 'rift': found 15 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseOracleReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetBatching.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetCandidate.patch
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceProbe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceRegularized.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceCorrespondenceGraph.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisCheck.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnosticRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectorySurvivalReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/chroma_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/feature_correspondence_probe.py
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Scheduler/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Rendering/Tools/AdmissionCheck.swift
+    /Users/rafael/Documents/Rift/Rendering/Tools/SuperResolutionIdentityCheck.swift
+warning: 'rift': found 25 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Interpolation/Checks/PoolCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/CenteredCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/ContourWarpCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseMotionCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseOracleDiagnostic.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseOracleReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/MotionGridCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/NativeSamplingCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetBatching.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetCandidate.patch
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceProbe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceRegularized.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/StaticProtectionCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceCorrespondenceGraph.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisCheck.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnostic.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnosticRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectorySurvivalReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/chroma_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/feature_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/FramePool/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Demux/CSource/ffmpeg_c.c
+    /Users/rafael/Documents/Rift/Core/Demux/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/DecodeAudio/CSource/ffmpeg_audio.c
+    /Users/rafael/Documents/Rift/Core/DecodeAudio/Tools/main.swift
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Decode/Tools/main.swift
+Building for production...
+[Pre-planning 1 / 357]
+[Planning deferred tasks]
+Build complete! (0.41 s)

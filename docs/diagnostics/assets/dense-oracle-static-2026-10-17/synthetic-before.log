@@ -1,0 +1,1 @@
+STATIC SYNTHETIC: [["mae": 0.003182460164269522, "variant": "before", "interiorPixels": 3840, "inverseSourceErrorPx": 0.5, "frozenPixels": 960], ["frozenPixels": 960, "variant": "after", "interiorPixels": 3840, "inverseSourceErrorPx": 0.5, "mae": 0.003182460164269522]]

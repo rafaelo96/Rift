@@ -77,7 +77,8 @@ public final class DenseMotionPrototype {
             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
             candidateTrace=trace
         } else { candidateTrace=nil }
-        let library=try device.makeLibrary(source: (candidateMode ? "#define DENSE_CANDIDATES 1\n" : "")+denseMotionMSL,options: nil)
+        let staticMotion=ProcessInfo.processInfo.environment["RIFT_STATIC_MOTION_GUARD"] == "1"
+        let library=try device.makeLibrary(source: (candidateMode ? "#define DENSE_CANDIDATES 1\n" : "")+(staticMotion ? "#define DENSE_STATIC_MOTION 1\n" : "")+denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
         for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }

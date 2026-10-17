@@ -1,5 +1,7 @@
 # Dense oracle and static protection — 2026-10-17
 
+**Final disposition:** C completed; D reapplied and accepted under the adjusted crop/MAE/jitter/43.29ms criteria, behind a default-off flag. The separate 35ms goal remains unmet.
+
 Scope: steps C/D only, Core/Interpolation and offline evidence. Production search, candidate selection, temporal blending, confidence maps, UI and other modules are untouched. The existing source movie is never copied, transcoded or rewritten. Diagnostic inputs are the previously committed 49-frame work-plane fixtures per case, not a derived full movie.
 
 ## C — full spatial and temporal coverage
@@ -19,7 +21,7 @@ A controlled pair4 ablation retains A's exact original sparse substitutions whil
 Build `swift build -c release --product MVProbe`. Restore the existing bounded source fixtures from their per-case `sources.zip` if necessary. Run `MV_FULL_ORACLE_CHECK=1 .build/release/MVProbe`, then for each of `avatar69`, `avatar300`, `anime1082`:
 
 ```sh
-RIFT_DENSE_ORACLE=1 RIFT_PATCH_TEMPORAL=1 RIFT_PATCH_AFFINE=0 \
+RIFT_DENSE_ORACLE=1 RIFT_STATIC_MOTION_GUARD=0 RIFT_PATCH_TEMPORAL=1 RIFT_PATCH_AFFINE=0 \
 MV_FULL_ORACLE_WINDOW="$PWD/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69" \
 MV_FULL_ORACLE_OUTPUT="$PWD/docs/diagnostics/assets/dense-oracle-static-2026-10-17/avatar69" \
 .build/release/MVProbe
@@ -40,3 +42,46 @@ Changed pixel counts measure intervention size, **not error or quality**. Both n
 **69s mask conclusion:** the exact-A/gaps-filled ablation and fully independent dense field both still show fragments despite having no oracle/non-oracle gaps. Thus missing coverage is **not a sufficient explanation** of the artifacts and filling it does not cure them. The mask can contribute local discontinuities, but this experiment cannot assign the cause of every original square individually, or prove physical correctness of the exhaustive minima. The complete 8×8 lattice itself, ambiguous/occluded matches, inconsistent bidirectional minima and retained assessment metadata remain limitations; none was changed to force a favorable result.
 
 [69s crossing: A/B/current/dense](assets/dense-oracle-static-2026-10-17/avatar69/crossing-bison-t0.5.png) · [69s exact-A mask ablation](assets/dense-oracle-static-2026-10-17/avatar69/crossing-bison-legacy-ablation.png) · [300s face](assets/dense-oracle-static-2026-10-17/avatar300/face-contour-t0.5.png) · [18:02 bird](assets/dense-oracle-static-2026-10-17/anime1082/bird-contour-t0.5.png). All seven original ROIs have t=.25/.5/.75 crops and all-48-midpoint sheets alongside these files. Native color/HDR and perceptual video playback quality are not established by these luma previews.
+
+## D — second static-protection candidate reapplied
+
+**Accepted under the user's adjusted criteria; opt-in, defaults off.** Exact reapplication of `d17c7ad`'s `rejected-patch-guard.patch` (the second candidate). The active MSL equals the archived second-candidate snapshot. `RIFT_STATIC_MOTION_GUARD=1` enables its compile-time shader variant; unset/0 preserves existing behavior. No default UI setting or installed application bundle was changed.
+
+The existing point-intensity tests can falsely label reciprocal moving patches as still. The bounded correction only overrides that decision at zero exposure offset when both flow lengths exceed 1px, both closure errors are <1px, both confidences exceed .5, and the compensated 8×8 L1 patch cost is <80% of the unwarped cost. Noise-level ties retain static protection. No candidate generation, ranking, search, selection, temporal mix or confidence-map change.
+
+The baseline was measured before applying the patch. After reapplication, the same fresh baseline/candidate/disabled runs replayed the three cases and all existing hidden-frame references. `StaticCandidateRun.py before|after|disabled` reproduces these sequential Release runs; `StaticCandidateReport.py` asserts the numeric criteria and assembles crops. GPU diagnostic work and GUI playback were never run concurrently.
+
+| Check | Before → after | Result |
+| --- | --- | --- |
+| Six real sampled transport offsets | Six statically overridden → six nonzero transport offsets, still=false | 6/6 recovered |
+| Known synthetic 4px displacement | 960/3840 frozen pixels → 0; inverse-source error .5px → 0 | Pass |
+| Synthetic normalized luma MAE | .00318246016427 → .000242059545985 | Improves |
+| Twelve stationary controls | 0% → 0% pixels differing from stationary truth by >1 ten-bit code | All exactly 0%, not merely <1% |
+| Existing reference MAE | 24 comparisons; 23 improve, one increases | All within +.5% |
+| Worst reference (300s, two-source pair0) | 12.136308232060186 → 12.162286603009258 | **+.21405497%**, accepted |
+| Flag off | Synthetic pixels/coordinates exact; all 9 real synthesis SHA256 values match baseline; 204 PNGs match; 24 MAEs exact | Pass |
+| Existing dense/native fixtures | Layered motion, endpoints, static/noisy holds, determinism, invalid input, translation; native 10-bit/chroma/metadata | Pass |
+
+The flag-off shader, after removing the undefined conditional blocks, is **text-identical** to baseline MSL. The disabled full-engine reference runs preserve every saved PNG and MAE. See [step-d.json](assets/dense-oracle-static-2026-10-17/step-d.json), [six recovered offsets](assets/dense-oracle-static-2026-10-17/six-static-recovered.json), [six crops](assets/dense-oracle-static-2026-10-17/six-static-crops.png), [24 reference measurements](assets/dense-oracle-static-2026-10-17/reference-mae.json), and [execution/source hashes](assets/dense-oracle-static-2026-10-17/d-execution.json).
+
+**Visual review at 300s:** inspected both face and clothing in all eight hidden-frame references, plus the original pair4 at .25/.5/.75. Before/after retain the same large fragmented contours; small grain/edge differences do not reveal a new visible deformation. In particular, the numerically worse pair0 does not show a new visible contour break in these crops. This meets the requested crop criterion, not a claim that the existing fragmentation is solved. [Face references](assets/dense-oracle-static-2026-10-17/avatar300/static-reference-face-contour-all.png) · [Clothing references](assets/dense-oracle-static-2026-10-17/avatar300/static-reference-clothing-contour-all.png) · [Pair4 face](assets/dense-oracle-static-2026-10-17/avatar300/static-face-contour-t0.5.png).
+
+### D performance — separate from the 35ms goal
+
+Actual **Apple M4**, Release; real native GUI playback, hardware decode and Strong configured. Existing renderer diagnostics report `SUPERRES mode=strong ... processed=true bypass=false` for five sampled frames in each comparable session. This confirms real processing at those samples, not continuous absence of adaptive Strong bypass throughout playback. Work plane is **736×320**, selected by the existing calibration; source is 3832×1600 HEVC. Each run lasts 45 seconds, excludes the first 10 seconds and other calibration planes, and uses empirical nearest-rank p95 of whole `interpolatePair` latency. Counts include calls with two/three scheduled outputs (including endpoints), not two/three generated frames.
+
+| Session | Samples | p50 ms | p95 ms | Maximum ms |
+| --- | ---: | ---: | ---: | ---: |
+| Baseline preflight, without Strong telemetry | 808 | 33.362875 | 43.668042 | 50.830542 |
+| Baseline, Strong telemetry enabled | 817 | 32.348583 | **41.265125** | 46.448666 |
+| Reapplied candidate, same telemetry | 812 | 32.585583 | **42.231083** | 48.932458 |
+
+The first baseline run is retained, not discarded: it was repeated to verify effective Strong processing with the existing diagnostic switch. The comparable before/after sessions use the same switch/profile. The candidate p95 is **.965958ms higher** than the fresh comparable baseline, so this does **not** demonstrate a speed improvement; it is within the adjusted **43.29ms** limit by 1.058917ms. Baseline variation itself is visible across runs. These are finite sessions, not a sustained thermal guarantee.
+
+**Separate goal:** 42.231083ms remains 7.231083ms above 35ms. As instructed, that pre-existing target gap does not reject D. The metric measures interpolation-call latency under concurrent decode/Strong/presentation load; it does not sum decode/render durations or establish end-to-end display latency. [All sessions and filtered CSVs](assets/dense-oracle-static-2026-10-17/performance-comparison.json); raw GUI/timing logs are adjacent.
+
+## Stop point and remaining unknowns
+
+C/D complete. D remains an explicit opt-in correction; normal flag-off output is preserved. Production search and selection have not changed. No work on temporal blending or a confidence map was started.
+
+Still unproven: a physically correct dense oracle (integer photometric minima on 8×8 blocks are not motion truth), general removal of the deformations, every individual sparse patch's causal origin, native-color/HDR perceptual improvement, temporal jitter over real long sequences, continuously active Strong without adaptive bypass, sustained thermal p95 or the 35ms goal, and performance on chips other than this M4. The 12 zero-jitter controls are deterministic stationary synthesis tests with an explicit >1-code metric, not a real-video temporal stability guarantee.

@@ -1,0 +1,118 @@
+warning: 'rift': found 16 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseOracleReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetBatching.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetCandidate.patch
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceProbe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceRegularized.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/StaticCandidateRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceCorrespondenceGraph.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisCheck.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnosticRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectorySurvivalReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/chroma_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/feature_correspondence_probe.py
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Scheduler/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Rendering/Tools/AdmissionCheck.swift
+    /Users/rafael/Documents/Rift/Rendering/Tools/SuperResolutionIdentityCheck.swift
+warning: 'rift': found 26 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Interpolation/Checks/PoolCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/CenteredCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/ContourWarpCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseMotionCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseOracleDiagnostic.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/DenseOracleReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/MotionGridCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/NativeSamplingCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetBatching.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetCandidate.patch
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RealtimeBudgetRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceProbe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/RegionSurfaceRegularized.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/StaticCandidateRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/StaticProtectionCheck.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceCorrespondenceGraph.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisCheck.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRender.swift.txt
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/SurfaceSynthesisRun.sh
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnostic.swift
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectoryDiagnosticRun.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/TrajectorySurvivalReport.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/chroma_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/feature_correspondence_probe.py
+    /Users/rafael/Documents/Rift/Core/Interpolation/Tools/main.swift
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/FramePool/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Demux/CSource/ffmpeg_c.c
+    /Users/rafael/Documents/Rift/Core/Demux/Tools/main.swift
+warning: 'rift': found 2 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/DecodeAudio/CSource/ffmpeg_audio.c
+    /Users/rafael/Documents/Rift/Core/DecodeAudio/Tools/main.swift
+warning: 'rift': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/rafael/Documents/Rift/Core/Decode/Tools/main.swift
+Building for production...
+[Constructing description]
+[Planning deferred tasks]
+[2 / 26]
+[3 / 6] Interpolation
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionCompensator.swift:515:38: warning: result of call to 'withUnsafeMutableBufferPointer' is unused [#NoUsage]
+513 |                                                        rowBytes: w)
+514 |                             for b in 0..<256 { vdspHist[b] = 0 }
+515 |                             vdspHist.withUnsafeMutableBufferPointer { histBuf in
+    |                                      `- warning: result of call to 'withUnsafeMutableBufferPointer' is unused [#NoUsage]
+516 |                                 vImageHistogramCalculation_Planar8(&srcBuf, histBuf.baseAddress!, vImage_Flags(kvImageNoFlags))
+517 |                             }
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:204:22: warning: result of call to 'withUnsafeBytes' is unused [#NoUsage]
+202 |             }
+203 |             guard let buffer = centeredPrevious else { throw EngineError.pipeline("Temporal predictor allocation failed") }
+204 |             previous.withUnsafeBytes { bytes in memcpy(buffer.contents(), bytes.baseAddress!, bytes.count) }
+    |                      `- warning: result of call to 'withUnsafeBytes' is unused [#NoUsage]
+205 |         }
+206 |         if centeredOutput == nil {
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:397:17: warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+395 |             enc.setBuffer(mvBuffer[0]!, offset: 0, index: 0)
+396 |             enc.setBuffer(smooth, offset: 0, index: 1)
+397 |             var g0 = grids[0]
+    |                 `- warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+398 |             var uni = MEUniforms(
+399 |                 level: 0, width: 0, height: 0, blockSize: 0,
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/MotionSearchEngine.swift:426:17: warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+424 |             enc.setComputePipelineState(deadZonePSO)
+425 |             enc.setBuffer(target, offset: 0, index: 0)
+426 |             var g0 = grids[0]
+    |                 `- warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+427 |             var uni = MEUniforms(
+428 |                 level: 0, width: 0, height: 0, blockSize: 0,
+
+/Users/rafael/Documents/Rift/Core/Interpolation/Swift/Motio[5 / 8] Interpolation
+nSearchEngine.swift:458:17: warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+456 |             enc.setBuffer(tPrev, offset: 0, index: 1)
+457 |             enc.setBuffer(tOut, offset: 0, index: 2)
+458 |             var g0 = grids[0]
+    |                 `- warning: variable 'g0' was never mutated; consider changing to 'let' constant [#VariableNeverMutated]
+459 |             var uni = MEUniforms(
+460 |                 level: 0, width: 0, height: 0, blockSize: 0,
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[#VariableNeverMutated]: <https://docs.swift.org/compiler/documentation/diagnostics/variable-never-mutated>
+/Users/rafael/Documents/Rift/Package.swift: MVProbe-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavformat.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: MVProbe-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavcodec.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: MVProbe-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavutil.61.dylib' which was built for newer version 27.0
+[10 / 10] MVProbe-product
+/Users/rafael/Documents/Rift/Package.swift: Rift-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavformat.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: Rift-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavcodec.63.dylib' which was built for newer version 27.0
+/Users/rafael/Documents/Rift/Package.swift: Rift-product: ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/ffmpeg/lib/libavutil.61.dylib' which was built for newer version 27.0
+[10 / 10] Rift-product
+[11 / 12] Rift-product
+[13 / 14] MVProbe-product
+Build complete! (7.52 s)

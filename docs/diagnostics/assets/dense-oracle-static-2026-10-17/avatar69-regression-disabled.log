@@ -1,0 +1,109 @@
+=== MVProbe (hierarchical block matching, MSL) ===
+chip    : Apple M4
+file    : /Users/rafael/Downloads/Avatar.Aang.el.ultimo.maestro.del.aire.2026.WEB-DL.4k.HDR-Dual-Lat.mkv
+config  : pairs=6 plane=1152x480 lambda=1 subpel=on median=on gate=on hier=on
+video   : 3832x1600 hevc fps=23.976
+decoding from 69.00 s (≈1%) until 7 luma planes are ready…
+
+--- measuring 6 pairs @ 1152x480 ---
+DENSE PAIR: shared analysis plus three syntheses ms=19.132375
+DENSE FRAME: pair=0, t=0.25, ms=13.038375, supported=544074/552960, sourceCopiesOnMoving=17573/122799
+DENSE FRAME: pair=0, t=0.5, ms=3.022625, supported=542168/552960, sourceCopiesOnMoving=13896/122799
+DENSE FIELD: mean neighboring flow variation=0.764378964164263, weak-gradient variation=0.8015646447596232
+DENSE TRANSPORT: mean mapping residual=2.3471804737124877, over1px=173414/552960
+DENSE FRAME: pair=0, t=0.75, ms=3.071375, supported=544741/552960, sourceCopiesOnMoving=19035/122799
+DENSE GROUND TRUTH: pair=0, t=0.5, source MAE=21.852381727430554, block MAE=15.01673900462963, dense MAE=4.149817346643519
+  pair    1: ME 198.818 ms + warp 0.385 ms
+DENSE FOUR PAIR: pair=1, ms=21.217208
+DENSE PAIR: shared analysis plus three syntheses ms=18.384666
+DENSE FRAME: pair=1, t=0.25, ms=11.877917, supported=541903/552960, sourceCopiesOnMoving=19397/124205
+DENSE FRAME: pair=1, t=0.5, ms=3.266333, supported=539330/552960, sourceCopiesOnMoving=15279/124205
+DENSE FRAME: pair=1, t=0.75, ms=3.240416, supported=542832/552960, sourceCopiesOnMoving=19036/124205
+DENSE GROUND TRUTH: pair=1, t=0.5060241, source MAE=21.938527199074073, block MAE=15.351882595486112, dense MAE=4.687608506944445
+DENSE FOUR GROUND TRUTH: pair=1, dense2 MAE=4.687608506944445, dense4 MAE=4.625054253472222, ms=14.5955
+  pair    2: ME 251.454 ms + warp 0.951 ms
+DENSE FOUR PAIR: pair=2, ms=20.371626
+DENSE PAIR: shared analysis plus three syntheses ms=18.106084
+DENSE FRAME: pair=2, t=0.25, ms=12.613125, supported=543377/552960, sourceCopiesOnMoving=21841/131583
+DENSE FRAME: pair=2, t=0.5, ms=2.960875, supported=540860/552960, sourceCopiesOnMoving=16408/131583
+DENSE FRAME: pair=2, t=0.75, ms=2.532084, supported=543046/552960, sourceCopiesOnMoving=19797/131583
+DENSE GROUND TRUTH: pair=2, t=0.4939759, source MAE=23.057539424189816, block MAE=15.810322627314815, dense MAE=4.933232060185185
+DENSE FOUR GROUND TRUTH: pair=2, dense2 MAE=4.933232060185185, dense4 MAE=4.691682942708334, ms=18.305375
+  pair    3: ME 252.809 ms + warp 0.910 ms
+DENSE FOUR PAIR: pair=3, ms=32.819084000000004
+DENSE PAIR: shared analysis plus three syntheses ms=27.734832000000004
+DENSE FRAME: pair=3, t=0.25, ms=18.954958, supported=537622/552960, sourceCopiesOnMoving=24720/143174
+DENSE FRAME: pair=3, t=0.5, ms=4.675208, supported=533220/552960, sourceCopiesOnMoving=19696/143174
+DENSE FRAME: pair=3, t=0.75, ms=4.104666, supported=537202/552960, sourceCopiesOnMoving=22525/143174
+DENSE GROUND TRUTH: pair=3, t=0.5, source MAE=25.29474464699074, block MAE=17.57761863425926, dense MAE=5.954468677662037
+DENSE FOUR GROUND TRUTH: pair=3, dense2 MAE=5.954468677662037, dense4 MAE=5.804040075231481, ms=17.713083
+  pair    4: ME 302.151 ms + warp 0.638 ms
+DENSE FOUR PAIR: pair=4, ms=23.475625
+DENSE PAIR: shared analysis plus three syntheses ms=23.866749
+DENSE FRAME: pair=4, t=0.25, ms=15.524208, supported=541562/552960, sourceCopiesOnMoving=21483/148430
+DENSE FRAME: pair=4, t=0.5, ms=4.001041, supported=537743/552960, sourceCopiesOnMoving=16874/148430
+DENSE FRAME: pair=4, t=0.75, ms=4.3415, supported=540695/552960, sourceCopiesOnMoving=20789/148430
+DENSE GROUND TRUTH: pair=4, t=0.5, source MAE=26.492277922453702, block MAE=17.42233253761574, dense MAE=5.295052083333333
+  pair    5: ME 230.666 ms + warp 0.810 ms
+DENSE PAIR: shared analysis plus three syntheses ms=17.766375
+DENSE FRAME: pair=5, t=0.25, ms=11.219875, supported=541714/552960, sourceCopiesOnMoving=20325/150657
+DENSE FRAME: pair=5, t=0.5, ms=3.403208, supported=539708/552960, sourceCopiesOnMoving=15710/150657
+DENSE FRAME: pair=5, t=0.75, ms=3.143292, supported=541520/552960, sourceCopiesOnMoving=19819/150657
+  pair    6: ME 95.865 ms + warp 0.764 ms
+
+--- |MV| magnitude distribution per level (px, cumulative over 6 pairs) ---
+  level ≤0.5 1 2 3-8 9-16 >16
+  L0 (144x60)    32.5%    27.0%     1.8%    14.4%    11.2%    13.1%
+  L1 (36x15)    42.3%     0.2%     3.6%    30.0%    11.2%    12.7%
+  L2 (18x8)    29.5%     6.4%    12.2%    28.8%    23.1%     0.0%
+  L3 (9x4)    13.4%    25.5%    20.4%    40.7%     0.0%     0.0%
+
+--- per-stage timings (ms) over 6 pairs ---
+  stage mean p50 p95
+  pyramid ⟶ L1 (576x240)      1.568      1.431      1.532
+  pyramid ⟶ L2 (288x120)      0.777      0.716      0.914
+  pyramid ⟶ L3 (144x60)      0.639      0.371      0.819
+  search L3 (blocks 9x4, bs16)      0.800      0.726      0.869
+  search L2 (blocks 18x8, bs16)      1.962      1.738      2.402
+  search L1 (blocks 36x15, bs16)      1.495      1.347      1.666
+  search L0 (blocks 144x60, bs8, halfpel)      8.183      6.731     10.791
+
+ME total per pair : mean=15.424 p50=13.232 p95=19.152 ms
+host upload/pair  : mean=0.645 ms
+ME total + upload : mean=16.068 ms
+
+bUDGET 41.7 ms/pair @60fps → ME is 37.0% of budget (upload excluded)
+REFERENCE (RIFE MLX probe, same plane): t_flow=177.7ms stage, 196.3ms end-to-end → classic ME is 11.5x faster at measured stage cost.
+
+Warp/blend t=0.5 per pair : mean=0.743 p50=0.764 p95=0.910 ms (OBMC omitted v1, occ thresh 1.0px)
+Combined ME+warp per pair : mean=16.167 ms (38.8% of 41.7ms budget) — margen 25.5 ms dentro
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+
+--- pipeline real (MotionCompensator, ME reducido + warp nativo) ---
+Requested production outputs per pair: 1
+Native temporal context requested: false
+  pipeline    1: ME 36.025 + Warp 0.239 + Upscale 0.000 = 40.860 ms (pb ok)
+  pipeline    2: ME 29.095 + Warp 0.190 + Upscale 0.000 = 33.695 ms (pb ok)
+  pipeline    3: ME 29.083 + Warp 0.177 + Upscale 0.000 = 34.282 ms (pb ok)
+  pipeline    4: ME 30.072 + Warp 0.181 + Upscale 0.000 = 34.918 ms (pb ok)
+  pipeline    5: ME 29.244 + Warp 0.201 + Upscale 0.000 = 33.810 ms (pb ok)
+  pipeline    6: ME 29.649 + Warp 0.195 + Upscale 0.000 = 34.803 ms (pb ok)
+
+--- pipeline real per-pair timings (ms) ---
+  stage mean p50 p95
+  ME     30.528     29.244     30.072
+  Warp      0.197      0.190      0.201
+  Upscale      0.000      0.000      0.000
+  Total(host)     35.395     34.282     34.918
+  Comb ME+Warp+Up : mean=30.725 ms (73.7% of 41.7ms budget) — margen 11.0 ms dentro
+
+motion metric (cumulative over 6 pairs): 37.3% of blocks improve on zero-move, compensated/zero SAD ratio = 0.280
+MV magnitude histogram (px): ≤0.5=32.5% ≤1=27.0% ≤2=1.8% ≤8=14.4% ≤16=11.2% >16=13.1%
+frame deltas avg 24.2 / max 26.8 (10-bit luma units; ~0 → static frames, large → real content change)
+
+warp-vs-copy (MV_WARPCOPY): 16527 de 34967 bloques en movimiento (6 pares) con warp genuino (SAD(interp,I0)<SAD(I0,I1) y SAD(interp,I1)<SAD(I0,I1)) = 47.3%
+warp-no-peor (bypass-aware, TODOS los bloques): 40041 de 51840 (6 pares) con SAD(interp,I0)+SAD(interp,I1)<=SAD(I0,I1) = 77.2%
+midpoint-ratio sI0/s01 en 10-bit (bloques en movimiento con cambio real): n=20996 p25=0.191 p50=0.440 p75=0.734 (0.5 = punto medio ideal, 0.0 = copia de I0)
+  por cambio: leve(s01<=2048) n=7567 p50=0.156 | medio n=12104 p50=0.574 | grande(s01>8192) n=1325 p50=0.517
+
+OK — MVProbe finished

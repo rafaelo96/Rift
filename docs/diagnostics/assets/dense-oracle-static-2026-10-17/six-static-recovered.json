@@ -1,0 +1,212 @@
+[
+  {
+    "case": "avatar69",
+    "point": 7,
+    "destination": [
+      126,
+      192
+    ],
+    "before": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "still": 0.0,
+      "inverseOffsets": [
+        1.6479034423828125,
+        -0.060455322265625,
+        -1.7734527587890625,
+        0.0537872314453125
+      ]
+    },
+    "disabled": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "case": "avatar69",
+    "point": 24,
+    "destination": [
+      414,
+      285
+    ],
+    "before": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "still": 0.0,
+      "inverseOffsets": [
+        18.431671142578125,
+        2.886016845703125,
+        -18.5394287109375,
+        -2.867950439453125
+      ]
+    },
+    "disabled": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "case": "avatar69",
+    "point": 47,
+    "destination": [
+      620,
+      253
+    ],
+    "before": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "still": 0.0,
+      "inverseOffsets": [
+        20.26910400390625,
+        3.009765625,
+        -20.3814697265625,
+        -2.862335205078125
+      ]
+    },
+    "disabled": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "case": "avatar69",
+    "point": 51,
+    "destination": [
+      746,
+      254
+    ],
+    "before": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "still": 0.0,
+      "inverseOffsets": [
+        22.347412109375,
+        2.562744140625,
+        -22.339599609375,
+        -2.5730743408203125
+      ]
+    },
+    "disabled": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "case": "anime1082",
+    "point": 0,
+    "destination": [
+      415,
+      225
+    ],
+    "before": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "still": 0.0,
+      "inverseOffsets": [
+        0.941253662109375,
+        -0.38726806640625,
+        -1.1395263671875,
+        0.4571533203125
+      ]
+    },
+    "disabled": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  {
+    "case": "anime1082",
+    "point": 29,
+    "destination": [
+      159,
+      112
+    ],
+    "before": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "still": 0.0,
+      "inverseOffsets": [
+        0.6236572265625,
+        0.2154388427734375,
+        -0.6541900634765625,
+        -0.19219970703125
+      ]
+    },
+    "disabled": {
+      "still": 1.0,
+      "inverseOffsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  }
+]

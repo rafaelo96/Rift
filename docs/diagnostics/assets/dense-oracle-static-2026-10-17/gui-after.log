@@ -1,0 +1,63 @@
+FLUENCY second=1 time=112.101 admittedFPS=24.0 target=60.00 quality=1 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+SUPERRES mode=strong input=3832x1600 format=2016686640 output=3832x1600 processed=true bypass=false
+SUPERRES mode=strong input=3832x1600 format=2016686640 output=3832x1600 processed=true bypass=false
+SUPERRES mode=strong input=3832x1600 format=2016686640 output=3832x1600 processed=true bypass=false
+SUPERRES mode=strong input=3832x1600 format=2016686640 output=3832x1600 processed=true bypass=false
+SUPERRES mode=strong input=3832x1600 format=2016686640 output=3832x1600 processed=true bypass=false
+FLUENCY second=2 time=69.000 admittedFPS=24.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=3 time=69.901 admittedFPS=21.4 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=4 time=70.901 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=5 time=71.901 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=5 total=204 dropped=3 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=6 time=72.901 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=7 time=73.901 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=8 time=74.900 admittedFPS=57.9 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=9 time=75.901 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=10 time=76.901 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=10 total=504 dropped=4 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=11 time=78.000 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=12 time=79.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=13 time=80.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=14 time=81.004 admittedFPS=61.9 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=15 time=82.001 admittedFPS=61.9 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=15 total=807 dropped=5 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=16 time=83.001 admittedFPS=58.1 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=17 time=84.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=18 time=85.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=19 time=86.001 admittedFPS=62.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=20 time=87.001 admittedFPS=58.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=20 total=1110 dropped=7 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=21 time=88.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=22 time=89.004 admittedFPS=61.8 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=23 time=90.001 admittedFPS=61.8 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=24 time=91.001 admittedFPS=58.8 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=25 time=92.002 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=25 total=1412 dropped=8 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=26 time=93.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=27 time=94.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=28 time=95.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=29 time=96.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=30 time=97.001 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=30 total=1713 dropped=8 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=31 time=98.101 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=32 time=99.101 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=33 time=100.101 admittedFPS=58.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=34 time=101.102 admittedFPS=58.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=35 time=102.101 admittedFPS=61.3 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=35 total=2010 dropped=11 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=36 time=103.101 admittedFPS=60.7 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=37 time=104.101 admittedFPS=60.7 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=38 time=105.101 admittedFPS=57.9 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=39 time=106.101 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=40 time=107.106 admittedFPS=62.7 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=40 total=2311 dropped=12 corrupted=0 delay=6.666666666666667e-08
+FLUENCY second=41 time=108.100 admittedFPS=62.7 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=42 time=109.101 admittedFPS=58.2 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=43 time=110.104 admittedFPS=63.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=44 time=111.101 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+FLUENCY second=45 time=112.101 admittedFPS=60.0 target=60.00 quality=0 mode=motion4x playing=1 pip=0 caption=0 compositionFailures=0
+PRESENTATION second=45 total=2616 dropped=12 corrupted=0 delay=6.666666666666667e-08
+RIFT_AUTO_OPEN → loadVideo Avatar.Aang.el.ultimo.maestro.del.aire.2026.WEB-DL.4k.HDR-Dual-Lat.mkv
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+[Frame+] Four-source temporal context active on bounded pair

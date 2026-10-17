@@ -1,0 +1,28 @@
+{
+  "chip": "Apple M4",
+  "build": "Release",
+  "baseRevision": "ce0f96bd877f47706917d6b3d464c262e9a4f46b",
+  "candidateOrigin": "d17c7ad/rejected-patch-guard.patch, second 8x8 patch candidate, exact reapplication",
+  "sourceSHA256": {
+    "Core/Interpolation/Swift/DenseMotionShaders.swift": "37b557c1c5b94ccb0972b94acb1dcc4d5f2dfe1e0d4da0f4431f8a1c89f53ed7",
+    "Core/Interpolation/Swift/DenseMotionPrototype.swift": "ec2a4642005ce593bc1a524b3d648ddad1ad1c1eff4e68acd03287d0fe2858b4",
+    "Core/Interpolation/Tools/StaticCandidateRun.py": "6c4e59ded977cedb5726733a14bbda881e63c5490e10bb402da06ee3a15d218a",
+    "Core/Interpolation/Tools/StaticCandidateReport.py": "92e45a6a5abf601295e6aade6e54ef6637400bb64bacc1d776efd919707b1479"
+  },
+  "disabledShaderEqualsBaselineAfterPreprocessing": true,
+  "userUIFilesPreservedBeforeAfter": true,
+  "sessions": {
+    "before-preflight": "45s; no Strong telemetry, preserved; repeated to verify effective Strong processing",
+    "before": "45s; RIFT_DIAGNOSTICS=1; guard=0",
+    "after": "45s; RIFT_DIAGNOSTICS=1; guard=1"
+  },
+  "environment": {
+    "RIFT_AUTO_MODE": "motion4x",
+    "RIFT_AUTO_SUPERRES": "strong",
+    "RIFT_AUTO_SEEK_TO": "69",
+    "RIFT_AUTO_SEEK_AT": "1",
+    "RIFT_FLUENCY_PROBE_SECONDS": "45",
+    "RIFT_PAIR_TIMING": "1"
+  },
+  "scope": "Native GUI sessions sequential with no concurrent MVProbe; installed user app left unchanged; temporary test bundle only."
+}

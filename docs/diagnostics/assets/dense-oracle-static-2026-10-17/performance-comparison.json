@@ -1,0 +1,77 @@
+[
+  {
+    "variant": "before-preflight",
+    "chip": "Apple M4",
+    "build": "Release",
+    "samples": 808,
+    "workPlane": [
+      736,
+      320
+    ],
+    "warmupExcludedSeconds": 10,
+    "quantile": "empirical nearest-rank",
+    "p50MS": 33.362875,
+    "p95MS": 43.668042,
+    "maxMS": 50.830542,
+    "withinAdjusted43_29MS": false,
+    "meetsSeparate35MSGoal": false,
+    "decodeActive": true,
+    "strongConfigured": true,
+    "strongProcessedDiagnosticSamples": 0,
+    "outputsPerPair": {
+      "3": 310,
+      "2": 498
+    },
+    "scope": "Whole interpolatePair under GUI decode/Strong/presentation load; not sum of separate decode/render duration or end-to-end display latency. First five Strong diagnostics do not prove no adaptive bypass later."
+  },
+  {
+    "variant": "before",
+    "chip": "Apple M4",
+    "build": "Release",
+    "samples": 817,
+    "workPlane": [
+      736,
+      320
+    ],
+    "warmupExcludedSeconds": 10,
+    "quantile": "empirical nearest-rank",
+    "p50MS": 32.348583,
+    "p95MS": 41.265125,
+    "maxMS": 46.448666,
+    "withinAdjusted43_29MS": true,
+    "meetsSeparate35MSGoal": false,
+    "decodeActive": true,
+    "strongConfigured": true,
+    "strongProcessedDiagnosticSamples": 5,
+    "outputsPerPair": {
+      "2": 504,
+      "3": 313
+    },
+    "scope": "Whole interpolatePair under GUI decode/Strong/presentation load; not sum of separate decode/render duration or end-to-end display latency. First five Strong diagnostics do not prove no adaptive bypass later."
+  },
+  {
+    "variant": "after",
+    "chip": "Apple M4",
+    "build": "Release",
+    "samples": 812,
+    "workPlane": [
+      736,
+      320
+    ],
+    "warmupExcludedSeconds": 10,
+    "quantile": "empirical nearest-rank",
+    "p50MS": 32.585583,
+    "p95MS": 42.231083,
+    "maxMS": 48.932458,
+    "withinAdjusted43_29MS": true,
+    "meetsSeparate35MSGoal": false,
+    "decodeActive": true,
+    "strongConfigured": true,
+    "strongProcessedDiagnosticSamples": 5,
+    "outputsPerPair": {
+      "2": 501,
+      "3": 311
+    },
+    "scope": "Whole interpolatePair under GUI decode/Strong/presentation load; not sum of separate decode/render duration or end-to-end display latency. First five Strong diagnostics do not prove no adaptive bypass later."
+  }
+]

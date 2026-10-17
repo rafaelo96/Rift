@@ -1,0 +1,218 @@
+[
+  {
+    "case": "avatar69",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 1,
+    "before": 4.625054253472222,
+    "after": 4.406882957175926,
+    "relativeDeltaPercent": -4.71716188264184,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 2,
+    "before": 4.691682942708334,
+    "after": 4.5047417534722225,
+    "relativeDeltaPercent": -3.9845230702694745,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 3,
+    "before": 5.804040075231481,
+    "after": 5.616263382523148,
+    "relativeDeltaPercent": -3.2352756058605214,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 0,
+    "before": 4.149817346643519,
+    "after": 3.9477991174768516,
+    "relativeDeltaPercent": -4.868123396565027,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 1,
+    "before": 4.687608506944445,
+    "after": 4.468986906828704,
+    "relativeDeltaPercent": -4.663819510350842,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 2,
+    "before": 4.933232060185185,
+    "after": 4.7541702835648145,
+    "relativeDeltaPercent": -3.6297051189935092,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 3,
+    "before": 5.954468677662037,
+    "after": 5.769337745949074,
+    "relativeDeltaPercent": -3.10910917052053,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar69",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 4,
+    "before": 5.295052083333333,
+    "after": 5.1205873842592595,
+    "relativeDeltaPercent": -3.294862757312955,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 1,
+    "before": 23.352607783564814,
+    "after": 23.314225260416666,
+    "relativeDeltaPercent": -0.16436075792426452,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 2,
+    "before": 20.988207103587964,
+    "after": 20.958678747106482,
+    "relativeDeltaPercent": -0.14069022825886623,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 3,
+    "before": 34.38382884837963,
+    "after": 34.33524124710648,
+    "relativeDeltaPercent": -0.14130945534717165,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 0,
+    "before": 12.136308232060186,
+    "after": 12.162286603009258,
+    "relativeDeltaPercent": 0.21405497003155194,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 1,
+    "before": 23.989174623842594,
+    "after": 23.951390697337963,
+    "relativeDeltaPercent": -0.15750407046967174,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 2,
+    "before": 20.892901837384258,
+    "after": 20.863541666666666,
+    "relativeDeltaPercent": -0.14052701221740627,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 3,
+    "before": 33.7181640625,
+    "after": 33.66908817997685,
+    "relativeDeltaPercent": -0.14554731518650055,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "avatar300",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 4,
+    "before": 23.83142180266204,
+    "after": 23.779329427083333,
+    "relativeDeltaPercent": -0.21858693958782816,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 1,
+    "before": 1.2125,
+    "after": 1.1860695167824074,
+    "relativeDeltaPercent": -2.17983366743032,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 2,
+    "before": 1.3991030092592593,
+    "after": 1.3679578993055554,
+    "relativeDeltaPercent": -2.226076975575464,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE FOUR GROUND TRUTH",
+    "pair": 3,
+    "before": 1.4462239583333334,
+    "after": 1.418509476273148,
+    "relativeDeltaPercent": -1.9163340435961462,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 0,
+    "before": 1.313523582175926,
+    "after": 1.2816822193287036,
+    "relativeDeltaPercent": -2.4241180957311204,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 1,
+    "before": 1.2293963396990741,
+    "after": 1.203271484375,
+    "relativeDeltaPercent": -2.1250148939331304,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 2,
+    "before": 1.4098054108796296,
+    "after": 1.3783329716435184,
+    "relativeDeltaPercent": -2.2323959741702537,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 3,
+    "before": 1.4611924913194445,
+    "after": 1.4333640769675926,
+    "relativeDeltaPercent": -1.9045002295846047,
+    "withinPlus0_5Percent": true
+  },
+  {
+    "case": "anime1082",
+    "metric": "DENSE GROUND TRUTH",
+    "pair": 4,
+    "before": 1.4345431857638888,
+    "after": 1.3959816261574074,
+    "relativeDeltaPercent": -2.6880724114239585,
+    "withinPlus0_5Percent": true
+  }
+]
