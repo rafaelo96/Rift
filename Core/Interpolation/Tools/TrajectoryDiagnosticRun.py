@@ -1,6 +1,7 @@
 """Replay committed, bounded diagnostic inputs. Runs GPU work sequentially in Release."""
 import argparse
 import hashlib
+import gzip
 import json
 import os
 from pathlib import Path
@@ -45,7 +46,9 @@ def main():
         for pair in [2,3,4,5,6]:
             run([binary],ASSETS/f'{name}-trace{pair}.log',MV_TRAJECTORY_REPLAY=str(folder),
                 MV_TRAJECTORY_PAIR=str(pair),RIFT_DENSE_CANDIDATES='1',RIFT_PATCH_TEMPORAL='1',RIFT_PATCH_AFFINE='0')
-            folders.append(str(folder/f'pair_{pair}'))
+            trace=folder/f'pair_{pair}'
+            (trace/'stages.json.gz').write_bytes(gzip.compress((trace/'stages.json').read_bytes(),mtime=0))
+            folders.append(str(trace))
     run(['python3',str(ROOT/'Core/Interpolation/Tools/TrajectorySurvivalReport.py'),'--selfcheck',*folders],ASSETS/'summary.log')
     sources = ['Core/Interpolation/Swift/DenseMotionShaders.swift',
                'Core/Interpolation/Swift/DenseMotionPrototype.swift',

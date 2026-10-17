@@ -4,6 +4,7 @@ No semantic ground truth is inferred. Run after MV_TRAJECTORY_REPLAY.
 import argparse
 from collections import Counter, defaultdict
 import json
+import gzip
 import math
 from pathlib import Path
 
@@ -15,7 +16,8 @@ def close(vector, reference, tolerance=1.5):
 def summarize(folder):
     run = json.loads((folder / 'run.json').read_text())
     refs = json.loads((folder / 'oracle.json').read_text())
-    stages = json.loads((folder / 'stages.json').read_text())
+    stage_path=folder/'stages.json'
+    stages=json.loads(stage_path.read_bytes() if stage_path.exists() else gzip.decompress((folder/'stages.json.gz').read_bytes()))
     rows = []
     for ref in refs:
         if ref['level'] != 0:
