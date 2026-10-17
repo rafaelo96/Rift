@@ -1,0 +1,27 @@
+{
+  "revision": "8929374ebc76a54d0537910ecaaee92226dc3ba7",
+  "chip": "Apple M4",
+  "sha256": {
+    "Core/Interpolation/Swift/DenseMotionShaders.swift": "5a5e2676872753c8519f80ecbc4f31104fa03eb1b85f6b82995ed180cf13b6df",
+    "Core/Interpolation/Swift/DenseMotionPrototype.swift": "6db05a443b903f8ba992e97a8f215a43d74c8bf19805b3676867bd6fded6f9e3",
+    "Core/Interpolation/Tools/TrajectoryDiagnostic.swift": "dc83e0a6876b4e4402a19b46a0b66b0b319966afe88ecd9cd5f47f5f159cf152",
+    "Core/Interpolation/Tools/TrajectorySurvivalReport.py": "ce8e0a1972462bf39ad6d5b7cb1077bbc3c6102183b658e24b3311db4df4b7cc",
+    "Core/Interpolation/Tools/TrajectoryDiagnosticRun.py": "d779f2ad79f66649525b32aba2a596d9f6ccc77ee0dc5608811ef9f21d2a3711"
+  },
+  "configuration": {
+    "build": "Release",
+    "workPlane": [
+      1152,
+      480
+    ],
+    "lambda": 1,
+    "temporal": true,
+    "affine": false,
+    "oracleRadius": 256,
+    "oracleLattice": "integer",
+    "oracleGap": 0.1,
+    "vectorTolerance": 1.5
+  },
+  "scope": "Offline forward-reference experiment. Timings excluded. No GUI performance/quality acceptance.",
+  "analysisRevision": "06d2c12ca7aec365f78cd0c93919d412ac6cb545"
+}

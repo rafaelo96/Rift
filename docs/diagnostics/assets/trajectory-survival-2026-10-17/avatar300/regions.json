@@ -1,0 +1,22 @@
+[
+  {
+    "name": "face-contour",
+    "rect": [
+      864,
+      256,
+      128,
+      160
+    ],
+    "step": 32
+  },
+  {
+    "name": "clothing-contour",
+    "rect": [
+      432,
+      320,
+      160,
+      128
+    ],
+    "step": 32
+  }
+]

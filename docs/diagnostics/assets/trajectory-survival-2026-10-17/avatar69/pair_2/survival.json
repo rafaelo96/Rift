@@ -1,0 +1,1455 @@
+{
+  "levelSummary": [
+    {
+      "level": 0,
+      "eligible": 45,
+      "evaluated": 25,
+      "retainedAfterAggregation": 22,
+      "lossEvents": {
+        "densePatchPropagate": 3,
+        "densePatchAggregate": 3
+      }
+    },
+    {
+      "level": 1,
+      "eligible": 54,
+      "evaluated": 37,
+      "retainedAfterAggregation": 33,
+      "lossEvents": {
+        "densePatchAggregate": 3,
+        "densePatchPropagate": 2
+      }
+    },
+    {
+      "level": 2,
+      "eligible": 57,
+      "evaluated": 42,
+      "retainedAfterAggregation": 35,
+      "lossEvents": {
+        "densePatchAggregate": 6,
+        "densePatchTemporalSelect": 2,
+        "densePatchSearch": 1,
+        "densePatchPropagate": 2
+      }
+    },
+    {
+      "level": 3,
+      "eligible": 58,
+      "evaluated": 51,
+      "retainedAfterAggregation": 47,
+      "lossEvents": {
+        "densePatchAggregate": 3,
+        "densePatchSearch": 1
+      }
+    }
+  ],
+  "scope": "L0 forward diagnostic, integer photometric oracle, not semantic truth",
+  "sourcePTS": [
+    69.111,
+    69.152
+  ],
+  "tolerancePixels": 1.5,
+  "gapThreshold": 0.1,
+  "summary": [
+    {
+      "region": "pan-background",
+      "sampled": 20,
+      "eligible": 20,
+      "excluded": 0,
+      "counts": {
+        "lost_at_synthesis": 3,
+        "never_evaluated_L0": 3,
+        "retained_through_synthesis": 14
+      },
+      "observedLossEvents": {}
+    },
+    {
+      "region": "crossing-bison",
+      "sampled": 20,
+      "eligible": 13,
+      "excluded": 7,
+      "counts": {
+        "retained_through_synthesis": 1,
+        "lost_before_synthesis": 1,
+        "never_evaluated_L0": 10,
+        "lost_at_synthesis": 1
+      },
+      "observedLossEvents": {
+        "densePatchPropagate1": 1,
+        "densePatchPropagate2": 1,
+        "densePatchAggregate": 1
+      }
+    },
+    {
+      "region": "blur-foreground",
+      "sampled": 24,
+      "eligible": 12,
+      "excluded": 12,
+      "counts": {
+        "lost_before_synthesis": 2,
+        "never_evaluated_L0": 7,
+        "retained_through_synthesis": 2,
+        "lost_at_synthesis": 1
+      },
+      "observedLossEvents": {
+        "densePatchPropagate1": 1,
+        "densePatchAggregate": 2
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "point": 0,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -7,
+        0
+      ],
+      "gap": 0.1494632065296173,
+      "cost": 5.1686690483165876e-08,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 1,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -9,
+        0
+      ],
+      "gap": 0.6817544102668762,
+      "cost": 3.8956088133090816e-07,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 2,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -13,
+        -1
+      ],
+      "gap": 0.13410265743732452,
+      "cost": 6.286846883085673e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 3,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -14,
+        -1
+      ],
+      "gap": 0.9611560702323914,
+      "cost": 3.4251672786922427e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5005767345428467
+    },
+    {
+      "point": 4,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -14,
+        0
+      ],
+      "gap": 0.45889320969581604,
+      "cost": 0.00014164650929160416,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5043506026268005
+    },
+    {
+      "point": 5,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.9477200508117676,
+      "cost": 2.3420705019816523e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5006352663040161
+    },
+    {
+      "point": 6,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.9672006368637085,
+      "cost": 3.899588591593783e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5069301128387451
+    },
+    {
+      "point": 7,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -3,
+        0
+      ],
+      "gap": 0.9809396862983704,
+      "cost": 9.376980614206332e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4998936653137207
+    },
+    {
+      "point": 8,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -4,
+        0
+      ],
+      "gap": 0.7654759883880615,
+      "cost": 3.5895797623197723e-07,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 9,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -3,
+        0
+      ],
+      "gap": 0.7898052930831909,
+      "cost": 3.132037136310828e-07,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 10,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.9318768382072449,
+      "cost": 6.834475811956509e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.49992144107818604
+    },
+    {
+      "point": 11,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.43924176692962646,
+      "cost": 3.1100316277843376e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5004750490188599
+    },
+    {
+      "point": 12,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.9676870107650757,
+      "cost": 3.1175022741081193e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4987727701663971
+    },
+    {
+      "point": 13,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -7,
+        0
+      ],
+      "gap": 0.40575769543647766,
+      "cost": 2.303082055732375e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4862433671951294
+    },
+    {
+      "point": 14,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.9634727239608765,
+      "cost": 1.8630821330134495e-07,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 15,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.8804785013198853,
+      "cost": 3.307203826352634e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4981133043766022
+    },
+    {
+      "point": 16,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -7,
+        1
+      ],
+      "gap": 0.7020565867424011,
+      "cost": 6.670979360023921e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5015972256660461
+    },
+    {
+      "point": 17,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -6,
+        0
+      ],
+      "gap": 0.969495952129364,
+      "cost": 4.5953038352308795e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4997723698616028
+    },
+    {
+      "point": 18,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        -8,
+        1
+      ],
+      "gap": 0.6681370735168457,
+      "cost": 3.2625752055537305e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 19,
+      "region": "pan-background",
+      "eligible": true,
+      "reference": [
+        122,
+        7
+      ],
+      "gap": 0.22069397568702698,
+      "cost": 2.7628450425254414e-06,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 20,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -19,
+        -1
+      ],
+      "gap": 0.11016962677240372,
+      "cost": 7.542896491941065e-05,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 21,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -20,
+        -1
+      ],
+      "gap": 0.5439831614494324,
+      "cost": 1.5117812779408268e-07,
+      "boundary": false,
+      "category": "lost_before_synthesis",
+      "losses": [
+        "densePatchPropagate1",
+        "densePatchPropagate2",
+        "densePatchAggregate"
+      ],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 22,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -4,
+        12
+      ],
+      "gap": 0.8761911392211914,
+      "cost": 5.034697658778953e-10,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 23,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        -14,
+        0
+      ],
+      "gap": 0.015238034538924694,
+      "cost": 7.155972525652032e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 24,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -81,
+        -36
+      ],
+      "gap": 0.4655560255050659,
+      "cost": 1.3613723240268882e-05,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 25,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        42,
+        19
+      ],
+      "gap": 0.24291415512561798,
+      "cost": 7.205851471070446e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5001356601715088
+    },
+    {
+      "point": 26,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -20,
+        3
+      ],
+      "gap": 0.25188153982162476,
+      "cost": 3.287246954641887e-07,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.4757862389087677
+    },
+    {
+      "point": 27,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        -34,
+        -19
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 28,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -38,
+        -32
+      ],
+      "gap": 0.4653307795524597,
+      "cost": 2.594298664782002e-10,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 29,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        6,
+        -96
+      ],
+      "gap": 0.24743331968784332,
+      "cost": 7.867239219194744e-06,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 30,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.0592949278652668,
+      "cost": 0,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 31,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -3,
+        2
+      ],
+      "gap": 0.43489474058151245,
+      "cost": 3.331254383454052e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 32,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        -134,
+        -47
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.49716025590896606
+    },
+    {
+      "point": 33,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -149,
+        23
+      ],
+      "gap": 0.5420336127281189,
+      "cost": 4.962216189596802e-05,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 34,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -39,
+        -7
+      ],
+      "gap": 0.8355978727340698,
+      "cost": 1.1481209316599461e-09,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.49954405426979065
+    },
+    {
+      "point": 35,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        -82,
+        -21
+      ],
+      "gap": 0.012079622596502304,
+      "cost": 1.410364491860605e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 36,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        -111,
+        -32
+      ],
+      "gap": 0.0026831524446606636,
+      "cost": 1.882282418819159e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 37,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        -32,
+        -13
+      ],
+      "gap": 0.563471794128418,
+      "cost": 3.6774373768366786e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 1
+    },
+    {
+      "point": 38,
+      "region": "crossing-bison",
+      "eligible": false,
+      "reference": [
+        -34,
+        -11
+      ],
+      "gap": 0.039825450628995895,
+      "cost": 6.795370932621836e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 39,
+      "region": "crossing-bison",
+      "eligible": true,
+      "reference": [
+        70,
+        -139
+      ],
+      "gap": 0.22321872413158417,
+      "cost": 1.4613468124480278e-07,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 40,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -41,
+        -5
+      ],
+      "gap": 0.3443828523159027,
+      "cost": 1.1038824965226013e-07,
+      "boundary": false,
+      "category": "lost_before_synthesis",
+      "losses": [
+        "densePatchPropagate1",
+        "densePatchAggregate"
+      ],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4997478723526001
+    },
+    {
+      "point": 41,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -45,
+        -4
+      ],
+      "gap": 0.17050392925739288,
+      "cost": 8.934468098686921e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 42,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -43,
+        -3
+      ],
+      "gap": 0.634479284286499,
+      "cost": 1.2417054051638843e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 43,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -44,
+        -6
+      ],
+      "gap": 0.24696440994739532,
+      "cost": 8.94327314426846e-08,
+      "boundary": false,
+      "category": "lost_before_synthesis",
+      "losses": [
+        "densePatchAggregate"
+      ],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": true,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 44,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        184,
+        -74
+      ],
+      "gap": 0.17047543823719025,
+      "cost": 9.248724452959323e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.49779871106147766
+    },
+    {
+      "point": 45,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        4,
+        -11
+      ],
+      "gap": 0.05847451463341713,
+      "cost": 6.557419496289185e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 46,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        166,
+        -56
+      ],
+      "gap": 0.12450851500034332,
+      "cost": 2.4868771486552532e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 47,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -46,
+        -1
+      ],
+      "gap": 0.9771190285682678,
+      "cost": 1.8537721357958503e-10,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 48,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -44,
+        -7
+      ],
+      "gap": 0.16383135318756104,
+      "cost": 7.614078185724793e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.50047367811203
+    },
+    {
+      "point": 49,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        152,
+        -56
+      ],
+      "gap": 0.07759049534797668,
+      "cost": 2.4852447211287654e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 50,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        158,
+        -53
+      ],
+      "gap": 0.5162134170532227,
+      "cost": 1.031460333811296e-10,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 51,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        219,
+        -52
+      ],
+      "gap": 0.335199236869812,
+      "cost": 5.156781945903077e-11,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 1
+    },
+    {
+      "point": 52,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        231,
+        -36
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 53,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        236,
+        -102
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 54,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        -44,
+        -7
+      ],
+      "gap": 0.6270580887794495,
+      "cost": 1.0048111676042026e-07,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 55,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        -33,
+        -5
+      ],
+      "gap": 0.0592949278652668,
+      "cost": 1.5951712173389865e-11,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 56,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        -36,
+        -8
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 57,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        109,
+        -103
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0.5
+    },
+    {
+      "point": 58,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        160,
+        -93
+      ],
+      "gap": 0,
+      "cost": 0,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "ownership",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 1
+    },
+    {
+      "point": 59,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        -41,
+        -17
+      ],
+      "gap": 0.05309678241610527,
+      "cost": 1.598520782408741e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 60,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        196,
+        -93
+      ],
+      "gap": 0.04285133257508278,
+      "cost": 1.037745533949419e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": true,
+      "blendAlpha": 0
+    },
+    {
+      "point": 61,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        206,
+        -85
+      ],
+      "gap": 0.002241496928036213,
+      "cost": 1.1687195655696314e-09,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 62,
+      "region": "blur-foreground",
+      "eligible": true,
+      "reference": [
+        3,
+        -94
+      ],
+      "gap": 0.750177800655365,
+      "cost": 3.1807123601623744e-10,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 63,
+      "region": "blur-foreground",
+      "eligible": false,
+      "reference": [
+        208,
+        -82
+      ],
+      "gap": 0,
+      "cost": 5.747594067351258e-11,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    }
+  ]
+}

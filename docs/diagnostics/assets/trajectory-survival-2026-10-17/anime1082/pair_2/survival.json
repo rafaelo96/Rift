@@ -1,0 +1,1009 @@
+{
+  "levelSummary": [
+    {
+      "level": 0,
+      "eligible": 41,
+      "evaluated": 38,
+      "retainedAfterAggregation": 36,
+      "lossEvents": {
+        "densePatchAggregate": 1,
+        "densePatchSearch": 1
+      }
+    },
+    {
+      "level": 1,
+      "eligible": 44,
+      "evaluated": 43,
+      "retainedAfterAggregation": 42,
+      "lossEvents": {
+        "densePatchPropagate": 1,
+        "densePatchAggregate": 1
+      }
+    },
+    {
+      "level": 2,
+      "eligible": 44,
+      "evaluated": 44,
+      "retainedAfterAggregation": 43,
+      "lossEvents": {
+        "densePatchSearch": 1
+      }
+    },
+    {
+      "level": 3,
+      "eligible": 44,
+      "evaluated": 44,
+      "retainedAfterAggregation": 44,
+      "lossEvents": {}
+    }
+  ],
+  "scope": "L0 forward diagnostic, integer photometric oracle, not semantic truth",
+  "sourcePTS": [
+    1082.123,
+    1082.164
+  ],
+  "tolerancePixels": 1.5,
+  "gapThreshold": 0.1,
+  "summary": [
+    {
+      "region": "bird-contour",
+      "sampled": 24,
+      "eligible": 24,
+      "excluded": 0,
+      "counts": {
+        "lost_at_synthesis": 1,
+        "retained_through_synthesis": 21,
+        "lost_before_synthesis": 1,
+        "never_evaluated_L0": 1
+      },
+      "observedLossEvents": {
+        "densePatchAggregate": 1
+      }
+    },
+    {
+      "region": "landscape-pan",
+      "sampled": 20,
+      "eligible": 17,
+      "excluded": 3,
+      "counts": {
+        "lost_at_synthesis": 1,
+        "retained_through_synthesis": 13,
+        "lost_before_synthesis": 1,
+        "never_evaluated_L0": 2
+      },
+      "observedLossEvents": {
+        "densePatchSearch": 1
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "point": 0,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        -3,
+        1
+      ],
+      "gap": 0.4404584765434265,
+      "cost": 1.8057733086607186e-07,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 1,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.4915247857570648,
+      "cost": 9.360893926668723e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 2,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9735539555549622,
+      "cost": 3.452236185808033e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 3,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.7350771427154541,
+      "cost": 2.2706416302753496e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 4,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.40124839544296265,
+      "cost": 1.8590623085401603e-06,
+      "boundary": false,
+      "category": "lost_before_synthesis",
+      "losses": [
+        "densePatchAggregate"
+      ],
+      "assessedPresent": false,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 5,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.7041849493980408,
+      "cost": 2.3221492995162407e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 6,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.7239651083946228,
+      "cost": 1.5581890977500734e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 7,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9172651171684265,
+      "cost": 7.758310971439641e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 8,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        -2,
+        1
+      ],
+      "gap": 0.925248920917511,
+      "cost": 1.0721313259409726e-07,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 9,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.999376654624939,
+      "cost": 3.528536751673528e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 10,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9961200952529907,
+      "cost": 3.383125601885695e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 11,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9270269870758057,
+      "cost": 6.753350589860929e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 12,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9626210331916809,
+      "cost": 6.861785806222542e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 13,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.8723108768463135,
+      "cost": 2.926388162904914e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 14,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9978392124176025,
+      "cost": 1.213739722061291e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 15,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.7989901304244995,
+      "cost": 5.770319333464613e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 16,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.912543773651123,
+      "cost": 1.6226225341142708e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 17,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9928399324417114,
+      "cost": 7.133508717060977e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 18,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9970283508300781,
+      "cost": 4.6989793389684564e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 19,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9988561272621155,
+      "cost": 4.1453920296419255e-09,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 20,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.5514026880264282,
+      "cost": 6.46871228582313e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 21,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.8957692384719849,
+      "cost": 2.2378263508926466e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 22,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.5304498076438904,
+      "cost": 3.253061038321903e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 23,
+      "region": "bird-contour",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9138323068618774,
+      "cost": 2.3959992745403724e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 24,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -2,
+        0
+      ],
+      "gap": 0.7467585802078247,
+      "cost": 2.7417330784373917e-05,
+      "boundary": false,
+      "category": "lost_at_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 25,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        0,
+        -1
+      ],
+      "gap": 0.8894534111022949,
+      "cost": 8.709807843843009e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.49921250343322754
+    },
+    {
+      "point": 26,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        1,
+        1
+      ],
+      "gap": 0.15081924200057983,
+      "cost": 1.2736310850414156e-07,
+      "boundary": false,
+      "category": "lost_before_synthesis",
+      "losses": [
+        "densePatchSearch"
+      ],
+      "assessedPresent": false,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 27,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        6,
+        3
+      ],
+      "gap": 0.11230049282312393,
+      "cost": 1.5779972883933624e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 28,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        7,
+        4
+      ],
+      "gap": 0.3299855589866638,
+      "cost": 1.1702127267199103e-08,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "static-protection",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 29,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -2,
+        0
+      ],
+      "gap": 0.8404259085655212,
+      "cost": 2.3523871561792475e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5010192394256592
+    },
+    {
+      "point": 30,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.7788802981376648,
+      "cost": 4.328921363594418e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 31,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.8720089793205261,
+      "cost": 1.2352608791843522e-05,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5007801055908203
+    },
+    {
+      "point": 32,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.3049033284187317,
+      "cost": 2.767392714986272e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 33,
+      "region": "landscape-pan",
+      "eligible": false,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.07511106878519058,
+      "cost": 1.8568748316738493e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 34,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        -1
+      ],
+      "gap": 0.9448129534721375,
+      "cost": 9.460849526021775e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 35,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.9062114953994751,
+      "cost": 8.685052677037675e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 36,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.8651784658432007,
+      "cost": 2.3977920591278234e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5001052618026733
+    },
+    {
+      "point": 37,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.342537522315979,
+      "cost": 1.6797303103999184e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 38,
+      "region": "landscape-pan",
+      "eligible": false,
+      "reference": [
+        1,
+        0
+      ],
+      "gap": 0.07511237263679504,
+      "cost": 1.795545223615136e-08,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 39,
+      "region": "landscape-pan",
+      "eligible": false,
+      "reference": [
+        2,
+        -7
+      ],
+      "gap": 0.05192020162940025,
+      "cost": 2.726613956838264e-06,
+      "boundary": false,
+      "category": "never_evaluated_L0",
+      "losses": [],
+      "assessedPresent": false,
+      "synthesisPresent": false,
+      "synthesisDecision": "transport-or-blend",
+      "initialInversePresent": false,
+      "reversePresent": false,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.5006422400474548
+    },
+    {
+      "point": 40,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        -1
+      ],
+      "gap": 0.8037829995155334,
+      "cost": 2.465480690716504e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 41,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        -1,
+        0
+      ],
+      "gap": 0.9881519079208374,
+      "cost": 2.8732154078170424e-06,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0.4992620348930359
+    },
+    {
+      "point": 42,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9903281331062317,
+      "cost": 2.01078123041043e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    },
+    {
+      "point": 43,
+      "region": "landscape-pan",
+      "eligible": true,
+      "reference": [
+        0,
+        0
+      ],
+      "gap": 0.9460527300834656,
+      "cost": 1.357662569034801e-07,
+      "boundary": false,
+      "category": "retained_through_synthesis",
+      "losses": [],
+      "assessedPresent": true,
+      "synthesisPresent": true,
+      "synthesisDecision": "retained",
+      "initialInversePresent": true,
+      "reversePresent": true,
+      "hiddenCounterpart": false,
+      "blendAlpha": 0
+    }
+  ]
+}

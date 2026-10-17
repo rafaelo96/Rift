@@ -1,0 +1,32 @@
+[
+  {
+    "name": "pan-background",
+    "rect": [
+      64,
+      160,
+      160,
+      128
+    ],
+    "step": 32
+  },
+  {
+    "name": "crossing-bison",
+    "rect": [
+      304,
+      288,
+      160,
+      128
+    ],
+    "step": 32
+  },
+  {
+    "name": "blur-foreground",
+    "rect": [
+      608,
+      224,
+      192,
+      128
+    ],
+    "step": 32
+  }
+]

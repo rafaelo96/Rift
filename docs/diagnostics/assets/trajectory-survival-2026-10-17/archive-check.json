@@ -1,0 +1,17 @@
+{
+  "avatar69": {
+    "planes": 49,
+    "sha256": "d6d99f636e02030235ffb34a57ae136d58d8732a2d4bc5e2fbcd9a5d8c92e63d",
+    "allPlaneHashesMatch": true
+  },
+  "avatar300": {
+    "planes": 49,
+    "sha256": "1b1f5706a7681314b51a88c276210c67ea0e06808b8167836f901f9656f35468",
+    "allPlaneHashesMatch": true
+  },
+  "anime1082": {
+    "planes": 49,
+    "sha256": "c319b2e421a013c8b2c6a7f5db4a0a6280087c8fd5a0aab3238a1c3999e49bd8",
+    "allPlaneHashesMatch": true
+  }
+}

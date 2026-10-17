@@ -1,0 +1,522 @@
+SURVIVAL REPORT CHECK passed: tolerance, four-way partition and exact search loss
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69/pair_2
+[
+  {
+    "region": "pan-background",
+    "sampled": 20,
+    "eligible": 20,
+    "excluded": 0,
+    "counts": {
+      "lost_at_synthesis": 3,
+      "never_evaluated_L0": 3,
+      "retained_through_synthesis": 14
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "crossing-bison",
+    "sampled": 20,
+    "eligible": 13,
+    "excluded": 7,
+    "counts": {
+      "retained_through_synthesis": 1,
+      "lost_before_synthesis": 1,
+      "never_evaluated_L0": 10,
+      "lost_at_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchPropagate1": 1,
+      "densePatchPropagate2": 1,
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "blur-foreground",
+    "sampled": 24,
+    "eligible": 12,
+    "excluded": 12,
+    "counts": {
+      "lost_before_synthesis": 2,
+      "never_evaluated_L0": 7,
+      "retained_through_synthesis": 2,
+      "lost_at_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchPropagate1": 1,
+      "densePatchAggregate": 2
+    }
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69/pair_3
+[
+  {
+    "region": "pan-background",
+    "sampled": 20,
+    "eligible": 18,
+    "excluded": 2,
+    "counts": {
+      "never_evaluated_L0": 3,
+      "retained_through_synthesis": 12,
+      "lost_at_synthesis": 2,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "crossing-bison",
+    "sampled": 20,
+    "eligible": 14,
+    "excluded": 6,
+    "counts": {
+      "retained_through_synthesis": 3,
+      "never_evaluated_L0": 10,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchSearch": 1
+    }
+  },
+  {
+    "region": "blur-foreground",
+    "sampled": 24,
+    "eligible": 16,
+    "excluded": 8,
+    "counts": {
+      "lost_before_synthesis": 4,
+      "retained_through_synthesis": 1,
+      "never_evaluated_L0": 10,
+      "lost_at_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchSearch": 1,
+      "densePatchPropagate1": 3,
+      "densePatchPropagate2": 3,
+      "densePatchAggregate": 3
+    }
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69/pair_4
+[
+  {
+    "region": "pan-background",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "never_evaluated_L0": 2,
+      "retained_through_synthesis": 15,
+      "lost_before_synthesis": 1,
+      "lost_at_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "crossing-bison",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "never_evaluated_L0": 10,
+      "retained_through_synthesis": 7,
+      "lost_at_synthesis": 1,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchPropagate1": 1,
+      "densePatchPropagate2": 1
+    }
+  },
+  {
+    "region": "blur-foreground",
+    "sampled": 24,
+    "eligible": 12,
+    "excluded": 12,
+    "counts": {
+      "never_evaluated_L0": 7,
+      "retained_through_synthesis": 3,
+      "lost_at_synthesis": 2
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69/pair_5
+[
+  {
+    "region": "pan-background",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "lost_at_synthesis": 5,
+      "retained_through_synthesis": 11,
+      "never_evaluated_L0": 1,
+      "lost_before_synthesis": 2
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 2
+    }
+  },
+  {
+    "region": "crossing-bison",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "never_evaluated_L0": 9,
+      "retained_through_synthesis": 9,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchPropagate1": 1,
+      "densePatchPropagate2": 1,
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "blur-foreground",
+    "sampled": 24,
+    "eligible": 14,
+    "excluded": 10,
+    "counts": {
+      "never_evaluated_L0": 8,
+      "retained_through_synthesis": 3,
+      "lost_at_synthesis": 3
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69/pair_6
+[
+  {
+    "region": "pan-background",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "never_evaluated_L0": 2,
+      "retained_through_synthesis": 11,
+      "lost_at_synthesis": 5,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "crossing-bison",
+    "sampled": 20,
+    "eligible": 16,
+    "excluded": 4,
+    "counts": {
+      "retained_through_synthesis": 5,
+      "never_evaluated_L0": 10,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchSearch": 1,
+      "densePatchPropagate1": 1,
+      "densePatchPropagate2": 1,
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "blur-foreground",
+    "sampled": 24,
+    "eligible": 7,
+    "excluded": 17,
+    "counts": {
+      "never_evaluated_L0": 6,
+      "retained_through_synthesis": 1
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar300/pair_2
+[
+  {
+    "region": "face-contour",
+    "sampled": 20,
+    "eligible": 11,
+    "excluded": 9,
+    "counts": {
+      "never_evaluated_L0": 11
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "clothing-contour",
+    "sampled": 20,
+    "eligible": 7,
+    "excluded": 13,
+    "counts": {
+      "never_evaluated_L0": 6,
+      "lost_at_synthesis": 1
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar300/pair_3
+[
+  {
+    "region": "face-contour",
+    "sampled": 20,
+    "eligible": 15,
+    "excluded": 5,
+    "counts": {
+      "retained_through_synthesis": 5,
+      "never_evaluated_L0": 5,
+      "lost_at_synthesis": 4,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "clothing-contour",
+    "sampled": 20,
+    "eligible": 6,
+    "excluded": 14,
+    "counts": {
+      "retained_through_synthesis": 2,
+      "never_evaluated_L0": 3,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchSearch": 1,
+      "densePatchPropagate1": 1,
+      "densePatchPropagate2": 1
+    }
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar300/pair_4
+[
+  {
+    "region": "face-contour",
+    "sampled": 20,
+    "eligible": 15,
+    "excluded": 5,
+    "counts": {
+      "never_evaluated_L0": 15
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "clothing-contour",
+    "sampled": 20,
+    "eligible": 10,
+    "excluded": 10,
+    "counts": {
+      "never_evaluated_L0": 10
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar300/pair_5
+[
+  {
+    "region": "face-contour",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "lost_at_synthesis": 9,
+      "never_evaluated_L0": 4,
+      "retained_through_synthesis": 5,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "clothing-contour",
+    "sampled": 20,
+    "eligible": 12,
+    "excluded": 8,
+    "counts": {
+      "lost_before_synthesis": 3,
+      "never_evaluated_L0": 6,
+      "retained_through_synthesis": 1,
+      "lost_at_synthesis": 2
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 2,
+      "densePatchSearch": 1,
+      "densePatchPropagate1": 1
+    }
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar300/pair_6
+[
+  {
+    "region": "face-contour",
+    "sampled": 20,
+    "eligible": 20,
+    "excluded": 0,
+    "counts": {
+      "retained_through_synthesis": 6,
+      "lost_at_synthesis": 7,
+      "never_evaluated_L0": 6,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchSearch": 1,
+      "densePatchPropagate1": 1,
+      "densePatchPropagate2": 1
+    }
+  },
+  {
+    "region": "clothing-contour",
+    "sampled": 20,
+    "eligible": 14,
+    "excluded": 6,
+    "counts": {
+      "lost_at_synthesis": 1,
+      "retained_through_synthesis": 1,
+      "never_evaluated_L0": 12
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/anime1082/pair_2
+[
+  {
+    "region": "bird-contour",
+    "sampled": 24,
+    "eligible": 24,
+    "excluded": 0,
+    "counts": {
+      "lost_at_synthesis": 1,
+      "retained_through_synthesis": 21,
+      "lost_before_synthesis": 1,
+      "never_evaluated_L0": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "landscape-pan",
+    "sampled": 20,
+    "eligible": 17,
+    "excluded": 3,
+    "counts": {
+      "lost_at_synthesis": 1,
+      "retained_through_synthesis": 13,
+      "lost_before_synthesis": 1,
+      "never_evaluated_L0": 2
+    },
+    "observedLossEvents": {
+      "densePatchSearch": 1
+    }
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/anime1082/pair_3
+[
+  {
+    "region": "bird-contour",
+    "sampled": 24,
+    "eligible": 22,
+    "excluded": 2,
+    "counts": {
+      "retained_through_synthesis": 19,
+      "never_evaluated_L0": 2,
+      "lost_before_synthesis": 1
+    },
+    "observedLossEvents": {
+      "densePatchAggregate": 1
+    }
+  },
+  {
+    "region": "landscape-pan",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "lost_at_synthesis": 2,
+      "retained_through_synthesis": 14,
+      "never_evaluated_L0": 3
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/anime1082/pair_4
+[
+  {
+    "region": "bird-contour",
+    "sampled": 24,
+    "eligible": 24,
+    "excluded": 0,
+    "counts": {
+      "lost_at_synthesis": 1,
+      "retained_through_synthesis": 22,
+      "never_evaluated_L0": 1
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "landscape-pan",
+    "sampled": 20,
+    "eligible": 17,
+    "excluded": 3,
+    "counts": {
+      "retained_through_synthesis": 14,
+      "lost_at_synthesis": 1,
+      "never_evaluated_L0": 2
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/anime1082/pair_5
+[
+  {
+    "region": "bird-contour",
+    "sampled": 24,
+    "eligible": 24,
+    "excluded": 0,
+    "counts": {
+      "retained_through_synthesis": 24
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "landscape-pan",
+    "sampled": 20,
+    "eligible": 19,
+    "excluded": 1,
+    "counts": {
+      "retained_through_synthesis": 12,
+      "lost_at_synthesis": 1,
+      "never_evaluated_L0": 6
+    },
+    "observedLossEvents": {}
+  }
+]
+/Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/anime1082/pair_6
+[
+  {
+    "region": "bird-contour",
+    "sampled": 24,
+    "eligible": 16,
+    "excluded": 8,
+    "counts": {
+      "never_evaluated_L0": 16
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "landscape-pan",
+    "sampled": 20,
+    "eligible": 12,
+    "excluded": 8,
+    "counts": {
+      "never_evaluated_L0": 12
+    },
+    "observedLossEvents": {}
+  }
+]

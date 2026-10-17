@@ -1,0 +1,7 @@
+=== MVProbe (hierarchical block matching, MSL) ===
+chip    : Apple M4
+file    : /Users/rafael/Downloads/Avatar.Aang.el.ultimo.maestro.del.aire.2026.WEB-DL.4k.HDR-Dual-Lat.mkv
+config  : pairs=48 plane=1152x480 lambda=4 subpel=on median=on gate=on hier=on
+video   : 3832x1600 hevc fps=23.976
+decoding from 69.00 s (≈1%) until 49 luma planes are ready…
+TRAJECTORY WINDOW: /Users/rafael/Documents/Rift/docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar69, 49 frames, 69.027...71.029

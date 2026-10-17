@@ -1,0 +1,23 @@
+docs/diagnostics/assets/trajectory-survival-2026-10-17/avatar300/pair_4_radius384
+[
+  {
+    "region": "face-contour",
+    "sampled": 20,
+    "eligible": 15,
+    "excluded": 5,
+    "counts": {
+      "never_evaluated_L0": 15
+    },
+    "observedLossEvents": {}
+  },
+  {
+    "region": "clothing-contour",
+    "sampled": 20,
+    "eligible": 10,
+    "excluded": 10,
+    "counts": {
+      "never_evaluated_L0": 10
+    },
+    "observedLossEvents": {}
+  }
+]

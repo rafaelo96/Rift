@@ -1,0 +1,36 @@
+{
+  "windows": {
+    "avatar69": [
+      69.027,
+      71.029
+    ],
+    "avatar300": [
+      300.008,
+      302.01
+    ],
+    "anime1082": [
+      1082.039,
+      1084.041
+    ]
+  },
+  "primaryPair": 4,
+  "neighborPairs": [
+    2,
+    3,
+    5,
+    6
+  ],
+  "logicalControls": {
+    "pan": "avatar69/pan-background",
+    "crossing": "avatar69/crossing-bison",
+    "blur": "avatar69/blur-foreground"
+  },
+  "cutControls": [
+    {
+      "window": "anime1082",
+      "pair": 6,
+      "reason": "Visually confirmed source scene cut; excluded from motion-continuity inference."
+    }
+  ],
+  "maskScope": "Manually selected fixed source-coordinate rectangles. They are not semantic ground truth, visibility masks, or tracked objects across pairs."
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "bird-contour",
+    "rect": [
+      416,
+      224,
+      96,
+      144
+    ],
+    "step": 24
+  },
+  {
+    "name": "landscape-pan",
+    "rect": [
+      160,
+      80,
+      160,
+      128
+    ],
+    "step": 32
+  }
+]
