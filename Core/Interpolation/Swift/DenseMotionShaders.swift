@@ -155,7 +155,7 @@ kernel void densePatchImageAffine(texture2d<float,access::sample> a [[texture(0)
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float4 selected=denseRead(input,float2(p)),gradient=0;
     float2 center=float2(p)*4;
-    if(geometry.w>=4) {
+    if(geometry.w>=1) {
         float h[36],values[64],derivatives[384];
         for(int i=0;i<36;++i) h[i]=0;
         for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
@@ -201,7 +201,7 @@ kernel void densePatchImageAffine(texture2d<float,access::sample> a [[texture(0)
                     float2 q=(center+float2(x,y)+0.5f)*scale-0.5f;
                     float2 v=float2(model[0],model[1])+float(x)*0.25f*float2(model[2],model[3])+float(y)*0.25f*float2(model[4],model[5]);
                     float value=denseRead(detailA,q).r;
-                    float oldError=value-denseRead(detailB,q+selected.xy*scale).r+exposure;
+                    float oldError=value-denseRead(detailB,q+(selected.xy+float(x)*gradient.xy+float(y)*gradient.zw)*scale).r+exposure;
                     float newError=value-denseRead(detailB,q+v*scale).r+exposure;
                     oldDetail+=oldError*oldError;newDetail+=newError*newError;
                 }

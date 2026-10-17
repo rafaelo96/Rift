@@ -772,3 +772,35 @@ func checkPatchAffineCost() throws {
     FileHandle.standardOutput.write(Data("AFFINE DETAIL: selected=\(result[6*17+8].x), expected=8px from unblurred input\n".utf8))
     precondition(result[6*17+8].x==8,"Analysis-only match overrode correspondence supported by original detail")
 }
+
+func checkImageAffineSolver() throws {
+    guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { fatalError("Metal unavailable") }
+    let source=denseMotionMSL+"""
+    kernel void checkAffineSystem(device float *output [[buffer(0)]],uint id [[thread_position_in_grid]]) {
+        if(id>=2) return;
+        float h[36],rhs[6],answer[6],truth[6]={1,-2,3,-4,5,-6};
+        for(int y=0;y<6;++y) {
+            rhs[y]=0;
+            for(int x=0;x<6;++x) {
+                float value=id==1 ? 0 : (x==y ? 4.0f : (abs(x-y)==1 ? -1.0f : 0));
+                h[y*6+x]=value;rhs[y]+=value*truth[x];
+            }
+        }
+        bool solved=denseSolveAffine6(h,rhs,answer);
+        for(int i=0;i<6;++i) output[id*7+i]=solved ? answer[i] : 0;
+        output[id*7+6]=solved ? 1 : 0;
+    }
+    """
+    let library=try device.makeLibrary(source: source,options: nil)
+    let pipeline=try device.makeComputePipelineState(function: library.makeFunction(name: "checkAffineSystem")!)
+    let output=device.makeBuffer(length: 14*4,options: .storageModeShared)!
+    let command=queue.makeCommandBuffer()!,encoder=command.makeComputeCommandEncoder()!
+    encoder.setComputePipelineState(pipeline);encoder.setBuffer(output,offset: 0,index: 0)
+    encoder.dispatchThreads(MTLSize(width: 2,height: 1,depth: 1),threadsPerThreadgroup: MTLSize(width: 2,height: 1,depth: 1));encoder.endEncoding()
+    command.commit();command.waitUntilCompleted()
+    precondition(command.status == .completed)
+    let values=output.contents().assumingMemoryBound(to: Float.self)
+    for (i,expected) in [Float(1),-2,3,-4,5,-6].enumerated() { precondition(abs(values[i]-expected)<0.00001,"Affine system solution incorrect") }
+    precondition(values[6]==1 && values[13]==0,"Singular affine system accepted")
+    print("IMAGE AFFINE SOLVER: known six-parameter system and singular rejection passed")
+}

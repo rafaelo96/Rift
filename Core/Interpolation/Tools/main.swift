@@ -67,6 +67,10 @@ private func envDouble(_ key: String) -> Double? {
 }
 
 let pairCount = envInt("MV_PAIRS", 120)
+if ProcessInfo.processInfo.environment["MV_CADENCE_REPORT"] != nil && !(2...31).contains(pairCount) {
+    print("FAIL: cadence diagnostic requires MV_PAIRS=2...31")
+    exit(2)
+}
 let lambdaPx = envInt("MV_LAMBDA", 4)
 let subpelOn = envInt("MV_SUBPEL", 1) != 0
 let dumpArtifacts = envInt("MV_DUMP", 1) != 0
@@ -77,6 +81,10 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_IMAGE_AFFINE_CHECK",0)==1 {
+    try checkImageAffineSolver()
+    exit(0)
+}
 if envInt("MV_DIAGNOSTIC_CHROMA_CHECK",0)==1 {
     for format in [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange] {
         var image: CVPixelBuffer?
@@ -1695,6 +1703,34 @@ frameTimes = displayOrder.map { frameTimes[$0] }
 guard zip(frameTimes, frameTimes.dropFirst()).allSatisfy({ $0 < $1 }) else {
     print("FAIL: diagnostic frames must have strictly increasing presentation times")
     exit(2)
+}
+
+if let reportPath=ProcessInfo.processInfo.environment["MV_CADENCE_REPORT"] {
+    var differences=[[String: Double]]()
+    for i in 0..<frames.count-1 {
+        let row=frames[i].withUnsafeBytes { a in frames[i+1].withUnsafeBytes { b -> [String: Double] in
+            let n=frames[i].count/2
+            guard n>0,frames[i+1].count==frames[i].count else { fatalError("Invalid cadence luma") }
+            var sum=0.0,absolute=0.0
+            for k in 0..<n {
+                let delta=Double(b.loadUnaligned(fromByteOffset: k*2,as: UInt16.self))-Double(a.loadUnaligned(fromByteOffset: k*2,as: UInt16.self))
+                sum+=delta;absolute+=abs(delta)
+            }
+            let mean=sum/Double(n)
+            var centered=0.0
+            for k in 0..<n {
+                let delta=Double(b.loadUnaligned(fromByteOffset: k*2,as: UInt16.self))-Double(a.loadUnaligned(fromByteOffset: k*2,as: UInt16.self))
+                centered+=abs(delta-mean)
+            }
+            return ["from":frameTimes[i],"to":frameTimes[i+1],"mae":absolute/Double(n),"centeredMAE":centered/Double(n),"meanDelta":mean]
+        } }
+        differences.append(row)
+    }
+    let report: [String: Any]=["scope":"bounded source-pair luma changes, not a duplicate or visual-quality verdict","width":workWidth,"height":workHeight,"sourcePTS":frameTimes,"differences":differences]
+    let json=try JSONSerialization.data(withJSONObject: report,options: [.prettyPrinted,.sortedKeys])
+    try json.write(to: URL(fileURLWithPath: reportPath))
+    print("CADENCE REPORT: \(reportPath), \(frames.count) bounded source frames")
+    exit(0)
 }
 
 if envInt("MV_PRORES_CHECK", 0) == 1 {

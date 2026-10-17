@@ -236,7 +236,7 @@ public final class DenseMotionPrototype {
                         let affineOutput=selected === patches[level] ? patchScratch[level] : patches[level]
                         var geometry=SIMD4<UInt32>(UInt32(gw),UInt32(gh),UInt32(blockSize),UInt32(1<<level))
                         var exposure=offsets[1-direction]-offsets[direction]
-                        try encode(ProcessInfo.processInfo.environment["RIFT_PATCH_IMAGE_AFFINE"] == "1" ? "densePatchImageAffine" : "densePatchAffine",[images[direction][level],images[1-direction][level],selected,affineOutput,patchJacobians[level],original[direction],original[1-direction]],affineOutput) {
+                        try encode(ProcessInfo.processInfo.environment["RIFT_PATCH_IMAGE_AFFINE"] == "1" && level>=2 ? "densePatchImageAffine" : "densePatchAffine",[images[direction][level],images[1-direction][level],selected,affineOutput,patchJacobians[level],original[direction],original[1-direction]],affineOutput) {
                             $0.setBuffer(seeds[direction],offset: 0,index: 0)
                             $0.setBytes(&geometry,length: MemoryLayout<SIMD4<UInt32>>.stride,index: 1)
                             $0.setBytes(&exposure,length: MemoryLayout<Float>.stride,index: 2)
