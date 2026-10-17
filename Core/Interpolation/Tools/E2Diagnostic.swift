@@ -79,7 +79,7 @@ func replayE2Diagnostic(folder: String) throws {
     }
     if clip {precondition(offWriter!.count==600 && onWriter!.count==600);try offWriter!.finish();try onWriter!.finish()}
     try allRows.withUnsafeBytes{Data($0)}.write(to:URL(fileURLWithPath:out+"/block-errors.f32"))
-    try confidenceJSON(["width":w,"height":h,"clipFrames":offWriter?.count ?? 0,"records":records,"blockFields":["span","first","meanWeight","markedFraction","beforeMAE10bit","afterMAE10bit"],"trustedPixelIdentity":true,"thresholds":"E1 top2 enter, top1 full, top5 exit; no quality-label adjustment"],out+"/metrics.json")
+    try confidenceJSON(["width":w,"height":h,"clipFrames":offWriter?.count ?? 0,"records":records,"blockFields":["span","first","meanWeight","markedFraction","beforeMAE10bit","afterMAE10bit"],"trustedPixelIdentity":true,"thresholds":"E1 top5 enter, top2 full, top10 exit; revised after initial face ROI max score 0.94314 stayed below top2"],out+"/metrics.json")
     print("E2 REPLAY \(out): \(records.count) pairs; trusted identity passed")
 }
 

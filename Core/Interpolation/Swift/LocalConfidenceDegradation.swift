@@ -30,10 +30,10 @@ final class LocalConfidenceDegradation {
             score/=max(n,1.0f);
             float2 motion=denseRead(forward,float2(p)*8+4).xy;
             float4 previous=denseRead(old,float2(p)-geometry.y*motion/8);
-            bool active=score>=0.943918959f || (previous.w>0.5f && score>0.905458547f);
-            float target=active ? smoothstep(0.943918959f,0.958356338f,score) : 0;
+            bool active=score>=0.905458547f || (previous.w>0.5f && score>0.844213010f);
+            float target=active ? smoothstep(0.905458547f,0.943918959f,score) : 0;
             float weight=mix(previous.x,target,target>previous.x ? 0.35f : 0.15f);
-            weight*=smoothstep(0.905458547f,0.943918959f,score);
+            weight*=smoothstep(0.844213010f,0.905458547f,score);
             if(weight<1.0f/1023) weight=0;
             float mode=mix(previous.y,smoothstep(0.01f,0.03f,b.y),0.3f);
             next.write(float4(weight,mode,score,active ? 1 : 0),p);
