@@ -1,0 +1,268 @@
+{
+  "topology": {
+    "before": {
+      "tested": 3740,
+      "inverted": 1410
+    },
+    "after": {
+      "tested": 50,
+      "inverted": 0
+    },
+    "rejected": 34
+  },
+  "reverse_topology": {
+    "before": {
+      "tested": 1822,
+      "inverted": 558
+    },
+    "after": {
+      "tested": 62,
+      "inverted": 0
+    },
+    "rejected": 20
+  },
+  "mutual_matches": 2,
+  "scope": "offline bounded diagnostic, no runtime or quality claim",
+  "features": [
+    280,
+    112
+  ],
+  "candidates": 1120,
+  "matches": [
+    {
+      "first": [
+        883.0,
+        383.0
+      ],
+      "last": [
+        674.0,
+        315.0
+      ],
+      "reverse_consistent": true,
+      "cost": 0.23707759380340576,
+      "geometric_support": 14.194385372298154
+    },
+    {
+      "first": [
+        883.0,
+        267.0
+      ],
+      "last": [
+        655.0,
+        219.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.436970591545105,
+      "geometric_support": 9.696135156606434
+    },
+    {
+      "first": [
+        865.0,
+        266.0
+      ],
+      "last": [
+        645.0,
+        227.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.37685394287109375,
+      "geometric_support": 10.522182653984446
+    },
+    {
+      "first": [
+        831.0,
+        420.0
+      ],
+      "last": [
+        641.0,
+        383.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.2335188388824463,
+      "geometric_support": 9.563147846764894
+    },
+    {
+      "first": [
+        884.0,
+        297.0
+      ],
+      "last": [
+        679.0,
+        220.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.7587587833404541,
+      "geometric_support": 10.823201530815965
+    },
+    {
+      "first": [
+        837.0,
+        324.0
+      ],
+      "last": [
+        626.0,
+        285.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.5779573917388916,
+      "geometric_support": 9.150719872873978
+    },
+    {
+      "first": [
+        851.0,
+        310.0
+      ],
+      "last": [
+        636.0,
+        265.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.4502373933792114,
+      "geometric_support": 9.751354019356263
+    },
+    {
+      "first": [
+        866.0,
+        326.0
+      ],
+      "last": [
+        656.0,
+        255.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.5483163595199585,
+      "geometric_support": 8.462452373477735
+    },
+    {
+      "first": [
+        958.0,
+        365.0
+      ],
+      "last": [
+        749.0,
+        250.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.7559055089950562,
+      "geometric_support": 9.631017753926248
+    },
+    {
+      "first": [
+        990.0,
+        440.0
+      ],
+      "last": [
+        778.0,
+        331.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.5550285577774048,
+      "geometric_support": 6.59920284767708
+    },
+    {
+      "first": [
+        986.0,
+        400.0
+      ],
+      "last": [
+        783.0,
+        290.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.6528201103210449,
+      "geometric_support": 7.236560975400766
+    },
+    {
+      "first": [
+        555.0,
+        315.0
+      ],
+      "last": [
+        621.0,
+        334.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.6344609260559082,
+      "geometric_support": 3.823793045524519
+    },
+    {
+      "first": [
+        997.0,
+        321.0
+      ],
+      "last": [
+        740.0,
+        195.0
+      ],
+      "reverse_consistent": true,
+      "cost": 0.18510019779205322,
+      "geometric_support": 5.679312506188106
+    },
+    {
+      "first": [
+        891.0,
+        391.0
+      ],
+      "last": [
+        732.0,
+        347.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.4907665252685547,
+      "geometric_support": 10.61504539674415
+    },
+    {
+      "first": [
+        923.0,
+        429.0
+      ],
+      "last": [
+        736.0,
+        384.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.6159794330596924,
+      "geometric_support": 6.446591601378885
+    },
+    {
+      "first": [
+        555.0,
+        237.0
+      ],
+      "last": [
+        92.0,
+        325.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.2893407344818115,
+      "geometric_support": 4.307477098645095
+    },
+    {
+      "first": [
+        1033.0,
+        306.0
+      ],
+      "last": [
+        751.0,
+        124.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.5891306400299072,
+      "geometric_support": 3.135293436608203
+    },
+    {
+      "first": [
+        555.0,
+        221.0
+      ],
+      "last": [
+        101.0,
+        308.0
+      ],
+      "reverse_consistent": false,
+      "cost": 0.5412710905075073,
+      "geometric_support": 3.0544291106821375
+    }
+  ],
+  "seconds": 2.282450708
+}
