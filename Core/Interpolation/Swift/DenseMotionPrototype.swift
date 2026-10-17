@@ -66,7 +66,7 @@ public final class DenseMotionPrototype {
         }
         let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchImageAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -90,7 +90,7 @@ public final class DenseMotionPrototype {
         images=try (0..<4).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
         patches=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
         patchScratch=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
-        patchJacobians=inverseSearch && (ProcessInfo.processInfo.environment["RIFT_PATCH_AFFINE"] == "1" || ProcessInfo.processInfo.environment["RIFT_PATCH_IMAGE_AFFINE"] == "1") ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
+        patchJacobians=inverseSearch && ProcessInfo.processInfo.environment["RIFT_PATCH_AFFINE"] == "1" ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
         flows=try (0..<2).map { _ in try sizes.map { size in try [texture(.rgba32Float,size.0,size.1),texture(.rgba32Float,size.0,size.1)] } }
         dual=variational ? try (0..<2).map { _ in try [texture(.rgba32Float,width,height),texture(.rgba32Float,width,height)] } : []
         linear=variational ? try (0..<2).map { _ in try texture(.rgba32Float,width,height) } : []
@@ -236,7 +236,7 @@ public final class DenseMotionPrototype {
                         let affineOutput=selected === patches[level] ? patchScratch[level] : patches[level]
                         var geometry=SIMD4<UInt32>(UInt32(gw),UInt32(gh),UInt32(blockSize),UInt32(1<<level))
                         var exposure=offsets[1-direction]-offsets[direction]
-                        try encode(ProcessInfo.processInfo.environment["RIFT_PATCH_IMAGE_AFFINE"] == "1" && level>=2 ? "densePatchImageAffine" : "densePatchAffine",[images[direction][level],images[1-direction][level],selected,affineOutput,patchJacobians[level],original[direction],original[1-direction]],affineOutput) {
+                        try encode("densePatchAffine",[images[direction][level],images[1-direction][level],selected,affineOutput,patchJacobians[level],original[direction],original[1-direction]],affineOutput) {
                             $0.setBuffer(seeds[direction],offset: 0,index: 0)
                             $0.setBytes(&geometry,length: MemoryLayout<SIMD4<UInt32>>.stride,index: 1)
                             $0.setBytes(&exposure,length: MemoryLayout<Float>.stride,index: 2)

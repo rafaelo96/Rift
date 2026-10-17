@@ -81,10 +81,6 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
-if envInt("MV_IMAGE_AFFINE_CHECK",0)==1 {
-    try checkImageAffineSolver()
-    exit(0)
-}
 if envInt("MV_DIAGNOSTIC_CHROMA_CHECK",0)==1 {
     for format in [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange] {
         var image: CVPixelBuffer?
