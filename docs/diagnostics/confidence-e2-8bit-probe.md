@@ -1,0 +1,3 @@
+# E2 diagnostic input correction
+
+The offline MVProbe scaledLuma routine assumed every planar buffer used 16-bit storage. Reading NV12 that way duplicated/misaligned the source image and invalidated live-action measurements. Production MotionCompensator already distinguishes 8/10-bit planes and is unchanged by this fix. The probe now resamples Planar8 using the actual row stride and converts it to normalized ten-bit luma (byte×4). The 10-bit fixture path is unchanged. A deterministic NV12 full-width/padded-stride test asserts every output code. No search, selection or static-protection change.

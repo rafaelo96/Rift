@@ -587,6 +587,18 @@ private func scaledLuma(_ buffer: CVPixelBuffer) -> Data? {
     let bpr = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
     guard let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else { return nil }
 
+    let format=CVPixelBufferGetPixelFormatType(buffer)
+    if format==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format==kCVPixelFormatType_420YpCbCr8BiPlanarFullRange {
+        var bytes=[UInt8](repeating:0,count:workWidth*workHeight)
+        let status=bytes.withUnsafeMutableBytes { destination -> vImage_Error in
+            var input=vImage_Buffer(data:base,height:vImagePixelCount(sh),width:vImagePixelCount(sw),rowBytes:bpr)
+            var output=vImage_Buffer(data:destination.baseAddress!,height:vImagePixelCount(workHeight),width:vImagePixelCount(workWidth),rowBytes:workWidth)
+            return vImageScale_Planar8(&input,&output,nil,vImage_Flags(kvImageHighQualityResampling | kvImageDoNotTile))
+        }
+        guard status==kvImageNoError else {return nil}
+        return bytes.map {UInt16($0)*4}.withUnsafeBytes {Data($0)}
+    }
+
     var src = Data(count: sw * sh * MemoryLayout<UInt16>.stride)
     src.withUnsafeMutableBytes { (dstRaw: UnsafeMutableRawBufferPointer) -> Void in
         let dst = dstRaw.bindMemory(to: UInt16.self)
@@ -619,6 +631,18 @@ private func scaledLuma(_ buffer: CVPixelBuffer) -> Data? {
         }
     }
     return out
+}
+
+if envInt("MV_LUMA8_CHECK",0)==1 {
+    var image:CVPixelBuffer?
+    precondition(CVPixelBufferCreate(nil,workWidth,workHeight,kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,nil,&image)==kCVReturnSuccess)
+    let buffer=image!;CVPixelBufferLockBaseAddress(buffer,[])
+    let base=CVPixelBufferGetBaseAddressOfPlane(buffer,0)!.assumingMemoryBound(to:UInt8.self),stride=CVPixelBufferGetBytesPerRowOfPlane(buffer,0)
+    for y in 0..<workHeight {for x in 0..<workWidth {base[y*stride+x]=UInt8(16+(x*3+y*13)%224)}}
+    CVPixelBufferUnlockBaseAddress(buffer,[])
+    let data=scaledLuma(buffer)!
+    data.withUnsafeBytes {raw in for y in 0..<workHeight {for x in 0..<workWidth {precondition(raw.loadUnaligned(fromByteOffset:(y*workWidth+x)*2,as:UInt16.self)==UInt16(16+(x*3+y*13)%224)*4)}}}
+    print("LUMA8 CHECK: padded NV12 rows, full width, exact normalized 10-bit codes passed");exit(0)
 }
 
 // MARK: - PNG export helpers
