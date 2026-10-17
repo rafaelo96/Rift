@@ -66,6 +66,12 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if envInt("MV_FULL_ORACLE_CHECK",0)==1 {
+    do {try checkFullOracle();exit(0)} catch {print("FULL ORACLE FAILED: \(error)");exit(3)}
+}
+if let folder=ProcessInfo.processInfo.environment["MV_FULL_ORACLE_WINDOW"] {
+    do {try replayFullOracle(folder: folder);exit(0)} catch {print("FULL ORACLE FAILED: \(error)");exit(3)}
+}
 if ProcessInfo.processInfo.environment["MV_STATIC_REAL"] != nil {
     do { try replayStaticProtection();exit(0) } catch { print("STATIC REPLAY FAILED: \(error)");exit(3) }
 }

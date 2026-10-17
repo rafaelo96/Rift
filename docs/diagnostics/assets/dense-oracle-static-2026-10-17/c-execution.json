@@ -1,0 +1,17 @@
+{
+  "chip": "Apple M4",
+  "build": "Release",
+  "baselineRevision": "d17c7ad8ddd81d5d74f770295e4e8a22bce12643",
+  "sourceSHA256": {
+    "Core/Interpolation/Tools/DenseOracleDiagnostic.swift": "59d123db9ccb082071bc24bc4322332242b6ce867b450f78f02460cf70d44de8",
+    "Core/Interpolation/Tools/DenseOracleReport.py": "6b4d87ae41ba3ec3ff7f07d0cd7c3b0a2a7dc2e5610b3599be5d1da520646651",
+    "Core/Interpolation/Tools/main.swift": "23bdf47739b453d543d6683763438d55f1253e540a30935d1d9bfdc760d86ba1",
+    "Core/Interpolation/Swift/DenseMotionShaders.swift": "5a5e2676872753c8519f80ecbc4f31104fa03eb1b85f6b82995ed180cf13b6df",
+    "Core/Interpolation/Swift/DenseMotionPrototype.swift": "0ff3e2feff44044231cefdeab01884ba1483a6b21cb11b11268471e15eefef52"
+  },
+  "binarySHA256": "ef8fa303279058fefacba360dfee52998a4928cd82328ef3bff8c59797d163bc",
+  "flagOffIdenticalOutputs": 432,
+  "productionBaselinePNGsEqualPreviousA": 9,
+  "sparseAReproducedPNGs": 9,
+  "timingNote": "Pair4 was replayed from cached reference grids for additional ablations; run.json seconds for this pair are cached replay, not fresh exhaustive search."
+}

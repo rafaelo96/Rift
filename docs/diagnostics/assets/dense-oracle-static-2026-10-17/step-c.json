@@ -1,0 +1,47 @@
+[
+  {
+    "case": "avatar69",
+    "pairs": 48,
+    "sourceFrames": 49,
+    "coveragePerDirection": 552960,
+    "blocksPerDirection": 8640,
+    "radius": 256,
+    "disabledComparisons": 144,
+    "changedPixelsPair4": [
+      156723,
+      199835,
+      175333
+    ],
+    "offlineSeconds": 139.8654568195343
+  },
+  {
+    "case": "avatar300",
+    "pairs": 48,
+    "sourceFrames": 49,
+    "coveragePerDirection": 552960,
+    "blocksPerDirection": 8640,
+    "radius": 256,
+    "disabledComparisons": 144,
+    "changedPixelsPair4": [
+      176999,
+      266116,
+      290954
+    ],
+    "offlineSeconds": 139.20646607875824
+  },
+  {
+    "case": "anime1082",
+    "pairs": 48,
+    "sourceFrames": 49,
+    "coveragePerDirection": 552960,
+    "blocksPerDirection": 8640,
+    "radius": 256,
+    "disabledComparisons": 144,
+    "changedPixelsPair4": [
+      68825,
+      88751,
+      87607
+    ],
+    "offlineSeconds": 139.30665028095245
+  }
+]

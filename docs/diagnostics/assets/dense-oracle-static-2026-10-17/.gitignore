@@ -1,0 +1,7 @@
+# Reproducible bounded work files; reference grids are archived losslessly per case.
+*/pair_*/
+*/regression-*/
+*/static-*/
+*.f32
+*.u16
+*early.png

@@ -1,0 +1,2028 @@
+[
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 0,
+    "PTS": [
+      69.027,
+      69.069
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 147364,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 190117,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 166347,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9640209674835205,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "d1f8956eef04d5f4c9c5f34c3c7a41b5f15578eb7ff926918eb0e19383f207ba",
+      "current_t0.5.png": "e144032ee1c6e214c1f5cdd50703781d6cf54c6445582f5d91ca8d11a75d7e1a",
+      "current_t0.75.png": "66258e8846f440d526e15212c973fb22eb4a8fcdeb8f89c8266c564a15ac03e6",
+      "dense_t0.25.png": "fae55c2c8b7453c9d897b9f6c388f09767b5e7850677fcedb492bc7a71c99019",
+      "dense_t0.5.png": "bbfc1cc98ffee43def1568b2eb2ee2682d52708848365c177dd5e945dc36508e",
+      "dense_t0.75.png": "f16128fd144c9c406ee0b3bf20168786d86af50154248022a78dd86df33afc8f",
+      "original0.png": "268d10a9907b0c077938469428d3d08f06d6f2d0f97ccdb62d19182d205247fb",
+      "original1.png": "e43e967bf09c30814ab58c026bdff5815b48619a107ac2837474093baa6029b5"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 1,
+    "PTS": [
+      69.069,
+      69.111
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 142585,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 184505,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 160958,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9520500898361206,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "a58f81762263ddc408ea531cefa2d7d11c9adc700a0b441fd28357fb83b6d27f",
+      "current_t0.5.png": "d19964e99946b53da97fb6d90cf4319838dfd7ff3398a90167311aafb0770343",
+      "current_t0.75.png": "7b11899105af1744da81f2a8245eb02556ac935d0fe50c3554c0a5aa2417a75f",
+      "dense_t0.25.png": "dbd6be3781e4507a6da55d4c8bcb34ca48a8f2ab5c579d9c22d6093f74fb23f1",
+      "dense_t0.5.png": "6b0b4fe8edbcbd9348025801814168c1608b3b7e94180d94107b0563b5be4d24",
+      "dense_t0.75.png": "db6d613225076ac1acb7612cb9ea3e307b1f52fd4f6a9e74ae45cfdab4ac3ab6",
+      "original0.png": "e43e967bf09c30814ab58c026bdff5815b48619a107ac2837474093baa6029b5",
+      "original1.png": "9c06f8cde78c08af25cd6faad37215c4014552737ad2ee51c4948d8b46aa6bcf"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 2,
+    "PTS": [
+      69.111,
+      69.152
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 136517,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 175580,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 153071,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.0172579288482666,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "78672444e88cba22f78274ad1e150bf6af8c865ac411f57fbdd5fefdd35f6fbd",
+      "current_t0.5.png": "158cc87dda78958f6389118ae25f4a34504b8dfb8bff9f06c9dec8c22c4b4d69",
+      "current_t0.75.png": "fdf2dcb2cfa4dfe59b5e10c8974faf7f8b6f6f5d532350ab73c96a51f30c391f",
+      "dense_t0.25.png": "e9b65c4bb883ea9b9157bcd909d063d95de209fe1e1b0ee387e3bcec7ea504da",
+      "dense_t0.5.png": "10eae2c298bacdc5bb9f6a5fdff748ad66d56392c6797443ad736e2c5511a7ff",
+      "dense_t0.75.png": "a04024bc98a5838ed24f2aa361775c529d22140f38f2a5408f6721171cd6eddd",
+      "original0.png": "9c06f8cde78c08af25cd6faad37215c4014552737ad2ee51c4948d8b46aa6bcf",
+      "original1.png": "445cdcc948f194f256223052056b232af46c18de4caf4b9d8f0cd967a243cc5b"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 3,
+    "PTS": [
+      69.152,
+      69.194
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 162812,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 214879,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 189285,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.007321000099182,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "2e346f65afa3d930e9af8136158297b6b792642e12b7910fea5ef08e93028f70",
+      "current_t0.5.png": "6f69201885020d0a1c7baade312582d14953541d5845c365473fa56499f3d115",
+      "current_t0.75.png": "55faeac77bc6fa2378943390d0ea30854776d12e324389726002162ab49bc46f",
+      "dense_t0.25.png": "ec39c583f75eeda5af6e52799dd50c698deed0f5cb0872817b0db7e49ab1a4b4",
+      "dense_t0.5.png": "7a7b192f5d98bf7e294925153485edf554ba00838993ab8294660691f453a6e6",
+      "dense_t0.75.png": "7cc49f7422de21cbbe6b53194cde1707ebc60ae5c9858128eb9243dd1437081a",
+      "original0.png": "445cdcc948f194f256223052056b232af46c18de4caf4b9d8f0cd967a243cc5b",
+      "original1.png": "8d1b2bb78d21c81ef8c3d7ec7f6d2f6d8878d408dc9f3a5570c23b4874a7cec8"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 4,
+    "PTS": [
+      69.194,
+      69.236
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 156723,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 199835,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 175333,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 0.41610097885131836,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "6023532ac0d2f99240697fd02ffcc48300f3f10fd7c1df71ed495f687fea9d8e",
+      "current_t0.5.png": "11d921d7bbee0d99a79f8efdeba908527020940405ce40a74044806a2f718249",
+      "current_t0.75.png": "ac86b891b83b254500596165afffd43950826c6442a90a39b97a90c8953c1f5c",
+      "dense_t0.25.png": "b91f615fbf14aacadbaa94d1dfec708d0d6a73fe3c371e18c701244fbf4b90f0",
+      "dense_t0.5.png": "480b1ff4b580d39a23d0624a6d4a90a153e3e910b08981d0f8f9c2ebaed01b91",
+      "dense_t0.75.png": "5c4c6c09924d9c4f58f93ff1ad18933c66645e0ab0a8031aeaf51aab3f556124",
+      "legacy-filled_t0.25.png": "ea4ce08bd0953c789637d52e626b88be6343a86e1c9882167dc722a8af1b828a",
+      "legacy-filled_t0.5.png": "c87d8f92bb115f46efef16c40104c945290e1a7a99a477191065303024250d81",
+      "legacy-filled_t0.75.png": "f377b1a7dbaed971dbfa1ea6b047ffac421e2e896a4275bdd1c503991ce91f3f",
+      "legacy-sparse_t0.25.png": "8f0a66e8e5f355a8490ef9a8463ee0f1b17f4eb82260321fcc25d1520c118a12",
+      "legacy-sparse_t0.5.png": "75d7b9a34f248bdee07fa16c256512e1e191209e1d084e03ddc335ce56b509ce",
+      "legacy-sparse_t0.75.png": "55644d6c6f683dcf171c60db7b89dab4df319f1a4af0c5405a65462d22d8517c",
+      "masked_t0.25.png": "6767425ab1ad6e23d6e529b5b519119f52cdb233e98b7a74b9fc3239317f5190",
+      "masked_t0.5.png": "c3d01fe421ffb0845abcbacb2b4843bb85915b1fc224229cc283a63ed37b5bbb",
+      "masked_t0.75.png": "3e34b80a77d15109a21e99378e31f8c6d061c73ac36da1b50703e812375c3920",
+      "original0.png": "8d1b2bb78d21c81ef8c3d7ec7f6d2f6d8878d408dc9f3a5570c23b4874a7cec8",
+      "original1.png": "02d45adb38212eeff8aae676fba1482e6912aa0cfc4b1272e6395b0607f4ff6b",
+      "sparse-mask.png": "27ce24da904dbbe7dc6306bc251c8fc89c21f46b793f2138d989495dedf06621"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 5,
+    "PTS": [
+      69.236,
+      69.278
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 161946,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 205726,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 184345,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.952391028404236,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "e7f76f0f3e2b34492343e260abe60cb427f569ae5834742b6dcf1a11c58f641b",
+      "current_t0.5.png": "07518a917ecc55b20678b1c46739cf0d8e67ca684b93aa89ac3169b5c7102ce9",
+      "current_t0.75.png": "e8acd0aece96d54456582ce989f59327a4b7bd9cfc4e39a59e18e3e655ee3100",
+      "dense_t0.25.png": "5a9f6fc26c16bd4f27873f1066c3ad9d516f1a8e924ab5f910e27047978a7b8c",
+      "dense_t0.5.png": "90763160817ca201265ec1d0c4b2670663fe8686c375c0c57edb9047e74cc752",
+      "dense_t0.75.png": "546a5c2e903a7e97d63c191a77bb6aef9a829cb0ade34516c234db7432239ba5",
+      "original0.png": "02d45adb38212eeff8aae676fba1482e6912aa0cfc4b1272e6395b0607f4ff6b",
+      "original1.png": "d03d5cc350783108478f2838ec41cfb3a49bb5c1a4be260052a6d64a98a80380"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 6,
+    "PTS": [
+      69.278,
+      69.319
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 189118,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 235775,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 215858,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.01602303981781,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "b7a4387cd3c9e81565959811fd7560331c67e0337dc9a423dac41245b9f508d6",
+      "current_t0.5.png": "7ba96b28e2613c29ba2fcdba717d9456c51205d730f7c8f15f4f948c0a8e5b65",
+      "current_t0.75.png": "8916afd86d5b8c6a31b0bc278b41a8c8de069103456c9f4103b5a6554fa00480",
+      "dense_t0.25.png": "c434dd982fcab3db8b84580ec25c429b1272b2fa835c7e5ebc4aee111a71bf77",
+      "dense_t0.5.png": "138f3db8fccbe7211a370a6993033ac295c72a5f377aa6522b5f717a369f18b7",
+      "dense_t0.75.png": "ab178619ad93f0e6fa1731d2bef7d2780cab5a6e1b1e2a928639ce1860a75879",
+      "original0.png": "d03d5cc350783108478f2838ec41cfb3a49bb5c1a4be260052a6d64a98a80380",
+      "original1.png": "6e5f77e15b572d9d3898336495516b264fc7b6c673605b8baed52a192aa8db0f"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 7,
+    "PTS": [
+      69.319,
+      69.361
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 178464,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 221823,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 198201,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9598408937454224,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "2382d98633fcd1f4170b25a340599e494cfaa2590b31a2d8dd230e15c9ffe951",
+      "current_t0.5.png": "7f1b8c93c498932ca95b420b958fc6744c8ef47e276aee6730ebab47f6eefad5",
+      "current_t0.75.png": "a1882a7df310d0aaed138936d96a40c539e00f241e521f488bea1a9c8de1c38a",
+      "dense_t0.25.png": "e50e35f30ae76f51a0506d1e8505c3add818056317ac1d12e301a228651244b8",
+      "dense_t0.5.png": "64999b6b5af378d9b0246cffdb78b90c0952ae0f99aaea03256056f525fd010e",
+      "dense_t0.75.png": "69beb734301ab1f12c70a5ee7450ea0bf904d9b47cad67159255eb3ca5ecf8fd",
+      "original0.png": "6e5f77e15b572d9d3898336495516b264fc7b6c673605b8baed52a192aa8db0f",
+      "original1.png": "8cf983f9282c007cbe5aae91ebd60d5afceb7a06e566f4248f4ea40df6e2cb32"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 8,
+    "PTS": [
+      69.361,
+      69.403
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 175279,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 219146,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 196806,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9574509859085083,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "09866d2c4ff58ec9d4b6855fa1414bba84ba25b068e24535c1ed93e6c9827570",
+      "current_t0.5.png": "2f6b4b26b25b34988cfc7277cbe0980e72ef92fe7f5a87ddbd7d99b11ef7df00",
+      "current_t0.75.png": "82ab718a4630578ba237f276048c1dd11a7b98baabc62565edd29753e8e71e12",
+      "dense_t0.25.png": "76b6e48e3135617b8ac5cbd47e4dfb25addc9bdfe035f08cb89de0ba9ed87ca5",
+      "dense_t0.5.png": "1cc31d75370aa5419a309566999276e03a51a514aafef7eda56b39e60ec33304",
+      "dense_t0.75.png": "17cf82e23862e45e1d952ec18c490477390508e3e3dfd240591ca0a1c8a5beeb",
+      "original0.png": "8cf983f9282c007cbe5aae91ebd60d5afceb7a06e566f4248f4ea40df6e2cb32",
+      "original1.png": "7f74af4da3289b4504a56654792b2677db8620aba75b0b417a9605ec6e829d52"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 9,
+    "PTS": [
+      69.403,
+      69.444
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 195191,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 245959,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 220063,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.961655020713806,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "15836c17b6e45195aade2147c864bddb653665afd1f6c6a019e4d1e17bc18e54",
+      "current_t0.5.png": "62a544056b2862091e77e021c5b4f060f39b44af6c25e618f3bd9b3dda82bef1",
+      "current_t0.75.png": "e51eab7ec7b12a7171b9e151a8e77a54518832dc0e1b26adf3a89786c41e9a60",
+      "dense_t0.25.png": "ecaa2e5033b81322d9939a2fa9ad0eeff16ae09aacc26fb147d772aa8ad1849c",
+      "dense_t0.5.png": "04412ae3efd4a59c6fc5bb7ae8e90087bbf832934ecffa974ec8dfcd42fec5dd",
+      "dense_t0.75.png": "8c5f1735990fa7ea0604e77ead8bbb11a802cf9f017545cfaa37586ec3da8337",
+      "original0.png": "7f74af4da3289b4504a56654792b2677db8620aba75b0b417a9605ec6e829d52",
+      "original1.png": "92bd55f84061992f0f7206ddf00054fc19987425e80ae2f7d9ad22226e6159a6"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 10,
+    "PTS": [
+      69.444,
+      69.486
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 166525,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 210419,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 185985,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.0163999795913696,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "6200b8181b62747b54027683e7e68c9778c05c3fb3b39f8cb42ee40521ea7506",
+      "current_t0.5.png": "0c7e7568eae34e081f86a705d4456cdef7f04e032cb22d15993b1b0b16f18364",
+      "current_t0.75.png": "29ee9633e12447f5d54ca12d87dec9d49c09178ca5197eec5924664fab23238d",
+      "dense_t0.25.png": "b97cd95ad0073c79f20445c4d01d63c2f335937c4024c4d15679c815ecf0a508",
+      "dense_t0.5.png": "95cdc84b3b5e900440b81be0a872023f3a51f4104debf5cbb899c6e0d48bf567",
+      "dense_t0.75.png": "b26e07dfefdaf5eb0e46cda6ffaeb5b15791940853c36bad8592ca4db9100730",
+      "original0.png": "92bd55f84061992f0f7206ddf00054fc19987425e80ae2f7d9ad22226e6159a6",
+      "original1.png": "68411990d1c9010cb7e554079e8bb23b0c3179134075202c17b61303cde03635"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 11,
+    "PTS": [
+      69.486,
+      69.528
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 169246,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 215510,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 192780,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.982171893119812,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "9416e9afaa56db6552a7d8bdb654b95b579a64c419a8cc8be3f9da0ad4b47b11",
+      "current_t0.5.png": "1ab4a85abfbd67bed4c2506ca5c45da23041033dc2132af3e735e4224d637ddb",
+      "current_t0.75.png": "8b462a7bcbc143cfc74ebee4ba0dd6d6ce8292de38bad0918e6d24d1a4901863",
+      "dense_t0.25.png": "8b8226c38265114f3558f80f032dcce5b87c6a44bdc20b380e8148c270ed322a",
+      "dense_t0.5.png": "b6b48a877edfc6ac41c86a261642f3de3ae0df7fe3bad184e280bb54cf66b432",
+      "dense_t0.75.png": "0c9bca2d7cdaf6533c9237f72958154953f4f3d17660e47b47e3a1bf2f13e82e",
+      "original0.png": "68411990d1c9010cb7e554079e8bb23b0c3179134075202c17b61303cde03635",
+      "original1.png": "c8628ad30f1de326e01ac8d948e44f08222a167916bd1f51367a5b983b60d22e"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 12,
+    "PTS": [
+      69.528,
+      69.569
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 179529,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 228505,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 206024,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.0130749940872192,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "4e29b389443d8f5b587928c54e505600e62df310eecc2c9aaea4bd27a4259c0a",
+      "current_t0.5.png": "accd87485dcc54459b18532a1ff1fdb7c333b59e0aab59f49257c4c42fc70716",
+      "current_t0.75.png": "86f8f80ea5b085c1234cdb2ba31e41ed58b82c7921f04baf23ce4deb2ef1c03b",
+      "dense_t0.25.png": "6f1b3263553be484293e7351d7a13ebaba51ddd5fac78d63f5069f49869a08a9",
+      "dense_t0.5.png": "84b2c800d43dae203bbcbd56dd60fe81cf1bc8704f965f5a8cc7fce2d0cd5fb8",
+      "dense_t0.75.png": "6c3e73688056cad4d85848f5bdfd12ab1e7a94f2b3fbbc2204540e0c636cece5",
+      "original0.png": "c8628ad30f1de326e01ac8d948e44f08222a167916bd1f51367a5b983b60d22e",
+      "original1.png": "fb025dc43356bf494e97eaa12daeaaba28b762c04d26a87389adf3409503a9ca"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 13,
+    "PTS": [
+      69.569,
+      69.611
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 173105,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 220439,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 194047,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.004488945007324,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "d25e5b3029196a6e2150e80098ec67d87a2d13c247ea76dd6c4f57bfbfae3978",
+      "current_t0.5.png": "fa245c628813ab8b1e03f23c3202909a33e91bc677a9145d368c887f037b6c8d",
+      "current_t0.75.png": "8fa2b8e40aa9f4d62d6379d47fbb795ccdb8a46a9b8e7c05695ff8dc8d79abfd",
+      "dense_t0.25.png": "38fbdd631f773237cdd1d89832347f16f6aef8bad1f0707b27afa18f1b70481e",
+      "dense_t0.5.png": "9acd15d38e2c9f4c1b85b4f5b3390d6643bcc7b338e3983c190e144486e9661a",
+      "dense_t0.75.png": "bdedd3ee671385e307389ed868dfaae0fbdee6d1e8698720a4c08350d91fa9c3",
+      "original0.png": "fb025dc43356bf494e97eaa12daeaaba28b762c04d26a87389adf3409503a9ca",
+      "original1.png": "d41e2cd4cbbd8050a70c5b4ca86e7ea796ecca458e410a81daf006691eb3cd40"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 14,
+    "PTS": [
+      69.611,
+      69.653
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 162261,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 204627,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 181872,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.954564094543457,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "2d630008c8c13b323bf9466be10ae52434eed3f613b744903fd9f9234d8ccf00",
+      "current_t0.5.png": "a4181ba9503755ca544fb77e8351992277b7a24b99fe41390ab80189f1c30c81",
+      "current_t0.75.png": "f731025f33740d45b752b8ca0d26699ef843581f73c38b82edaac3edd248cff7",
+      "dense_t0.25.png": "ead1a1190bee1d5068c9b10c6be18d6d204d964fb49f2b32d80767acc69f9a07",
+      "dense_t0.5.png": "1ab78076db5d8c665b2a82f45b788ab36505184448954a92a8fa91b70c5d50ee",
+      "dense_t0.75.png": "e0d5d92babe69ddf96deb7388664069d95cf87f1f612c4752077afa39616aac4",
+      "original0.png": "d41e2cd4cbbd8050a70c5b4ca86e7ea796ecca458e410a81daf006691eb3cd40",
+      "original1.png": "6191f8eefa8fab097c1e2d19dd05883db392530ed6aac458d3cd7ceaa3681c11"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 15,
+    "PTS": [
+      69.653,
+      69.695
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 171019,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 214602,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 193141,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9956040382385254,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "81af3cc42a7be95a7272bc2806f0094efcc3cb71c60d51168028c9aecbd4c008",
+      "current_t0.5.png": "2ac0c595780994490a72a4748e46bb0ee3b7436224514df1c02a20d43ef7b443",
+      "current_t0.75.png": "78d6c47321a042d5de6f79987645ab819a37e871dcbe7ab867678c31b4b611c6",
+      "dense_t0.25.png": "0937227c8760f840d21cfe0cdf714051fc1801667bb59873b6c99f73b1bb48e7",
+      "dense_t0.5.png": "4c34d3db311c7d10b9c672f8a1d59949413ec503e187f803fe3245bc6d8b1c6c",
+      "dense_t0.75.png": "091859ca38ba7781f4dc0ec83d7b3328362f1235c84316c4455ded58114f5ed0",
+      "original0.png": "6191f8eefa8fab097c1e2d19dd05883db392530ed6aac458d3cd7ceaa3681c11",
+      "original1.png": "29262812f8c29c27e1359270085a2f1e8834ee9b9bfc71df1c2db330df905f78"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 16,
+    "PTS": [
+      69.695,
+      69.736
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 146813,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 187970,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 166110,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.991334915161133,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "2168eaaee61121549463126cd1823fd922429f04e32cbbea07cb92df8cfd31c6",
+      "current_t0.5.png": "bac945a626deb0419538bfadc38429b595a42164df43cbaf7b841d63ac8f95d3",
+      "current_t0.75.png": "9adee8cd86e7c00e1ca33393c489e8400f98db2317b2dac6042d90f4cad457f8",
+      "dense_t0.25.png": "939cf87b74abf410c18bc20321747069b15904a2c05e3694b33e83b867f1306c",
+      "dense_t0.5.png": "61d4899e0e2b46472b2cb474897266a625aa1197858f264614d9a6d2ba9cc53c",
+      "dense_t0.75.png": "6380b0b7648b97fa23680e256dfd35c6f6a228726f5e231e39409588b81b009e",
+      "original0.png": "29262812f8c29c27e1359270085a2f1e8834ee9b9bfc71df1c2db330df905f78",
+      "original1.png": "31cb68a9f39aeafdeddde839d26c7e75108e06e8f193162d2d90cd441ee1bf2e"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 17,
+    "PTS": [
+      69.736,
+      69.778
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 150785,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 192480,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 170780,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9404319524765015,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "986782cf7c70ff451642f01d66603fa5e3b00727e65d20fb68e2b5ff714aac1e",
+      "current_t0.5.png": "f682009cdd1a24f461bb53c1d0c63f05d055e8566e56e1ae6e00c3a79c26b541",
+      "current_t0.75.png": "01c07242965d00814f6bc388cbacde77dae49671429e8c83584f006037bd3001",
+      "dense_t0.25.png": "80f67c837dcdcbf378ba6b88fcc8685392f7756df08847580f64e6a264cd14db",
+      "dense_t0.5.png": "a81bbd8ee38e7c49b3e772f962839ff2fd03167c2325c251269cd171976a9697",
+      "dense_t0.75.png": "6304063078981bfdb785a57905e347d30acf324587a151c68aa8772a12b7a3dc",
+      "original0.png": "31cb68a9f39aeafdeddde839d26c7e75108e06e8f193162d2d90cd441ee1bf2e",
+      "original1.png": "467fff83db1925ab2da7aae0a2d3fb6d55919c178fffeb968b8cf1f37bc93122"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 18,
+    "PTS": [
+      69.778,
+      69.82
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 159845,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 200130,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 179532,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.936406970024109,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "60d70cae7615d5d78b2527d0b78045b418f1123abb297f3117ff995bd238a7d3",
+      "current_t0.5.png": "8e24153107a9cd83e7b41fa00c3db29d6499ce92cb3e43f3fbb188c09e1ecf28",
+      "current_t0.75.png": "8d651a6d647eb04e3677fbbf11ecc09228e370aab31d59f9a97f3efdf9a03d49",
+      "dense_t0.25.png": "c6c012b1cfca0a37d43fb52d249d2165b609ef7a0efc635cb9006ffd977db0bc",
+      "dense_t0.5.png": "305c87adaea4a0e095cfa1f2dae53fe79fc8394ab6a9a7c2502cac2ff272cce2",
+      "dense_t0.75.png": "17cfded79bcf33afe4f9106cf12b51cd3de53349d735bdb4b80705c48807bbc7",
+      "original0.png": "467fff83db1925ab2da7aae0a2d3fb6d55919c178fffeb968b8cf1f37bc93122",
+      "original1.png": "ef43c242c27fa56556329b7dea70db60a2650039c3160fdf91ccaf799f664a00"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 19,
+    "PTS": [
+      69.82,
+      69.861
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 145264,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 186157,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 165539,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9432040452957153,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "1399c3f7f7c5bc78e1bfc96836a06dffaf431d838a350eb6cb0a88bf2950a483",
+      "current_t0.5.png": "854ca7c23e831cce56b3773d14ea6678f18f3b63690ce6124ee1f8635c105319",
+      "current_t0.75.png": "611c2629badde5eeabe408f955f5b319b6a058246b8dcd872093b21fd579988e",
+      "dense_t0.25.png": "6079d1625ac53e40e38bcd3ea5b9df2580770346a64113d0e55d15a958878807",
+      "dense_t0.5.png": "0831011d424d3c8d5eda307d500b6def0f4e6316bb76e490b023caa55caed3e5",
+      "dense_t0.75.png": "cfa383d85d016f9d0eab7566279f07398953038bacb8b7dbc377b180e0def975",
+      "original0.png": "ef43c242c27fa56556329b7dea70db60a2650039c3160fdf91ccaf799f664a00",
+      "original1.png": "d8a3b847aff2d827bac4dbaa139e1251dfa211181e42aa5337ba1c2db50c3791"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 20,
+    "PTS": [
+      69.861,
+      69.903
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 151927,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 189630,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 167631,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9940279722213745,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "6d810984c52380ffa6863bc1c825d2a1140a9c827f446724ff4c5bcfa08bdb46",
+      "current_t0.5.png": "7921d1d5ebfe62a4afcaae8c1ddeec2d2d77faaf2e529f85b2d3b9cf48514111",
+      "current_t0.75.png": "0e271b51ff2470b43fccb827be5831d8f0a0f1cdd318584085b8034c71070e72",
+      "dense_t0.25.png": "442ab0eddeeced7d550ffa491e80f3e3f778fbf95c55ac5f69f04ce7c22895c7",
+      "dense_t0.5.png": "58a14b50e86f948f2033f1212ce854e1fe2b3d7482b61497c72be7cfb42738ba",
+      "dense_t0.75.png": "0bfc58e8fa3f3499b98ef3c372d9d8d6032793d51e6c78406bd054b1ff688e4c",
+      "original0.png": "d8a3b847aff2d827bac4dbaa139e1251dfa211181e42aa5337ba1c2db50c3791",
+      "original1.png": "5faa3171d0695b4020aa98c85aef228e3bab2d0dcc052c3a4c64f0dff9ca126a"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 21,
+    "PTS": [
+      69.903,
+      69.945
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 143532,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 180536,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 159608,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9421900510787964,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "dec9af97b017149a4bb80cc64d638ef6e52155f82bdab955e85f2ca18e7eda6e",
+      "current_t0.5.png": "0aace9b37a9cc93c58b4c3176664886190428671855bb24df3eec4d9d335a421",
+      "current_t0.75.png": "104a280279d67119420be9eef46cbd6522660eb2c0ad2afd66cb1120b558c1d8",
+      "dense_t0.25.png": "41cff6fd5f64ae2f251b6dc09f5e37594421334dce0ef27bce898f91f3891ff9",
+      "dense_t0.5.png": "94ae3806908679dc99303d0c710c660c3cf643b062574a28dc9634d1ecd90216",
+      "dense_t0.75.png": "54acf06baa7b18d66d2d876f658a6a1bba29ce9cf768f966d268a18287bc8696",
+      "original0.png": "5faa3171d0695b4020aa98c85aef228e3bab2d0dcc052c3a4c64f0dff9ca126a",
+      "original1.png": "358392838e81cb14e70ff3f42320dcce6ead1d508528d7ba20de8c31db27e11d"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 22,
+    "PTS": [
+      69.945,
+      69.98698888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 134670,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 172168,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 151025,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9360190629959106,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "a360887f8ac03b049021b479a393764bab64edbe331685d21e922d25323602a4",
+      "current_t0.5.png": "c0c41183df3ed48d164b04676fdf0dcfe8a98fcfcadbef6bfa5a228832e81517",
+      "current_t0.75.png": "ab7c0997d0d5aaee59f8eab706171e91d7ead1a4e9e723ea3c0d553cf46b9369",
+      "dense_t0.25.png": "f7fab8d22792414ce0f52b40be8bf58e1f17341d95999aa1b4b4bbbe4c93bb14",
+      "dense_t0.5.png": "92fb76faaf2962ca10eb59f7036bfadc27e0ebdd3a0b9cdb1e2ddcf5e29692c8",
+      "dense_t0.75.png": "3994acca23d925befa751e6b3ce0523e0fb6aa7b6d9486c2d1fa0fe9f1ccf681",
+      "original0.png": "358392838e81cb14e70ff3f42320dcce6ead1d508528d7ba20de8c31db27e11d",
+      "original1.png": "90151e0a956a6ea21709d05d9f2b5417b36da732e1d9150b701c8f417a58b5d9"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 23,
+    "PTS": [
+      69.98698888888889,
+      70.028
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 145192,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 186337,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 166552,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.010693073272705,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "d221ec1f78166d14ab2e6809b2569d69b098b939ee101e285e5948dbfe3c5e9a",
+      "current_t0.5.png": "5cc3b1543f92f2ea7f32dfe187976fb3a9cef82d8f5a48229c074ee99157a8d8",
+      "current_t0.75.png": "6595294aa6beef07c7b555dacfd8a3878640bf9166092a7d2454a391181eb626",
+      "dense_t0.25.png": "ed6ff449d720275473ab9a5ebc98b9bc1cd427497395045b44f9366ce9c6b08d",
+      "dense_t0.5.png": "7908b6120aef44f1c5ba03d6ba819158ca6f0b69b49f8ada95b11e64365d1ec7",
+      "dense_t0.75.png": "b338b0f99e5f18872b044e599e0d05b9148482a25f83e9ba263e12adfeeaa9ab",
+      "original0.png": "90151e0a956a6ea21709d05d9f2b5417b36da732e1d9150b701c8f417a58b5d9",
+      "original1.png": "11dae82f1b86cc6616ef61ae0443ab425907f8e602b5f218a4cb106952c44352"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 24,
+    "PTS": [
+      70.028,
+      70.07
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 134414,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 172497,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 151241,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9337310791015625,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "ababc18b81d712cda24a02ee93716acee645ba98e49c2a18450151318350b042",
+      "current_t0.5.png": "61fa40fcba76d5fc7bb32628707a73af3f0bcea69c6b15a8c7692d361b169a02",
+      "current_t0.75.png": "1db83bcaafb8143c06da3718e5b44789575f6f9b1e35ff3efbd4555029be7e6a",
+      "dense_t0.25.png": "230e515f0bf21ee2e831ac3bbd9fad44b073957e3d5cc9bbb8831a5d7a4c517e",
+      "dense_t0.5.png": "f5bc9d720b8b2651873fcd48c1164065ca6b3f789f08d57b8c94a5c5e5223282",
+      "dense_t0.75.png": "823e45597044041ff0e61943c2e7c0dd10802bad016f6e6e8d4b4cfa711ef7d9",
+      "original0.png": "11dae82f1b86cc6616ef61ae0443ab425907f8e602b5f218a4cb106952c44352",
+      "original1.png": "a1b8afb9898861d84fa423f0440a6a48d85fd4fdd6d439c3c6f14cee2ee395ab"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 25,
+    "PTS": [
+      70.07,
+      70.11198888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 139886,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 177228,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 155479,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9372700452804565,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "f995e8ecc39d582be56352e73820d37999f9a5d3b842bc66e9eda92302039b71",
+      "current_t0.5.png": "ae3a24d7fc3e6718d426e67099fc2e1443a3c544f8669ddbac826168e075e383",
+      "current_t0.75.png": "eeb0c8e1fec30d633ba0f7f39ae7e62de5568b94c6db4f7acc08553b4ec581e7",
+      "dense_t0.25.png": "ed0d4fbcddcd6ef7c151189f6932aba5d6b492724c86697f0fbb0a2ceb6f1381",
+      "dense_t0.5.png": "8bbe744bbddaf980a3970b9290714dc3c8e5e75cb84738aa2580d16442228bcd",
+      "dense_t0.75.png": "68c688ea6c9df8cf68dd5da18c221090bf881b8e87c9129d5cd1e46f75977ce7",
+      "original0.png": "a1b8afb9898861d84fa423f0440a6a48d85fd4fdd6d439c3c6f14cee2ee395ab",
+      "original1.png": "f5f430794880e91b3aa85358122843fa06fc6afd3c02c76f3f260384b73c5b9e"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 26,
+    "PTS": [
+      70.11198888888889,
+      70.153
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 135158,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 173992,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 151608,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9375909566879272,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "464a2a472a5b9cfd95516504f914f3102e4b000a42abe49ab882840959d3990c",
+      "current_t0.5.png": "11c95eda95811e62f787948be4d33b3ce8636fc7224f8a309ff88d750b7245e0",
+      "current_t0.75.png": "0c72f0ac1124d62120cbd5083d424300963508d27b6fc5f9c539127836dc4a62",
+      "dense_t0.25.png": "112f86d9709cf11328f63db6d8cc6f42654abf555d74979a53a90cfc24c852e3",
+      "dense_t0.5.png": "21a66bf916a455503eabaf9bee57079a6ef29af120773a4248e838d7851443de",
+      "dense_t0.75.png": "80f9093358dc60a6199e40d9d43af8f7a6ab4dfb515c5d3512294a516fffdf6b",
+      "original0.png": "f5f430794880e91b3aa85358122843fa06fc6afd3c02c76f3f260384b73c5b9e",
+      "original1.png": "364b8cae1407126222601948ffc62b6e2e4132507a7ac7b1d73e133b2806d4ec"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 27,
+    "PTS": [
+      70.153,
+      70.195
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 137360,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 175583,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 153543,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.934287905693054,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "358bed2920beb65bb503f38545fa009528e197e4703eb80a36d54df2d3b9e8f1",
+      "current_t0.5.png": "d25b502800d485dc9d1cc339c23ca3355c2c247b1babe104edd0020c4c5dd5eb",
+      "current_t0.75.png": "a3b48c8e9f275bb02aa9d84780052f2b578940036e030f227e2156ed98fc7d84",
+      "dense_t0.25.png": "77a3e9789f7362696a514258ee17db7dc864bc6706b514d0d1d07e591aad8787",
+      "dense_t0.5.png": "c0aecb0c23dbdde0333ef8783ad1c06ce2e80b309352693a14ed8425511444ec",
+      "dense_t0.75.png": "54efe3d86920e72a3ad433e5787287ed2d485f8771ab5d971b2d884fa7d6f5d4",
+      "original0.png": "364b8cae1407126222601948ffc62b6e2e4132507a7ac7b1d73e133b2806d4ec",
+      "original1.png": "a2610129b379c4174becd6b5c5818592eb01c9a3c7b03a58566bfe99fa182289"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 28,
+    "PTS": [
+      70.195,
+      70.23698888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 136003,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 174941,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 152457,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.953251004219055,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "41b6dd2c99ec33caec38a5d215f2188d6249781210a8e0f239f0a800d143d5dd",
+      "current_t0.5.png": "ad12956bc11c3d817609a5d1db5746e015ca5ebd789113abd9064b6cc59bd558",
+      "current_t0.75.png": "dbba005dca7b92a2acc6c88960a76ebfa2d0c5b153acb27b53f574f4ac724893",
+      "dense_t0.25.png": "2249bbf032874e134ed1d19d2317fac26cc0a72af863d407a01b41d1d18ea2c2",
+      "dense_t0.5.png": "f95a7cab68dccb743d6ec6145d1ed9061e7a9c20dcdcc4befdb7af2e0e244100",
+      "dense_t0.75.png": "1250d2a0fab55fd8023d32dbd2923b56d9b845ea5480b05a3049fd70a0196173",
+      "original0.png": "a2610129b379c4174becd6b5c5818592eb01c9a3c7b03a58566bfe99fa182289",
+      "original1.png": "10a49b8ab2316157423769b95f27f703921fb4fdc066eba9906532b863f6d139"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 29,
+    "PTS": [
+      70.23698888888889,
+      70.279
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 137644,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 174974,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 154007,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.940659999847412,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "8dd793665a2e97574353381b6df8214c01dcf23b57afcad3dce7c92a042ec436",
+      "current_t0.5.png": "0ab3e0a121e619f85263008ffd0eb19c87b11f770fb750e5e08831d06694f6cf",
+      "current_t0.75.png": "c41d9b625e4101a78aacc0c0faea5fa8372dcac5d158b5d2aa579b3e99727d17",
+      "dense_t0.25.png": "cdc3fe78f0230e368f1facfe92a00670858d6f0beb037e4448e4302b63f0eb12",
+      "dense_t0.5.png": "0d5739bd73cbd65feb27f3a7c2de4387509ddd30c3fe127c8ef4503acc4d0344",
+      "dense_t0.75.png": "657cf470f29cc381d744aa11f3ee1a7c846241e8c21eec03e37bea1eb8a55de2",
+      "original0.png": "10a49b8ab2316157423769b95f27f703921fb4fdc066eba9906532b863f6d139",
+      "original1.png": "d6968647f124efcbeea4f47abb45b8709319268d50e10914df3b7c215e9c22ae"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 30,
+    "PTS": [
+      70.279,
+      70.32
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 131867,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 167651,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 145477,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9436869621276855,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "80c861fdbbe4af27ac40c61dbf4ad63360a5028a52a251f9b93e058d5a77515a",
+      "current_t0.5.png": "5fb124068e8a9e19f7ed96a94e684be89e1b2db3297ed1e1625846d0393771c8",
+      "current_t0.75.png": "fdb9edf55574c79104f92066437ee00cb119185d9735b3ae2e3a191cc465203a",
+      "dense_t0.25.png": "94035d8effa57a3c389d2921bf2ca03519c1aaad2026ebcc5d5053794582acc6",
+      "dense_t0.5.png": "ae67fba12090dab1b85a5ce50708b823869638d5292c7c4f25be680984beb72a",
+      "dense_t0.75.png": "45cac0e803ccc86a85782fa6733ac9a01a5549605106b0e37613aeaad187293d",
+      "original0.png": "d6968647f124efcbeea4f47abb45b8709319268d50e10914df3b7c215e9c22ae",
+      "original1.png": "a7a69368feb06689f7f8243fafd12430465f7cac1c3e8df0ea58d599b6d308d3"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 31,
+    "PTS": [
+      70.32,
+      70.36198888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 130839,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 167584,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 144264,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.94350802898407,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "7551931d52cce3b380e4dff6cdc8b1fedf7393b12d51cb01d397fbd3a2092e0c",
+      "current_t0.5.png": "8fad75642733c28d80d11c1e7aff1a7ee01eb6db37b6f72b637fa2a59cae6f65",
+      "current_t0.75.png": "c6bb87f31dc53ebacaeec6bfa3dd5bbab2830af5b820f69e249ef1d680a59c3f",
+      "dense_t0.25.png": "b3fe9677278d23c1a34ccd81544e4c1d7d65d7e0fc5dc55b1ce9795b21721444",
+      "dense_t0.5.png": "b5231b196c47eefc9aed1fe3994148c0a76bae550451fb3507293924f4f6fd62",
+      "dense_t0.75.png": "434871a8456fa4c37205d6bda7e92af33ad13c21cdd082385eca400514af6b6d",
+      "original0.png": "a7a69368feb06689f7f8243fafd12430465f7cac1c3e8df0ea58d599b6d308d3",
+      "original1.png": "0427d4051b38261e1138be10531f067dabede2b4c18d1e49957cc7ff5ff6d7bf"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 32,
+    "PTS": [
+      70.36198888888889,
+      70.404
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 126775,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 161976,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 139115,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9414379596710205,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "35c64f4488dcb582703808db04e5da31c129034d9258407378ce66c683049c4c",
+      "current_t0.5.png": "7c00e2a1532fe78c30cdf18905405edfcaed01fbcc2da1f70120af0dfb40c59b",
+      "current_t0.75.png": "aeb7d2a750914cc6580dc3a680da4616fe576c1844a97bf1cf6d861217b8ca03",
+      "dense_t0.25.png": "224665c82c6eea171808cc61580d4d37b2cfb8742597aa417d2aa2d3e7f4f358",
+      "dense_t0.5.png": "34d797bc805c7f4669a504a1c4217d18b4c754a412c504d883b9ba5a3f260168",
+      "dense_t0.75.png": "c7937af9381f9ff2b8ebdd506228601134a8c33ecbc798e87677ddf7306a4e92",
+      "original0.png": "0427d4051b38261e1138be10531f067dabede2b4c18d1e49957cc7ff5ff6d7bf",
+      "original1.png": "807bf5cd9a0791cf777f02eb28a120e3c2aa613af5db1836842029b44c1f4c29"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 33,
+    "PTS": [
+      70.404,
+      70.445
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 129247,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 163611,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 139664,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.999055027961731,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "7d127597f33ac89af062e17603ea08d16084a09eb344ec069f527c4765314b30",
+      "current_t0.5.png": "a6cdbd75176437f099a19bc97be4fc3dcab31939cb67dfcdb9555854e8f72e81",
+      "current_t0.75.png": "f1f11b04c1a07402b065b4bbfc18c550912893b50275bef70ac781e345e4a505",
+      "dense_t0.25.png": "d24f0de00f2da0314490da17e3c0c0f4edd4b6e536b049762fa3502c6ba584f1",
+      "dense_t0.5.png": "5dff0c23f2f621b1452ec1939441c1f8f6a0f54aee369b590b47dad3b3696c0a",
+      "dense_t0.75.png": "e67eaf0545e9e9ed842d8dccd3d6cf4df586b0b7be40f63acbf8e51fcccd3d61",
+      "original0.png": "807bf5cd9a0791cf777f02eb28a120e3c2aa613af5db1836842029b44c1f4c29",
+      "original1.png": "623a401c44c4a436ec80ac544f944f4040072837abbf995a2ac2abdd181c1a7a"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 34,
+    "PTS": [
+      70.445,
+      70.48698888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 124714,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 158779,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 134126,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.0075989961624146,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "437328695c26263f426675832206c0b4dda6049d78ef927cf4a372ea05a117fa",
+      "current_t0.5.png": "a3bf5f47608eb23eb975ebc7a6c32f4adc974d7eb2d5598d965215ad3d58944e",
+      "current_t0.75.png": "c9727ad8705662308c79b6ed5d6cf9a3046d66dd193310df30403415da2ed6f2",
+      "dense_t0.25.png": "a9288942707e33aa1d67b26e62079da0ca827f85310f8ca11ebb7cea9d8bd1ae",
+      "dense_t0.5.png": "ca1867e32e013963768571a8fc49c7c776a32a0ed3652152720925940e22a1a4",
+      "dense_t0.75.png": "d7c2dd4a5da856cb3e8569325bf7d52c9167595b9d94d31819c13b33e83ebc63",
+      "original0.png": "623a401c44c4a436ec80ac544f944f4040072837abbf995a2ac2abdd181c1a7a",
+      "original1.png": "cf7c49c6ad5f2e6a2804f9f8bfc058ee325f3bd9d4ebf5db5e422ef3292887c6"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 35,
+    "PTS": [
+      70.48698888888889,
+      70.529
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 126010,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 160351,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 136890,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.965371012687683,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "a1b428495cd13afb8cf35c263b87895a0b8f47406455c92f69ecd5c131186644",
+      "current_t0.5.png": "9c240aebca5a7d59bab7da8cf10d2b9fdc431daa925a273c6cfcf17a457ab427",
+      "current_t0.75.png": "64504d2f534458e88a497f5cc3c5c38aea509d0b5330dda063a3a555b8e4b405",
+      "dense_t0.25.png": "fed6788a9adbacc5fe2e6888baa1f898c49e5a1401d49d26ff79cf9bfdeb2be8",
+      "dense_t0.5.png": "35b1155cb546047734e3e2a429a7d4aa4c244e37b6f9713116b6b7ad89ce3005",
+      "dense_t0.75.png": "21bf397c9206600defa9948662c3720313b3334d5d1f5258b54175c84455c5fe",
+      "original0.png": "cf7c49c6ad5f2e6a2804f9f8bfc058ee325f3bd9d4ebf5db5e422ef3292887c6",
+      "original1.png": "8eb5f065aec8a1f9c27c0ea516d27df6abd7ccb37ca192aa9bd5d9775a179a05"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 36,
+    "PTS": [
+      70.529,
+      70.57
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 122428,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 156619,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 132745,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.996109962463379,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "4864b05d80069ece6649cb1c0ce747121dabac8cd46febfc7765ffa4e7f3621c",
+      "current_t0.5.png": "90ac178ce498887db42074b5ab1b8f4ec28d63e0d5fa3feba6fada514f249cf1",
+      "current_t0.75.png": "2bccb2c17dd571656e5d3b3451330c8ad6168a6b882515090340506c62b134bf",
+      "dense_t0.25.png": "d84a1a879419624636732c5a65f8c6e6155fdfdcb9fdd3c24c67e3bc6ca6b4a9",
+      "dense_t0.5.png": "275256195af338e8ddda5744d53cec43d19d7b26d4f83dc1fa7d5ace4f9052db",
+      "dense_t0.75.png": "cd083d2001e203a1ad8123b5420f55df38ca94f263e5ea48cd6acffa1a1be368",
+      "original0.png": "8eb5f065aec8a1f9c27c0ea516d27df6abd7ccb37ca192aa9bd5d9775a179a05",
+      "original1.png": "47328d6ddabc9c87d97281d24df23e76b3b00eb6033c5be2831116b1b5a8daad"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 37,
+    "PTS": [
+      70.57,
+      70.61198888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 119604,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 153505,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 129691,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9980520009994507,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "b21fc85e435536d38bf07175bb60e0b2b592a72c68897a7254fad492875fdd93",
+      "current_t0.5.png": "fd5b2fee8f2cf8a044335cad8989f089eb0bc8e92c138cdad9182125681ba617",
+      "current_t0.75.png": "8ad749577503d4edd86bc22ed284f000abbdd3853630037ce9a349fc24155727",
+      "dense_t0.25.png": "6b20a064b5098d34aeeeca61519514361f5bb067a04547dba995001b679ad7f5",
+      "dense_t0.5.png": "7b7ce2694576a1ab78883caa3b66f02be4e8575099e2fe7d1624b3317cfbb2ad",
+      "dense_t0.75.png": "cd338459da1c930ef1afa3b1fa4c008c259119071029035875a6c8f310780564",
+      "original0.png": "47328d6ddabc9c87d97281d24df23e76b3b00eb6033c5be2831116b1b5a8daad",
+      "original1.png": "2aeb57c2caa73704bbb5fbe16f8466aea6fe97e2356f53d57d30e9e34ef7f448"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 38,
+    "PTS": [
+      70.61198888888889,
+      70.654
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 115603,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 148641,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 125137,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 3.0002570152282715,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "629b1c28f6b1c4cec990477346682e692e5358da9a25dd3bbae507830dbe4259",
+      "current_t0.5.png": "b38b73bd6857d272c14e90bf48b4080e5fca987c7db3a43912cfecd3749e35ca",
+      "current_t0.75.png": "0f74b98f00d71f55a6dd1456117a74f5aa647777b91aa3ddf3552af63a5c93e9",
+      "dense_t0.25.png": "9c7fa3ff6bf2168786a720492982dfe74f53933fdb80ab305e8109955a926116",
+      "dense_t0.5.png": "3f927c5578681f26fc2684a8135ddbdecf665d05daa7cf112920e532ea253d97",
+      "dense_t0.75.png": "002d4f4a1eb3e50b69e3c46c7b4053eac6ddd257f4b2fb1b8ce100be2367ce2f",
+      "original0.png": "2aeb57c2caa73704bbb5fbe16f8466aea6fe97e2356f53d57d30e9e34ef7f448",
+      "original1.png": "69bf129631e36b833c2beaa3a3463242bbc5f41f3b78b60684e25e33821b4a0d"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 39,
+    "PTS": [
+      70.654,
+      70.696
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 114573,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 149017,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 125353,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9783979654312134,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "4fca1313e7d727f7440d30e298b275b8032088d858c622856f32d272f4ea45cf",
+      "current_t0.5.png": "a06fd38b6ef9e94bcd4105ba694f2e9b0c4b98d447d1e26d0a11b0e0357d7357",
+      "current_t0.75.png": "c349595a08318c4eae235f11fba5e818c7932075d431e051abbaefa07c322dd5",
+      "dense_t0.25.png": "755bf2583d6616e92c3e45d1e110af2e2b1ab29e3fe8bf043773c5b4e2840eeb",
+      "dense_t0.5.png": "538c0ae5074ea250c8a5eb9280ea50581852fa489b326c2700291d109c884d9c",
+      "dense_t0.75.png": "cf5372fc30c8606aaa230081f5cc7497a6cee12eee4a5150589077861eb10d73",
+      "original0.png": "69bf129631e36b833c2beaa3a3463242bbc5f41f3b78b60684e25e33821b4a0d",
+      "original1.png": "ef80b921e5faed819ff64d9596069515aefab0419e95f6ba549262c2640df25c"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 40,
+    "PTS": [
+      70.696,
+      70.73698888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 120977,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 154999,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 131268,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9585630893707275,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "a5b4f98be778aefca18de442644a801922589fe33f71e8b17f4c34757a39b7bc",
+      "current_t0.5.png": "bde635e64c914b73958b1a39809d7e1087495f6dd6ac81923a121b49d3b8d908",
+      "current_t0.75.png": "4fcf969947938b7df78b0b0f726fb909eed0de7199ff438f54159bd442c961a6",
+      "dense_t0.25.png": "e8b83bc8a998089c0ed4be564521592e95739ab52522965f4f124a0f707350ac",
+      "dense_t0.5.png": "898f2061fd207f1156b54723057c1d1f47891ff1512fe5c0662b978df00c9866",
+      "dense_t0.75.png": "6a5e7699c299d1e62bd9c0419f323b96e4722dd6a21f2d25c5792974f94d355f",
+      "original0.png": "ef80b921e5faed819ff64d9596069515aefab0419e95f6ba549262c2640df25c",
+      "original1.png": "a26083c0483c7a76cd262f3ef0d8c446575177ecb01dfb0df48197a8e29e61e6"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 41,
+    "PTS": [
+      70.73698888888889,
+      70.779
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 127182,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 162744,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 138414,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.974684000015259,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "795d163f3f1df6999dd937cbd3b8cacab39168a00484aa53f17dc30bbabfa15d",
+      "current_t0.5.png": "51e3e5843a3cee8dfb1f0d40ae13062d5c83dd2d9a52470128ab771633065edd",
+      "current_t0.75.png": "ecdd08c8c493848f3db082773859a88ecfc9c2c300ebc75b4c5ad014cb5828fd",
+      "dense_t0.25.png": "af805042c36faaf3cc96e54fb8bd8642832e39c24b6dcda01ce2a7b39972541b",
+      "dense_t0.5.png": "98ee8141a5f8b88250acd4c7b209a4745b4f4c5f5ed66619dff932ac94a747da",
+      "dense_t0.75.png": "6679a429a7270cd0b64c3fa1102e7d320dfa820130735dd87bd1d46ab4ba29a9",
+      "original0.png": "a26083c0483c7a76cd262f3ef0d8c446575177ecb01dfb0df48197a8e29e61e6",
+      "original1.png": "6a7a169d97d19ff4388b5b75facab1965c23269d1a072bcbbc9b58f4c3974f45"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 42,
+    "PTS": [
+      70.779,
+      70.821
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 137699,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 171501,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 149346,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9267799854278564,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "ec5491da7a8eed4572b08c6c30473344c4e15cfd72c7506ad3a2afc115c10c0b",
+      "current_t0.5.png": "88f5afbaf7b22bba69d11500a6a2d66bd01bfb82387626cf3b28f5682cdb0b7e",
+      "current_t0.75.png": "2c3d31d404cee8628d1cd13c460c0c82bb56117a7c924c4a6748570443f4a23d",
+      "dense_t0.25.png": "bb355a91bbbd35d72008984259376b572a01d688444889305da52684cad1fff9",
+      "dense_t0.5.png": "06221ce7e43312c9a649625b7ddca554a98aa287a4580fd828e72549ff9bf821",
+      "dense_t0.75.png": "b92ff495d0849fd38e0a22873fc8db6dc459dd5c9d46a77c146e9ad849f7579d",
+      "original0.png": "6a7a169d97d19ff4388b5b75facab1965c23269d1a072bcbbc9b58f4c3974f45",
+      "original1.png": "471b2359078f7fefaa8d5556fa66635ad578eadd9a81f4aa50e43e8406e76b5e"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 43,
+    "PTS": [
+      70.821,
+      70.86198888888889
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 153734,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 190315,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 168922,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9261109828948975,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "d6caf8c67dab334303eac30000a6a6432892f92344fa935756dd2282dfa9dffc",
+      "current_t0.5.png": "686832b2bf270eb618a6ced25416275181cced8e0a9c24e542ecfa9a20ba563e",
+      "current_t0.75.png": "2503fb3f7f6d9a930f0eda76c196c5c5c34f0a8db4f0fa4074194ef9ca535e4e",
+      "dense_t0.25.png": "1e467458e883b666f8356f10f417ef264a321d8c3edf38a82d6931b3f5fc99ff",
+      "dense_t0.5.png": "de65d94047e7b053a3d417ef24b5808ac4488bf059b075664dec37949f808865",
+      "dense_t0.75.png": "617bd03bd39e6bb218b430ae4a19cd435fa79953663c882ae8dcbc6bcfec1634",
+      "original0.png": "471b2359078f7fefaa8d5556fa66635ad578eadd9a81f4aa50e43e8406e76b5e",
+      "original1.png": "cb2106f1abbbd5a494b555c4e8b344f4c09383abd0e7701f762b17a98dcbfc63"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 44,
+    "PTS": [
+      70.86198888888889,
+      70.904
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 166441,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 200824,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 180315,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9247570037841797,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "63f5059c984d610abe568f4e575003f34bc26e559084980b7d12a2221613836e",
+      "current_t0.5.png": "02b88c8e8134aacef14308f9cf08b40f1e7ede7c1f97cdeaa105080a9558d582",
+      "current_t0.75.png": "4b4fd5cfaf1f4acf27090607d6adbf3e15cbf338f6b19f9f52bdfe7ca4f98abc",
+      "dense_t0.25.png": "965a8bcc0ac47f9e0d421ec0d10836dffb8c55e51c6db687f41c816e2001ed7a",
+      "dense_t0.5.png": "65afcfae89a6a2178d00036b635afdeab5f8eda55e1081888070a5a6f2c9617a",
+      "dense_t0.75.png": "e019845375169c7298783cb7065cce8c1b2527d550874d6240ef7b0c566f6cad",
+      "original0.png": "cb2106f1abbbd5a494b555c4e8b344f4c09383abd0e7701f762b17a98dcbfc63",
+      "original1.png": "3a52ab7ab86898ec34277827d8e14fa5cdcb704d30dce53b55bc9fd213fbbe03"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 45,
+    "PTS": [
+      70.904,
+      70.946
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 190268,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 224736,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 204656,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9751029014587402,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "892523d782400dc6d6d3cfb86d65a79472f79b6e13e5a96dd5ee98edd005bf50",
+      "current_t0.5.png": "9775a9e3e7442956d34f65e7516f66bb954edf0c774600dadf0a6990dbb82cdf",
+      "current_t0.75.png": "f4a3b270253a53789a756c4018d63d05e2292928b84a23b8e1bb080b22670baf",
+      "dense_t0.25.png": "2482fde7b786771473e9427e6be20d4cef9d52439ddc919a10cc7d9a3f76cca2",
+      "dense_t0.5.png": "cfd0c272be7756226331c18fe1138b02320c5c1f69e00ae4ca6efc174201263c",
+      "dense_t0.75.png": "cff2be7420ac66fb95d9acc6fd8bf9062f1a94319fe37816a39fd2bc1ef1ad68",
+      "original0.png": "3a52ab7ab86898ec34277827d8e14fa5cdcb704d30dce53b55bc9fd213fbbe03",
+      "original1.png": "95eeff840695778aa5afd6d595779bb49503d3d4d3c2d85276a74f4f7584e03e"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 46,
+    "PTS": [
+      70.946,
+      70.988
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 195546,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 228705,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 207929,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.967182993888855,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "569da5d7b688d61930dd89a3015da8edd8d059479fc79161f38873f913d153be",
+      "current_t0.5.png": "52055918801bdb89a3bc02bfe6123fa692671b2f49384cb5f292967c2a0f5d5b",
+      "current_t0.75.png": "a35f3e578ab0e34d17e80b6050b00ed2591ed3d7d57460a97f090232eef3a158",
+      "dense_t0.25.png": "9a98a86b378fb28d5b1c3d72983f9fbbdd1d6d42518275262504c26685f2e56e",
+      "dense_t0.5.png": "ad0923b80b1748d9192a557bae479068dbe2206c622b94636d4eaad26a03ee0c",
+      "dense_t0.75.png": "19704c96e19375bd41b02e19c9c968ee1c78d8284833b8686208fdf9f51813a2",
+      "original0.png": "95eeff840695778aa5afd6d595779bb49503d3d4d3c2d85276a74f4f7584e03e",
+      "original1.png": "57b8122d57df869b944528fbae597decfa9e7e0f9ec4885ae3b8c5d719b88dc4"
+    }
+  },
+  {
+    "enabled": true,
+    "grid": [
+      144,
+      60
+    ],
+    "pair": 47,
+    "PTS": [
+      70.988,
+      71.029
+    ],
+    "radius": 256,
+    "samples": [
+      {
+        "changedPixels": 220189,
+        "disabledIdentical": true,
+        "t": 0.25
+      },
+      {
+        "changedPixels": 247477,
+        "disabledIdentical": true,
+        "t": 0.5
+      },
+      {
+        "changedPixels": 227755,
+        "disabledIdentical": true,
+        "t": 0.75
+      }
+    ],
+    "seconds": 2.9372860193252563,
+    "spatialCoverage": 552960,
+    "pngSHA256": {
+      "current_t0.25.png": "a62ff3003368b776aa9f074319180900da5fedd7974a36ecc8b4b15a644b6263",
+      "current_t0.5.png": "810b10f94485819895dfcd432f6cad21668cbe046354ff0302728f5f8710fa45",
+      "current_t0.75.png": "c18e4d2b764fc4185605d4d80eb90614cdd686bccda0a602bb2c29f234060aad",
+      "dense_t0.25.png": "9940ca65f91b9894e8da0851127bb2f468f0c5fffe6704ddc6c7b3c5625dceea",
+      "dense_t0.5.png": "8d743e58e527d2d1422d9ee96e61c02b1268a15db94237838adcad190b6bd6fd",
+      "dense_t0.75.png": "fc46f95512665340b0c2559aca401b10f0a827b6ba8e150d125d66f11f98969a",
+      "original0.png": "57b8122d57df869b944528fbae597decfa9e7e0f9ec4885ae3b8c5d719b88dc4",
+      "original1.png": "498a92480b3ebfc2d74e9aae635d41c80ed905607cddb2a449f413c77a1ed0be"
+    }
+  }
+]
