@@ -1,0 +1,249 @@
+{
+  "clips": [
+    {
+      "case": "avatar69",
+      "content": "animation",
+      "seconds": 10,
+      "frames": 600,
+      "pairs": 240,
+      "trustedPixelIdentity": true,
+      "median": 0.0,
+      "p95": 0.18483796296296295,
+      "maximum": 0.4878472222222222,
+      "meanWeight": 0.0053842938505113125,
+      "rawBlockWeightChangeP95": 0.0,
+      "rawBlockToggleFraction": 0.03405344413451108,
+      "caveat": "Raw fixed-grid changes include motion and cuts; not a perceptual flicker proof. SDR grayscale diagnostic clips, not native HDR/color."
+    },
+    {
+      "case": "avatar300",
+      "content": "animation",
+      "seconds": 10,
+      "frames": 600,
+      "pairs": 240,
+      "trustedPixelIdentity": true,
+      "median": 0.0,
+      "p95": 0.477662037037037,
+      "maximum": 0.6733796296296296,
+      "meanWeight": 0.015331283211708069,
+      "rawBlockWeightChangeP95": 0.2364148646593094,
+      "rawBlockToggleFraction": 0.11160070897257089,
+      "caveat": "Raw fixed-grid changes include motion and cuts; not a perceptual flicker proof. SDR grayscale diagnostic clips, not native HDR/color."
+    },
+    {
+      "case": "anime1082",
+      "content": "animation",
+      "seconds": 10,
+      "frames": 600,
+      "pairs": 240,
+      "trustedPixelIdentity": true,
+      "median": 0.0,
+      "p95": 0.034837962962962966,
+      "maximum": 0.6694444444444444,
+      "meanWeight": 0.00303470017388463,
+      "rawBlockWeightChangeP95": 0.0,
+      "rawBlockToggleFraction": 0.029338098558809856,
+      "caveat": "Raw fixed-grid changes include motion and cuts; not a perceptual flicker proof. SDR grayscale diagnostic clips, not native HDR/color."
+    },
+    {
+      "case": "spider180",
+      "content": "live-action",
+      "seconds": 10,
+      "frames": 600,
+      "pairs": 240,
+      "trustedPixelIdentity": true,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.7105324074074074,
+      "meanWeight": 0.001238565193489194,
+      "rawBlockWeightChangeP95": 0.0,
+      "rawBlockToggleFraction": 0.010004067875406787,
+      "caveat": "Raw fixed-grid changes include motion and cuts; not a perceptual flicker proof. SDR grayscale diagnostic clips, not native HDR/color."
+    },
+    {
+      "case": "spider900",
+      "content": "live-action",
+      "seconds": 10,
+      "frames": 600,
+      "pairs": 240,
+      "trustedPixelIdentity": true,
+      "median": 0.0,
+      "p95": 0.00787037037037037,
+      "maximum": 0.7577546296296296,
+      "meanWeight": 0.005014989525079727,
+      "rawBlockWeightChangeP95": 0.0,
+      "rawBlockToggleFraction": 0.038780896482256313,
+      "caveat": "Raw fixed-grid changes include motion and cuts; not a perceptual flicker proof. SDR grayscale diagnostic clips, not native HDR/color."
+    },
+    {
+      "case": "spider3600",
+      "content": "live-action",
+      "seconds": 10,
+      "frames": 600,
+      "pairs": 240,
+      "trustedPixelIdentity": true,
+      "median": 0.0,
+      "p95": 0.000462962962962963,
+      "maximum": 0.44178240740740743,
+      "meanWeight": 0.0009908736683428288,
+      "rawBlockWeightChangeP95": 0.0,
+      "rawBlockToggleFraction": 0.009242794049279406,
+      "caveat": "Raw fixed-grid changes include motion and cuts; not a perceptual flicker proof. SDR grayscale diagnostic clips, not native HDR/color."
+    }
+  ],
+  "timing": {
+    "runs": [
+      {
+        "state": "off",
+        "run": 1,
+        "p95MS": 44.9615,
+        "pairs": 454,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": false,
+        "strongEvidence": true
+      },
+      {
+        "state": "off",
+        "run": 2,
+        "p95MS": 44.825375,
+        "pairs": 454,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": false,
+        "strongEvidence": true
+      },
+      {
+        "state": "off",
+        "run": 3,
+        "p95MS": 44.46025,
+        "pairs": 455,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": false,
+        "strongEvidence": true
+      },
+      {
+        "state": "off",
+        "run": 4,
+        "p95MS": 44.081166,
+        "pairs": 455,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": false,
+        "strongEvidence": true
+      },
+      {
+        "state": "off",
+        "run": 5,
+        "p95MS": 45.238208,
+        "pairs": 455,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": false,
+        "strongEvidence": true
+      },
+      {
+        "state": "on",
+        "run": 1,
+        "p95MS": 55.09675,
+        "pairs": 448,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": true,
+        "strongEvidence": true
+      },
+      {
+        "state": "on",
+        "run": 2,
+        "p95MS": 53.070083,
+        "pairs": 454,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": true,
+        "strongEvidence": true
+      },
+      {
+        "state": "on",
+        "run": 3,
+        "p95MS": 53.128542,
+        "pairs": 455,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": true,
+        "strongEvidence": true
+      },
+      {
+        "state": "on",
+        "run": 4,
+        "p95MS": 52.5595,
+        "pairs": 455,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": true,
+        "strongEvidence": true
+      },
+      {
+        "state": "on",
+        "run": 5,
+        "p95MS": 52.42475,
+        "pairs": 453,
+        "workPlane": [
+          736,
+          320
+        ],
+        "warmupSeconds": 10,
+        "temporalAcquisitionEvidence": true,
+        "strongEvidence": true
+      }
+    ],
+    "groups": {
+      "off": {
+        "runs": 5,
+        "medianP95MS": 44.825375,
+        "minP95MS": 44.081166,
+        "maxP95MS": 45.238208,
+        "iqrMS": 0.5012499999999989,
+        "stdMS": 0.4033162904086062
+      },
+      "on": {
+        "runs": 5,
+        "medianP95MS": 53.070083,
+        "minP95MS": 52.42475,
+        "maxP95MS": 55.09675,
+        "iqrMS": 0.5690420000000032,
+        "stdMS": 0.960755954395079
+      }
+    },
+    "scope": "Release actual M4; native GUI decode/Strong active; interpolation pair wall time includes temporal searches; not decode-to-display end-to-end latency.",
+    "deltaMedianMS": 8.244707999999996,
+    "passesPlus2MS": false
+  }
+}

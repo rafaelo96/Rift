@@ -1,0 +1,90 @@
+{
+  "runs": [
+    {
+      "state": "off",
+      "run": 1,
+      "p95MS": 44.619,
+      "pairs": 814,
+      "workPlane": [
+        736,
+        320
+      ],
+      "warmupSeconds": 10,
+      "temporalAcquisitionEvidence": false,
+      "strongEvidence": true
+    },
+    {
+      "state": "off",
+      "run": 2,
+      "p95MS": 43.692167,
+      "pairs": 816,
+      "workPlane": [
+        736,
+        320
+      ],
+      "warmupSeconds": 10,
+      "temporalAcquisitionEvidence": false,
+      "strongEvidence": true
+    },
+    {
+      "state": "off",
+      "run": 3,
+      "p95MS": 44.005375,
+      "pairs": 816,
+      "workPlane": [
+        736,
+        320
+      ],
+      "warmupSeconds": 10,
+      "temporalAcquisitionEvidence": false,
+      "strongEvidence": true
+    },
+    {
+      "state": "on",
+      "run": 1,
+      "p95MS": 52.734166,
+      "pairs": 809,
+      "workPlane": [
+        736,
+        320
+      ],
+      "warmupSeconds": 10,
+      "temporalAcquisitionEvidence": true,
+      "strongEvidence": true
+    },
+    {
+      "state": "on",
+      "run": 2,
+      "p95MS": 54.146959,
+      "pairs": 816,
+      "workPlane": [
+        736,
+        320
+      ],
+      "warmupSeconds": 10,
+      "temporalAcquisitionEvidence": true,
+      "strongEvidence": true
+    }
+  ],
+  "groups": {
+    "off": {
+      "runs": 3,
+      "medianP95MS": 44.005375,
+      "minP95MS": 43.692167,
+      "maxP95MS": 44.619,
+      "iqrMS": 0.463416500000001,
+      "stdMS": 0.3849465044764885
+    },
+    "on": {
+      "runs": 2,
+      "medianP95MS": 53.4405625,
+      "minP95MS": 52.734166,
+      "maxP95MS": 54.146959,
+      "iqrMS": 0.7063965000000039,
+      "stdMS": 0.7063965000000003
+    }
+  },
+  "scope": "Release actual M4; native GUI decode/Strong active; interpolation pair wall time includes temporal searches; not decode-to-display end-to-end latency.",
+  "deltaMedianMS": 9.435187499999998,
+  "passesPlus2MS": false
+}

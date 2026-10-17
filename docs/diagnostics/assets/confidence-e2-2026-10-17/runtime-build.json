@@ -1,0 +1,12 @@
+{
+  "commit": "92cb61f",
+  "chip": "Apple M4",
+  "machine": "Mac mini Mac16,10",
+  "memoryGB": 16,
+  "configuration": "Release",
+  "RiftSHA256": "da58acad614ba054c402b0e5608f86ad482bf7b99639e3e958845fb9ac14438b",
+  "MVProbeSHA256": "b05264af8aa44072513d6321bb70d8905098388230a147f9a4043c7e73b08fb1",
+  "os": "27.2",
+  "staticGuardBothArms": true,
+  "E2Default": false
+}

@@ -1,0 +1,27 @@
+{
+  "source": "E1 train pairs0..17 only",
+  "uniformQuantiles": 1025,
+  "maxCDFAbsoluteErrorPerFeature": [
+    0.0005046013412530748,
+    0.0005552646658476545,
+    0.0,
+    0.0003448933164610507,
+    0.00038674761063656193,
+    0.0008598123277480663
+  ],
+  "thresholdInitial": {
+    "exit": 0.905458546512312,
+    "enter": 0.9439189585770866,
+    "full": 0.9583563380663478
+  },
+  "pixelUnitReference": [
+    1152,
+    480
+  ],
+  "thresholdRevised": {
+    "exit": 0.84421301,
+    "enter": 0.905458547,
+    "full": 0.943918959
+  },
+  "revisionReason": "Initial top2 entry left measured 300s face ROI max .9431439 unmarked; relaxed one E1 quantile band, without refitting combination."
+}

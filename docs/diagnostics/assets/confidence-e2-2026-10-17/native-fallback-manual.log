@@ -1,0 +1,16 @@
+E2 CONFIDENCE MODE: high-risk, dissimilar A/B selects nearest immediately on first pair
+NATIVE SAMPLING NV12 64x48: MAE=0.0, max=0 source code values
+NATIVE E2 fallback endpoints/blend: NV12 64x48 passed
+NATIVE SAMPLING 4K NV12 median=2.425333ms
+NATIVE SAMPLING NV12 2x2: MAE=0.0, max=0 source code values
+NATIVE E2 fallback endpoints/blend: NV12 2x2 passed
+NATIVE SAMPLING P010 64x48: MAE=0.0, max=0 source code values
+NATIVE E2 fallback endpoints/blend: P010 64x48 passed
+NATIVE SAMPLING 4K P010 median=1.986ms
+NATIVE SAMPLING P010 2x2: MAE=0.0, max=0 source code values
+NATIVE E2 fallback endpoints/blend: P010 2x2 passed
+NATIVE SAMPLING P210 64x48: MAE=0.0, max=0 source code values
+NATIVE E2 fallback endpoints/blend: P210 64x48 passed
+NATIVE SAMPLING 4K P210 median=2.491ms
+NATIVE SAMPLING P210 2x2: MAE=0.0, max=0 source code values
+NATIVE E2 fallback endpoints/blend: P210 2x2 passed

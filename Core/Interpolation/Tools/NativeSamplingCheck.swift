@@ -4,7 +4,22 @@ import Metal
 import CoreVideo
 
 @main struct NativeSamplingCheck {
+    static func checkImmediateNearest() throws {
+        let device=MTLCreateSystemDefaultDevice()!,queue=device.makeCommandQueue()!
+        let local=try LocalConfidenceDegradation(device:device,width:16,height:16)
+        let signals=(0..<4).flatMap { _ in [SIMD4<Float>(1e6,1e6,1,1e6),SIMD4<Float>(1e6,0.5,0,0)] }
+        let buffer=signals.withUnsafeBytes{device.makeBuffer(bytes:$0.baseAddress!,length:$0.count,options:.storageModeShared)!}
+        let descriptor=MTLTextureDescriptor.texture2DDescriptor(pixelFormat:.rgba32Float,width:16,height:16,mipmapped:false);descriptor.storageMode = .shared;descriptor.usage = [.shaderRead,.shaderWrite]
+        let flow=device.makeTexture(descriptor:descriptor)!,zeros=[SIMD4<Float>](repeating:.zero,count:256)
+        zeros.withUnsafeBytes{flow.replace(region:MTLRegionMake2D(0,0,16,16),mipmapLevel:0,withBytes:$0.baseAddress!,bytesPerRow:256)}
+        let command=queue.makeCommandBuffer()!;try local.prepare(command:command,signals:buffer,forward:flow,step:1);command.commit();command.waitUntilCompleted();precondition(command.status == .completed)
+        var map=[SIMD4<Float>](repeating:.zero,count:256)
+        map.withUnsafeMutableBytes{local.map.getBytes($0.baseAddress!,bytesPerRow:256,from:MTLRegionMake2D(0,0,16,16),mipmapLevel:0)}
+        precondition(map.allSatisfy{$0.x>0.3 && $0.y==1},"Large A-B must choose nearest from the first pair")
+        print("E2 CONFIDENCE MODE: high-risk, dissimilar A/B selects nearest immediately on first pair")
+    }
     static func main() throws {
+        try checkImmediateNearest()
         let formats: [(Bool,OSType,String)]=[(false,kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,"NV12"),(true,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,"P010"),(true,kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,"P210")]
         for (tenBit,format,label) in formats { for small in [false,true] {
             let engine=try WarpEngine(msl: warpShadersMSL)

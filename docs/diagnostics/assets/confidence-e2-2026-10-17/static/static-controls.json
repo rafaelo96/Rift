@@ -1,0 +1,98 @@
+[
+  {
+    "baselineMidSHA" : "e4ba601942fee76b7ac5d0232f0f6e5bbd229524a783997c6651a1e08516c187",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 0,
+    "profile" : "texture",
+    "resetIdentical" : true,
+    "wrongMovingField" : false
+  },
+  {
+    "baselineMidSHA" : "e4ba601942fee76b7ac5d0232f0f6e5bbd229524a783997c6651a1e08516c187",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 1,
+    "profile" : "texture",
+    "resetIdentical" : true,
+    "wrongMovingField" : false
+  },
+  {
+    "baselineMidSHA" : "e4ba601942fee76b7ac5d0232f0f6e5bbd229524a783997c6651a1e08516c187",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 0,
+    "profile" : "texture",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "e4ba601942fee76b7ac5d0232f0f6e5bbd229524a783997c6651a1e08516c187",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 1,
+    "profile" : "texture",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "93fd38613766cda9735a961d9f15e2b7677d137690e3952d54d9e100b67eceb0",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 0,
+    "profile" : "flat",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "93fd38613766cda9735a961d9f15e2b7677d137690e3952d54d9e100b67eceb0",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 1,
+    "profile" : "flat",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "0d53f4cf70783df687672d208454de86b54a18c3a0cd3cc5493bed7ba851c5e0",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 0,
+    "profile" : "gradient",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "53f1ba9e770b98539e450fb96807452d62a09d64dd812ed650a91585e6308242",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 1,
+    "profile" : "gradient",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "3148fdf9319738cff9a5b83f377dce089bfd9f332fb2c997d533b514dfb3d813",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 0,
+    "profile" : "quantized-noise",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "3148fdf9319738cff9a5b83f377dce089bfd9f332fb2c997d533b514dfb3d813",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 1,
+    "profile" : "quantized-noise",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "3467853983d5ba36bd067caadc45fd9f5eb8d46d7bad3509fc34b04897d34b15",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 0,
+    "profile" : "edge",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  },
+  {
+    "baselineMidSHA" : "3467853983d5ba36bd067caadc45fd9f5eb8d46d7bad3509fc34b04897d34b15",
+    "jitterFractionAbove1LSB" : 0,
+    "noiseCodes" : 1,
+    "profile" : "edge",
+    "resetIdentical" : true,
+    "wrongMovingField" : true
+  }
+]

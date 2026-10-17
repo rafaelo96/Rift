@@ -1,0 +1,1822 @@
+{
+  "blockFields" : [
+    "span",
+    "first",
+    "meanWeight",
+    "markedFraction",
+    "beforeMAE10bit",
+    "afterMAE10bit"
+  ],
+  "clipFrames" : 0,
+  "height" : 480,
+  "records" : [
+    {
+      "actualChangedFraction" : 0.12662217881944443,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 0,
+      "markedPixelFraction" : 0.13622685185185185,
+      "PTS" : [
+        300.00799999999998,
+        300.05000000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 1,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.05000000000001,
+        300.09100000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.21184293016975309,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 2,
+      "markedPixelFraction" : 0.22997685185185185,
+      "PTS" : [
+        300.09100000000001,
+        300.13299999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 3,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.13299999999998,
+        300.17500000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.068933256172839505,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 4,
+      "markedPixelFraction" : 0.076851851851851852,
+      "PTS" : [
+        300.17500000000001,
+        300.21699999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 5,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.21699999999998,
+        300.25799999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.0074532214506172843,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 6,
+      "markedPixelFraction" : 0.010763888888888889,
+      "PTS" : [
+        300.25799999999998,
+        300.30000000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 7,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.30000000000001,
+        300.34199999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 8,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.34199999999998,
+        300.38299999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 9,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.38299999999998,
+        300.42500000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 10,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.42500000000001,
+        300.46699999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 11,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.46699999999998,
+        300.50900000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 12,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.50900000000001,
+        300.55000000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 13,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.55000000000001,
+        300.59199999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 14,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.59199999999998,
+        300.63400000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 15,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.63400000000001,
+        300.67500000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 16,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.67500000000001,
+        300.71699999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 17,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.71699999999998,
+        300.75900000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 18,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.75900000000001,
+        300.80000000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 19,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.80000000000001,
+        300.84199999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 20,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.84199999999998,
+        300.88400000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 21,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.88400000000001,
+        300.92599999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 22,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.92599999999999,
+        300.96699999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 23,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.96699999999998,
+        301.00900000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 24,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.00900000000001,
+        301.05099999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.034522690007716052,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 25,
+      "markedPixelFraction" : 0.039930555555555552,
+      "PTS" : [
+        301.05099999999999,
+        301.09199999999998
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 26,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.09199999999998,
+        301.13400000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.0063741801697530867,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 27,
+      "markedPixelFraction" : 0.0094907407407407406,
+      "PTS" : [
+        301.13400000000001,
+        301.17599999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 28,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.17599999999999,
+        301.21800000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.003853202160493827,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 29,
+      "markedPixelFraction" : 0.005324074074074074,
+      "PTS" : [
+        301.21800000000002,
+        301.25900000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.0027138792438271605,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 30,
+      "markedPixelFraction" : 0.0042824074074074075,
+      "PTS" : [
+        301.25900000000001,
+        301.30099999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.013990162037037037,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 31,
+      "markedPixelFraction" : 0.01863425925925926,
+      "PTS" : [
+        301.30099999999999,
+        301.34300000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 32,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.34300000000002,
+        301.38400000000001
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 33,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.38400000000001,
+        301.42599999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 34,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.42599999999999,
+        301.46800000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 35,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.46800000000002,
+        301.50999999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 36,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.50999999999999,
+        301.55099999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 37,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.55099999999999,
+        301.59300000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 38,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.59300000000002,
+        301.63499999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.12959587191358024,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 39,
+      "markedPixelFraction" : 0.15150462962962963,
+      "PTS" : [
+        301.63499999999999,
+        301.67599999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 40,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.67599999999999,
+        301.71800000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.0020260657793209876,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 41,
+      "markedPixelFraction" : 0.0031250000000000002,
+      "PTS" : [
+        301.71800000000002,
+        301.75999999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 4.2197145061728391e-06,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 42,
+      "markedPixelFraction" : 0.00011574074074074075,
+      "PTS" : [
+        301.75999999999999,
+        301.80099999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.031120394483024692,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 43,
+      "markedPixelFraction" : 0.040972222222222222,
+      "PTS" : [
+        301.80099999999999,
+        301.84300000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 44,
+      "markedPixelFraction" : 0.00011574074074074075,
+      "PTS" : [
+        301.84300000000002,
+        301.88499999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.15060703607253087,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 45,
+      "markedPixelFraction" : 0.17511574074074074,
+      "PTS" : [
+        301.88499999999999,
+        301.92700000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.099568383487654316,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 46,
+      "markedPixelFraction" : 0.13726851851851851,
+      "PTS" : [
+        301.92700000000002,
+        301.96800000000002
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : -1,
+      "beforeMAE" : -1,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 47,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.96800000000002,
+        302.00999999999999
+      ],
+      "samples" : 3,
+      "span" : 1,
+      "trustedAfterMAE" : -1,
+      "trustedBeforeMAE" : -1,
+      "trustedPixels" : 0
+    },
+    {
+      "actualChangedFraction" : 0.13127350983796296,
+      "afterMAE" : 14.232156032986111,
+      "beforeMAE" : 12.162286603009258,
+      "degradedAfterMAE" : 21.320384777123632,
+      "degradedBeforeMAE" : 6.2794496425567701,
+      "degradedPixels" : 76096,
+      "first" : 0,
+      "markedPixelFraction" : 0.13761574074074073,
+      "PTS" : [
+        300.00799999999998,
+        300.09100000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 13.10104558113005,
+      "trustedBeforeMAE" : 13.10104558113005,
+      "trustedPixels" : 476864
+    },
+    {
+      "actualChangedFraction" : 0.23396990740740742,
+      "afterMAE" : 25.207958984375001,
+      "beforeMAE" : 23.951390697337963,
+      "degradedAfterMAE" : 40.369983399347625,
+      "degradedBeforeMAE" : 35.31092002562908,
+      "degradedPixels" : 137344,
+      "first" : 1,
+      "markedPixelFraction" : 0.24837962962962962,
+      "PTS" : [
+        300.05000000000001,
+        300.13299999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 20.197533299969201,
+      "trustedBeforeMAE" : 20.197533299969201,
+      "trustedPixels" : 415616
+    },
+    {
+      "actualChangedFraction" : 0.27652994791666669,
+      "afterMAE" : 20.644341362847221,
+      "beforeMAE" : 20.863541666666666,
+      "degradedAfterMAE" : 34.385702136834034,
+      "degradedBeforeMAE" : 35.111608853967034,
+      "degradedPixels" : 166976,
+      "first" : 2,
+      "markedPixelFraction" : 0.30196759259259259,
+      "PTS" : [
+        300.09100000000001,
+        300.17500000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 14.699852843641187,
+      "trustedBeforeMAE" : 14.699852843641187,
+      "trustedPixels" : 385984
+    },
+    {
+      "actualChangedFraction" : 0.10479781539351851,
+      "afterMAE" : 34.879781539351853,
+      "beforeMAE" : 33.669088179976853,
+      "degradedAfterMAE" : 93.406122737556558,
+      "degradedBeforeMAE" : 83.939705882352939,
+      "degradedPixels" : 70720,
+      "first" : 3,
+      "markedPixelFraction" : 0.12789351851851852,
+      "PTS" : [
+        300.13299999999998,
+        300.21699999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 26.296953798938286,
+      "trustedBeforeMAE" : 26.296953798938286,
+      "trustedPixels" : 482240
+    },
+    {
+      "actualChangedFraction" : 0.10759367766203703,
+      "afterMAE" : 21.788017216435186,
+      "beforeMAE" : 23.779329427083333,
+      "degradedAfterMAE" : 54.596537558685448,
+      "degradedBeforeMAE" : 70.751408450704218,
+      "degradedPixels" : 68160,
+      "first" : 4,
+      "markedPixelFraction" : 0.1232638888888889,
+      "PTS" : [
+        300.17500000000001,
+        300.25799999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 17.17533415841584,
+      "trustedBeforeMAE" : 17.17533415841584,
+      "trustedPixels" : 484800
+    },
+    {
+      "actualChangedFraction" : 0.021372251157407408,
+      "afterMAE" : 9.3993580005787045,
+      "beforeMAE" : 9.4208749276620374,
+      "degradedAfterMAE" : 16.823927993527509,
+      "degradedBeforeMAE" : 17.425566343042071,
+      "degradedPixels" : 19776,
+      "first" : 5,
+      "markedPixelFraction" : 0.035763888888888887,
+      "PTS" : [
+        300.21699999999998,
+        300.30000000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 9.1239778387948629,
+      "trustedBeforeMAE" : 9.1239778387948629,
+      "trustedPixels" : 533184
+    },
+    {
+      "actualChangedFraction" : 0.015930627893518519,
+      "afterMAE" : 9.4182165075231481,
+      "beforeMAE" : 9.4875307436342595,
+      "degradedAfterMAE" : 40.467712655601659,
+      "degradedBeforeMAE" : 42.952671161825727,
+      "degradedPixels" : 15424,
+      "first" : 6,
+      "markedPixelFraction" : 0.027893518518518519,
+      "PTS" : [
+        300.25799999999998,
+        300.34199999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 8.5272856143588527,
+      "trustedBeforeMAE" : 8.5272856143588527,
+      "trustedPixels" : 537536
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 13.498527922453704,
+      "beforeMAE" : 13.498527922453704,
+      "degradedAfterMAE" : 85.078125,
+      "degradedBeforeMAE" : 85.078125,
+      "degradedPixels" : 192,
+      "first" : 7,
+      "markedPixelFraction" : 0.00034722222222222224,
+      "PTS" : [
+        300.30000000000001,
+        300.38299999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 13.47366526282274,
+      "trustedBeforeMAE" : 13.47366526282274,
+      "trustedPixels" : 552768
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 13.530861183449074,
+      "beforeMAE" : 13.530861183449074,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 8,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.34199999999998,
+        300.42500000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 13.530861183449074,
+      "trustedBeforeMAE" : 13.530861183449074,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 6.0762116608796299,
+      "beforeMAE" : 6.0762116608796299,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 9,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.38299999999998,
+        300.46699999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 6.0762116608796299,
+      "trustedBeforeMAE" : 6.0762116608796299,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 5.6578342013888889,
+      "beforeMAE" : 5.6578342013888889,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 10,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.42500000000001,
+        300.50900000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 5.6578342013888889,
+      "trustedBeforeMAE" : 5.6578342013888889,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.8708622685185183,
+      "beforeMAE" : 2.8708622685185183,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 11,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.46699999999998,
+        300.55000000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.8708622685185183,
+      "trustedBeforeMAE" : 2.8708622685185183,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.8473343460648146,
+      "beforeMAE" : 2.8473343460648146,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 12,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.50900000000001,
+        300.59199999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.8473343460648146,
+      "trustedBeforeMAE" : 2.8473343460648146,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.1144097222222222,
+      "beforeMAE" : 2.1144097222222222,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 13,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.55000000000001,
+        300.63400000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.1144097222222222,
+      "trustedBeforeMAE" : 2.1144097222222222,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.0365234375000001,
+      "beforeMAE" : 2.0365234375000001,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 14,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.59199999999998,
+        300.67500000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.0365234375000001,
+      "trustedBeforeMAE" : 2.0365234375000001,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 1.8406720196759259,
+      "beforeMAE" : 1.8406720196759259,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 15,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.63400000000001,
+        300.71699999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 1.8406720196759259,
+      "trustedBeforeMAE" : 1.8406720196759259,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 1.9154803240740741,
+      "beforeMAE" : 1.9154803240740741,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 16,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.67500000000001,
+        300.75900000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 1.9154803240740741,
+      "trustedBeforeMAE" : 1.9154803240740741,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.9528573495370369,
+      "beforeMAE" : 2.9528573495370369,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 17,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.71699999999998,
+        300.80000000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.9528573495370369,
+      "trustedBeforeMAE" : 2.9528573495370369,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.9374150028935184,
+      "beforeMAE" : 2.9374150028935184,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 18,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.75900000000001,
+        300.84199999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.9374150028935184,
+      "trustedBeforeMAE" : 2.9374150028935184,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 4.9300636574074073,
+      "beforeMAE" : 4.9300636574074073,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 19,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.80000000000001,
+        300.88400000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 4.9300636574074073,
+      "trustedBeforeMAE" : 4.9300636574074073,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 3.8044921875000002,
+      "beforeMAE" : 3.8044921875000002,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 20,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.84199999999998,
+        300.92599999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 3.8044921875000002,
+      "trustedBeforeMAE" : 3.8044921875000002,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 2.9397370515046295,
+      "beforeMAE" : 2.9397370515046295,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 21,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.88400000000001,
+        300.96699999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 2.9397370515046295,
+      "trustedBeforeMAE" : 2.9397370515046295,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 5.9613100405092592,
+      "beforeMAE" : 5.9613100405092592,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 22,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.92599999999999,
+        301.00900000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 5.9613100405092592,
+      "trustedBeforeMAE" : 5.9613100405092592,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 6.8012152777777777,
+      "beforeMAE" : 6.8012152777777777,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 23,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        300.96699999999998,
+        301.05099999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 6.8012152777777777,
+      "trustedBeforeMAE" : 6.8012152777777777,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0.035839843750000003,
+      "afterMAE" : 31.377003761574073,
+      "beforeMAE" : 31.494636140046296,
+      "degradedAfterMAE" : 151.00553019662922,
+      "degradedBeforeMAE" : 153.86042837078651,
+      "degradedPixels" : 22784,
+      "first" : 24,
+      "markedPixelFraction" : 0.041203703703703701,
+      "PTS" : [
+        301.00900000000001,
+        301.09199999999998
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 26.236038598503139,
+      "trustedBeforeMAE" : 26.236038598503139,
+      "trustedPixels" : 530176
+    },
+    {
+      "actualChangedFraction" : 0.046220341435185185,
+      "afterMAE" : 31.135286458333333,
+      "beforeMAE" : 31.365523726851851,
+      "degradedAfterMAE" : 166.28596023908523,
+      "degradedBeforeMAE" : 170.42161512474013,
+      "degradedPixels" : 30784,
+      "first" : 25,
+      "markedPixelFraction" : 0.055671296296296295,
+      "PTS" : [
+        301.05099999999999,
+        301.13400000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 23.167707822649835,
+      "trustedBeforeMAE" : 23.167707822649835,
+      "trustedPixels" : 522176
+    },
+    {
+      "actualChangedFraction" : 0.010297309027777778,
+      "afterMAE" : 21.338821976273149,
+      "beforeMAE" : 21.366502097800925,
+      "degradedAfterMAE" : 124.86072530864197,
+      "degradedBeforeMAE" : 126.33699845679013,
+      "degradedPixels" : 10368,
+      "first" : 26,
+      "markedPixelFraction" : 0.018749999999999999,
+      "PTS" : [
+        301.09199999999998,
+        301.17599999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 19.360696434890304,
+      "trustedBeforeMAE" : 19.360696434890304,
+      "trustedPixels" : 542592
+    },
+    {
+      "actualChangedFraction" : 0.014637586805555556,
+      "afterMAE" : 17.22860966435185,
+      "beforeMAE" : 17.259072989004629,
+      "degradedAfterMAE" : 35.199910287081337,
+      "degradedBeforeMAE" : 36.459255382775119,
+      "degradedPixels" : 13376,
+      "first" : 27,
+      "markedPixelFraction" : 0.024189814814814813,
+      "PTS" : [
+        301.13400000000001,
+        301.21800000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 16.78311069268177,
+      "trustedBeforeMAE" : 16.78311069268177,
+      "trustedPixels" : 539584
+    },
+    {
+      "actualChangedFraction" : 0.00090603298611111114,
+      "afterMAE" : 13.136243127893518,
+      "beforeMAE" : 13.137234157986111,
+      "degradedAfterMAE" : 95.776785714285708,
+      "degradedBeforeMAE" : 96.082589285714292,
+      "degradedPixels" : 1792,
+      "first" : 28,
+      "markedPixelFraction" : 0.0032407407407407406,
+      "PTS" : [
+        301.17599999999999,
+        301.25900000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 12.867555808755226,
+      "trustedBeforeMAE" : 12.867555808755226,
+      "trustedPixels" : 551168
+    },
+    {
+      "actualChangedFraction" : 0.020120804398148149,
+      "afterMAE" : 11.983637152777778,
+      "beforeMAE" : 11.991362847222222,
+      "degradedAfterMAE" : 47.143917871900825,
+      "degradedBeforeMAE" : 47.41974431818182,
+      "degradedPixels" : 15488,
+      "first" : 29,
+      "markedPixelFraction" : 0.028009259259259258,
+      "PTS" : [
+        301.21800000000002,
+        301.30099999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 10.970444972017146,
+      "trustedBeforeMAE" : 10.970444972017146,
+      "trustedPixels" : 537472
+    },
+    {
+      "actualChangedFraction" : 0.036867042824074076,
+      "afterMAE" : 13.286928530092593,
+      "beforeMAE" : 13.454739945023148,
+      "degradedAfterMAE" : 86.678950471698116,
+      "degradedBeforeMAE" : 90.587011455525612,
+      "degradedPixels" : 23744,
+      "first" : 30,
+      "markedPixelFraction" : 0.042939814814814813,
+      "PTS" : [
+        301.25900000000001,
+        301.34300000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 9.9940950386987542,
+      "trustedBeforeMAE" : 9.9940950386987542,
+      "trustedPixels" : 529216
+    },
+    {
+      "actualChangedFraction" : 0.02381546585648148,
+      "afterMAE" : 3.7897171585648146,
+      "beforeMAE" : 3.8307345920138891,
+      "degradedAfterMAE" : 23.560680220883533,
+      "degradedBeforeMAE" : 24.983935742971887,
+      "degradedPixels" : 15936,
+      "first" : 31,
+      "markedPixelFraction" : 0.028819444444444446,
+      "PTS" : [
+        301.30099999999999,
+        301.38400000000001
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 3.203020721606483,
+      "trustedBeforeMAE" : 3.203020721606483,
+      "trustedPixels" : 537024
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 3.3248480902777779,
+      "beforeMAE" : 3.3248480902777779,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 32,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.34300000000002,
+        301.42599999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 3.3248480902777779,
+      "trustedBeforeMAE" : 3.3248480902777779,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 5.6523943865740742,
+      "beforeMAE" : 5.6523943865740742,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 33,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.38400000000001,
+        301.46800000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 5.6523943865740742,
+      "trustedBeforeMAE" : 5.6523943865740742,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 1.8679361979166667,
+      "beforeMAE" : 1.8679361979166667,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 34,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.42599999999999,
+        301.50999999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 1.8679361979166667,
+      "trustedBeforeMAE" : 1.8679361979166667,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 1.73955078125,
+      "beforeMAE" : 1.73955078125,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 35,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.46800000000002,
+        301.55099999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 1.73955078125,
+      "trustedBeforeMAE" : 1.73955078125,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 1.1601327401620369,
+      "beforeMAE" : 1.1601327401620369,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 36,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.50999999999999,
+        301.59300000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 1.1601327401620369,
+      "trustedBeforeMAE" : 1.1601327401620369,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0,
+      "afterMAE" : 0.87356409143518521,
+      "beforeMAE" : 0.87356409143518521,
+      "degradedAfterMAE" : -1,
+      "degradedBeforeMAE" : -1,
+      "degradedPixels" : 0,
+      "first" : 37,
+      "markedPixelFraction" : 0,
+      "PTS" : [
+        301.55099999999999,
+        301.63499999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 0.87356409143518521,
+      "trustedBeforeMAE" : 0.87356409143518521,
+      "trustedPixels" : 552960
+    },
+    {
+      "actualChangedFraction" : 0.13237304687500001,
+      "afterMAE" : 124.71251989293981,
+      "beforeMAE" : 125.33973343460649,
+      "degradedAfterMAE" : 166.1100270295903,
+      "degradedBeforeMAE" : 170.22165449544764,
+      "degradedPixels" : 84352,
+      "first" : 38,
+      "markedPixelFraction" : 0.15254629629629629,
+      "PTS" : [
+        301.59300000000002,
+        301.67599999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 117.26074245424748,
+      "trustedBeforeMAE" : 117.26074245424748,
+      "trustedPixels" : 468608
+    },
+    {
+      "actualChangedFraction" : 0.21205692997685185,
+      "afterMAE" : 124.98935366030092,
+      "beforeMAE" : 126.34993851273148,
+      "degradedAfterMAE" : 174.68853526766125,
+      "degradedBeforeMAE" : 179.84669811320754,
+      "degradedPixels" : 145856,
+      "first" : 39,
+      "markedPixelFraction" : 0.26377314814814817,
+      "PTS" : [
+        301.63499999999999,
+        301.71800000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 107.18327994812137,
+      "trustedBeforeMAE" : 107.18327994812137,
+      "trustedPixels" : 407104
+    },
+    {
+      "actualChangedFraction" : 0.0022081163194444444,
+      "afterMAE" : 19.137172670717593,
+      "beforeMAE" : 19.137416811342593,
+      "degradedAfterMAE" : 49.864793346774192,
+      "degradedBeforeMAE" : 49.881804435483872,
+      "degradedPixels" : 7936,
+      "first" : 40,
+      "markedPixelFraction" : 0.014351851851851852,
+      "PTS" : [
+        301.67599999999999,
+        301.75999999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 18.689753111789571,
+      "trustedBeforeMAE" : 18.689753111789571,
+      "trustedPixels" : 545024
+    },
+    {
+      "actualChangedFraction" : 0.0014539930555555556,
+      "afterMAE" : 19.100415943287036,
+      "beforeMAE" : 19.100632957175925,
+      "degradedAfterMAE" : 25.134973404255319,
+      "degradedBeforeMAE" : 25.174867021276597,
+      "degradedPixels" : 3008,
+      "first" : 41,
+      "markedPixelFraction" : 0.0054398148148148149,
+      "PTS" : [
+        301.71800000000002,
+        301.80099999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 19.067409519376238,
+      "trustedBeforeMAE" : 19.067409519376238,
+      "trustedPixels" : 549952
+    },
+    {
+      "actualChangedFraction" : 0.054966001157407407,
+      "afterMAE" : 25.06280201099537,
+      "beforeMAE" : 25.32444480613426,
+      "degradedAfterMAE" : 21.562671165884193,
+      "degradedBeforeMAE" : 25.100376564945226,
+      "degradedPixels" : 40896,
+      "first" : 42,
+      "markedPixelFraction" : 0.073958333333333334,
+      "PTS" : [
+        301.75999999999999,
+        301.84300000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 25.342340019997501,
+      "trustedBeforeMAE" : 25.342340019997501,
+      "trustedPixels" : 512064
+    },
+    {
+      "actualChangedFraction" : 0.094332320601851857,
+      "afterMAE" : 22.484174262152777,
+      "beforeMAE" : 23.036172598379629,
+      "degradedAfterMAE" : 42.647328795379536,
+      "degradedBeforeMAE" : 46.582366439768975,
+      "degradedPixels" : 77568,
+      "first" : 43,
+      "markedPixelFraction" : 0.14027777777777778,
+      "PTS" : [
+        301.80099999999999,
+        301.88499999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 19.194224976440495,
+      "trustedBeforeMAE" : 19.194224976440495,
+      "trustedPixels" : 475392
+    },
+    {
+      "actualChangedFraction" : 0.2171459056712963,
+      "afterMAE" : 65.659300853587965,
+      "beforeMAE" : 65.935168909143513,
+      "degradedAfterMAE" : 145.01865832614322,
+      "degradedBeforeMAE" : 146.04691544434857,
+      "degradedPixels" : 148352,
+      "first" : 44,
+      "markedPixelFraction" : 0.26828703703703705,
+      "PTS" : [
+        301.84300000000002,
+        301.92700000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 36.561706639512813,
+      "trustedBeforeMAE" : 36.561706639512813,
+      "trustedPixels" : 404608
+    },
+    {
+      "actualChangedFraction" : 0.29670500578703701,
+      "afterMAE" : 60.243429904513889,
+      "beforeMAE" : 62.34977756076389,
+      "degradedAfterMAE" : 83.268585796387526,
+      "degradedBeforeMAE" : 89.245217569786533,
+      "degradedPixels" : 194880,
+      "first" : 45,
+      "markedPixelFraction" : 0.35243055555555558,
+      "PTS" : [
+        301.88499999999999,
+        301.96800000000002
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 47.712312890974083,
+      "trustedBeforeMAE" : 47.712312890974083,
+      "trustedPixels" : 358080
+    },
+    {
+      "actualChangedFraction" : 0.13371129918981481,
+      "afterMAE" : 51.043314163773147,
+      "beforeMAE" : 50.92354962384259,
+      "degradedAfterMAE" : 121.63192581874647,
+      "degradedBeforeMAE" : 121.04764257481649,
+      "degradedPixels" : 113344,
+      "first" : 46,
+      "markedPixelFraction" : 0.20497685185185185,
+      "PTS" : [
+        301.92700000000002,
+        302.00999999999999
+      ],
+      "samples" : 1,
+      "span" : 2,
+      "trustedAfterMAE" : 32.843804593099435,
+      "trustedBeforeMAE" : 32.843804593099435,
+      "trustedPixels" : 439616
+    }
+  ],
+  "thresholds" : "E1 top2 enter, top1 full, top5 exit; no quality-label adjustment",
+  "trustedPixelIdentity" : true,
+  "width" : 1152
+}

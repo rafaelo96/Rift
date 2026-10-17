@@ -1,0 +1,8 @@
+**/*.u16
+**/*.f32
+*/chunk*/
+*/sequence/
+# Transient per-second PNGs are represented by contact sheets; keep only final requested videos.
+*/clips/*.png
+*/mode-smoothed-clips/*.png
+*/mode-smoothed-clips/*.mp4

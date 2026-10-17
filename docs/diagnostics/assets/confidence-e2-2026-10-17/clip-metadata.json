@@ -1,0 +1,98 @@
+[
+  {
+    "case" : "avatar69",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "off",
+    "width" : 1152
+  },
+  {
+    "case" : "avatar69",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "on",
+    "width" : 1152
+  },
+  {
+    "case" : "avatar300",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "off",
+    "width" : 1152
+  },
+  {
+    "case" : "avatar300",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "on",
+    "width" : 1152
+  },
+  {
+    "case" : "anime1082",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "off",
+    "width" : 1152
+  },
+  {
+    "case" : "anime1082",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "on",
+    "width" : 1152
+  },
+  {
+    "case" : "spider180",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "off",
+    "width" : 1152
+  },
+  {
+    "case" : "spider180",
+    "fps" : 60.000003814697266,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "on",
+    "width" : 1152
+  },
+  {
+    "case" : "spider900",
+    "fps" : 60.000003814697266,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "off",
+    "width" : 1152
+  },
+  {
+    "case" : "spider900",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "on",
+    "width" : 1152
+  },
+  {
+    "case" : "spider3600",
+    "fps" : 60,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "off",
+    "width" : 1152
+  },
+  {
+    "case" : "spider3600",
+    "fps" : 60.000003814697266,
+    "height" : 480,
+    "seconds" : 10,
+    "state" : "on",
+    "width" : 1152
+  }
+]

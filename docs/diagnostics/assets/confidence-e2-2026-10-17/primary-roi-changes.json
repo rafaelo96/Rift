@@ -1,0 +1,128 @@
+[
+  {
+    "case": "avatar69",
+    "span": 1,
+    "region": "pan-background",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "region": "crossing-bison",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar69",
+    "span": 1,
+    "region": "blur-foreground",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "region": "pan-background",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "region": "crossing-bison",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar69",
+    "span": 2,
+    "region": "blur-foreground",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "region": "face-contour",
+    "changedPercent": 1.123046875,
+    "meanCodeChange": 0.018994140625,
+    "maximumCodeChange": 5.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar300",
+    "span": 1,
+    "region": "clothing-contour",
+    "changedPercent": 6.1376953125,
+    "meanCodeChange": 0.77587890625,
+    "maximumCodeChange": 20.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "region": "face-contour",
+    "changedPercent": 6.2451171875,
+    "meanCodeChange": 0.087158203125,
+    "maximumCodeChange": 6.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "avatar300",
+    "span": 2,
+    "region": "clothing-contour",
+    "changedPercent": 7.9541015625,
+    "meanCodeChange": 1.599169921875,
+    "maximumCodeChange": 40.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "region": "bird-contour",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "anime1082",
+    "span": 1,
+    "region": "landscape-pan",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "region": "bird-contour",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  },
+  {
+    "case": "anime1082",
+    "span": 2,
+    "region": "landscape-pan",
+    "changedPercent": 0.0,
+    "meanCodeChange": 0.0,
+    "maximumCodeChange": 0.0,
+    "units": "8-bit preview PNG codes; raw truth metrics use 10-bit codes"
+  }
+]
