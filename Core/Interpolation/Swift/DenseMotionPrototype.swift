@@ -53,6 +53,11 @@ public final class DenseMotionPrototype {
     /// Offline temporal velocity evidence, normalized to this pair's interval; never used by synthesis.
     public var diagnosticTemporalVectors: [SIMD4<Float>]?
     private let pairConfidence: PairConfidenceDiagnostics?
+    private let localConfidence: LocalConfidenceDegradation?
+    public var localConfidenceHistoryStep: Float=1
+    public var localDegradationMap: MTLTexture? {localConfidence?.map}
+    public func resetLocalConfidenceState() {localConfidence?.reset()}
+
     private let candidateTrace: MTLBuffer?
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
@@ -78,6 +83,7 @@ public final class DenseMotionPrototype {
             return buffer
         }
         pairConfidence=(ProcessInfo.processInfo.environment["RIFT_PAIR_CONFIDENCE"] == "1" || ProcessInfo.processInfo.environment["RIFT_E2"] == "1") ? try PairConfidenceDiagnostics(device: device,width: width,height: height) : nil
+        localConfidence=ProcessInfo.processInfo.environment["RIFT_E2"]=="1" ? try LocalConfidenceDegradation(device: device,width: width,height: height) : nil
         let candidateMode=ProcessInfo.processInfo.environment["RIFT_DENSE_CANDIDATES"] == "1"
         if candidateMode {
             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
@@ -348,6 +354,7 @@ public final class DenseMotionPrototype {
             command=next
         }
         try pairConfidence?.encode(command: command,images: original,fields: finalFlows,vectors: diagnosticTemporalVectors,offset: offsets[1])
+        if let localConfidence,let pairConfidence {try localConfidence.prepare(command: command,signals: pairConfidence.output,forward: finalFlows[0],step: localConfidenceHistoryStep)}
         var results: [Result]=[]
         var fields: [[SIMD4<Float>]]=[]
         let batchNative = !downloadResults && !profileStages && diagnosticObserver == nil && candidateTrace == nil
@@ -384,6 +391,7 @@ public final class DenseMotionPrototype {
                 $0.setBuffer(ownership[1],offset: 0,index: 3)
                 $0.setBytes(&offset,length: 4,index: 4)
             }
+            localConfidence?.apply(command: command,images: original,output: output,time: time)
             nativeRenderer?(time,nativeCoordinates,nativeBlend,command)
             // The native consumer encodes before shared maps are reused by the next sample.
             if !batchNative || sample==times.count-1 {

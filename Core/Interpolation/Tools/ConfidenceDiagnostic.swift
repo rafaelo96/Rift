@@ -4,8 +4,8 @@ import CryptoKit
 import CoreGraphics
 import ImageIO
 
-private func confidenceJSON(_ value: Any,_ path: String) throws {try JSONSerialization.data(withJSONObject: value,options: [.prettyPrinted,.sortedKeys]).write(to: URL(fileURLWithPath: path))}
-private func confidencePNG(_ pixels: [UInt16],_ w: Int,_ h: Int,_ path: String) {
+func confidenceJSON(_ value: Any,_ path: String) throws {try JSONSerialization.data(withJSONObject: value,options: [.prettyPrinted,.sortedKeys]).write(to: URL(fileURLWithPath: path))}
+func confidencePNG(_ pixels: [UInt16],_ w: Int,_ h: Int,_ path: String) {
     let provider=CGDataProvider(data: Data(pixels.map {UInt8(clamping: Int($0)/4)}) as CFData)!
     let image=CGImage(width: w,height: h,bitsPerComponent: 8,bitsPerPixel: 8,bytesPerRow: w,space: CGColorSpaceCreateDeviceGray(),bitmapInfo: [],provider: provider,decode: nil,shouldInterpolate: false,intent: .defaultIntent)!
     let destination=CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL,"public.png" as CFString,1,nil)!;CGImageDestinationAddImage(destination,image,nil);precondition(CGImageDestinationFinalize(destination))

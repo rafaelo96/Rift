@@ -78,6 +78,37 @@ import CoreVideo
             let mae=total/Double(count)
             print("NATIVE SAMPLING \(label) \(w)x\(h): MAE=\(mae), max=\(maximum) source code values")
             precondition(maximum <= (tenBit ? 2 : 1) && mae<0.25,"Native color sampling lost precision")
+            if ProcessInfo.processInfo.environment["RIFT_E2"]=="1" {
+                let local=texture(.rgba32Float)
+                let reference=engine.renderDense(I0:a,I1:b,t:0.75,coordinates:coordinates,blend:blend).0!
+                for weight in [Float(0),1] {for mode in [Float(0),1] {
+                    let values=Array(repeating:SIMD4<Float>(weight,mode,0,0),count:mw*mh)
+                    values.withUnsafeBytes {local.replace(region:MTLRegionMake2D(0,0,mw,mh),mipmapLevel:0,withBytes:$0.baseAddress!,bytesPerRow:mw*16)}
+                    let actual=engine.renderDense(I0:a,I1:b,t:0.75,coordinates:coordinates,blend:blend,degradation:local).0!
+                    CVPixelBufferLockBaseAddress(actual,.readOnly)
+                    CVPixelBufferLockBaseAddress(reference,.readOnly)
+                    for plane in 0..<2 {
+                        let pw=CVPixelBufferGetWidthOfPlane(actual,plane),ph=CVPixelBufferGetHeightOfPlane(actual,plane),stride=CVPixelBufferGetBytesPerRowOfPlane(actual,plane),channels=plane==0 ? 1:2
+                        let bytes=CVPixelBufferGetBaseAddressOfPlane(actual,plane)!
+                        for y in 0..<ph {for x in 0..<pw {for c in 0..<channels {
+                            let k=x*channels+c,unit=tenBit ? 64:1
+                            let raw=tenBit ? Int(bytes.advanced(by:y*stride).assumingMemoryBound(to:UInt16.self)[k]):Int(bytes.advanced(by:y*stride).assumingMemoryBound(to:UInt8.self)[k])
+                            if weight==0 {
+                                let rb=CVPixelBufferGetBaseAddressOfPlane(reference,plane)!,rs=CVPixelBufferGetBytesPerRowOfPlane(reference,plane)
+                                let expected=tenBit ? Int(rb.advanced(by:y*rs).assumingMemoryBound(to:UInt16.self)[k]):Int(rb.advanced(by:y*rs).assumingMemoryBound(to:UInt8.self)[k])
+                                precondition(raw==expected,"Trusted native pixel changed")
+                            }
+                            if weight==1 {
+                                let aa=Float(pixel(0,plane,x,y,c)),bb=Float(pixel(1,plane,x,y,c));let expected=mode==1 ? bb:aa*0.25+bb*0.75
+                                precondition(abs(raw/unit-Int((expected/Float(unit)).rounded()))<=1,"Native local fallback value or chroma wrong")
+                            }
+                        }}}
+                    }
+                    CVPixelBufferUnlockBaseAddress(actual,.readOnly)
+                    CVPixelBufferUnlockBaseAddress(reference,.readOnly)
+                }}
+                print("NATIVE E2 fallback endpoints/blend: \(label) \(w)x\(h) passed")
+            }
             if small { continue }
             let bigA=source(0,3840,1600),bigB=source(1,3840,1600)
             var costs=[Double]()

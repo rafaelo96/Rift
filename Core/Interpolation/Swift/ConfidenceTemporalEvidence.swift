@@ -10,10 +10,11 @@ final class ConfidenceTemporalEvidence {
         matcher=try MotionSearchEngine(msl: motionShadersMSL,spec: spec,lambdaPx: lambda,smoothL0: true,gateL0: true,temporalGatePx: 0)
         self.width=width;self.height=height;self.blockSize=blockSize
     }
+    func isContinuous(a: Data,before: Data?) -> Bool {previousB==a && (before==nil || previousA==before)}
     func reset() {previousA=nil;previousB=nil;previousReverse=nil;matcher.resetTemporalState()}
     func acquire(a: Data,b: Data,context: DenseMotionPrototype.TemporalContext?,backward: [SIMD2<Int32>]) throws -> [SIMD4<Float>]? {
         defer {previousA=a;previousB=b;previousReverse=backward}
-        guard let context else {return nil}
+        guard let context,!(context.before==a && context.after==b) else {return nil}
         let before: [SIMD2<Int32>],reused: Bool
         if previousB==a && previousA==context.before,let reverse=previousReverse {before=reverse;reused=true}
         else {_=try matcher.runPairBatched(cur: a,ref: context.before);before=matcher.downloadMV(level: 0);reused=false}

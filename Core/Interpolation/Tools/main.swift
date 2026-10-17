@@ -66,6 +66,12 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if envInt("MV_E2_STATIC_CHECK",0)==1 {
+    do {try checkE2Stationary();exit(0)} catch {print("E2 STATIC FAILED: \(error)");exit(3)}
+}
+if let folder=ProcessInfo.processInfo.environment["MV_E2_WINDOW"] {
+    do {try replayE2Diagnostic(folder: folder);exit(0)} catch {print("E2 REPLAY FAILED: \(error)");exit(3)}
+}
 if envInt("MV_CONFIDENCE_CHECK",0)==1 {
     do {try checkConfidenceDiagnostic();exit(0)} catch {print("CONFIDENCE CHECK FAILED: \(error)");exit(3)}
 }

@@ -16,6 +16,7 @@ public final class WarpEngine {
     private let nativeLumaPipeline: MTLComputePipelineState
     private let nativeChromaPipeline: MTLComputePipelineState
     private let denseNativePipeline: MTLComputePipelineState
+    private let confidenceBlendPipeline: MTLComputePipelineState?
     private let nativeHardwareSampling=ProcessInfo.processInfo.environment["RIFT_NATIVE_HARDWARE"] != "0"
     private let upscalePipeline: MTLComputePipelineState
     private let chromaDownPipeline: MTLComputePipelineState
@@ -48,6 +49,10 @@ public final class WarpEngine {
         self.noChromaWarp = ProcessInfo.processInfo.environment["RIFT_CHROMA_NO_WARP"] == "1"
         CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &textureCache)
         
+        if ProcessInfo.processInfo.environment["RIFT_E2"]=="1" {
+            let local=try device.makeLibrary(source: nativeConfidenceBlendMSL,options: nil)
+            confidenceBlendPipeline=try device.makeComputePipelineState(function: local.makeFunction(name: "nativeConfidenceBlend")!)
+        } else {confidenceBlendPipeline=nil}
         let library: MTLLibrary
         do {
             let options=MTLCompileOptions()
@@ -89,7 +94,7 @@ public final class WarpEngine {
     }
 
     /// With an external command, elapsed time measures encoding; the owner waits for GPU completion.
-    func renderDense(I0: CVPixelBuffer,I1: CVPixelBuffer,t: Float,coordinates: MTLTexture,blend: MTLTexture,encodingInto externalCommand: MTLCommandBuffer?=nil) -> (CVPixelBuffer?,Double) {
+    func renderDense(I0: CVPixelBuffer,I1: CVPixelBuffer,t: Float,coordinates: MTLTexture,blend: MTLTexture,encodingInto externalCommand: MTLCommandBuffer?=nil,degradation: MTLTexture?=nil) -> (CVPixelBuffer?,Double) {
         let w=CVPixelBufferGetWidth(I0),h=CVPixelBufferGetHeight(I0),format=CVPixelBufferGetPixelFormatType(I0)
         guard CVPixelBufferGetWidth(I1)==w,CVPixelBufferGetHeight(I1)==h,CVPixelBufferGetPixelFormatType(I1)==format,
               CVPixelBufferGetPlaneCount(I0)==2,CVPixelBufferGetPlaneCount(I1)==2 else { return (nil,0) }
@@ -120,6 +125,18 @@ public final class WarpEngine {
             encoder.setBytes(&bits,length: 4,index: 0)
             encoder.dispatchThreads(MTLSize(width: pw,height: ph,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
+            if let confidenceBlendPipeline,let degradation {
+                guard let e=command.makeComputeCommandEncoder() else {return (nil,0)}
+                e.setComputePipelineState(confidenceBlendPipeline)
+                // Float-unorm views preserve raw code values and are independent of warp sampling mode.
+                let rawInputs=[I0,I1].map {wrapPlaneTexture($0,plane: plane,format: sampleFormat,w: pw,h: ph,cache: cache)}
+                guard let aa=rawInputs[0].1,let bb=rawInputs[1].1 else {return (nil,0)}
+                wrappers+=rawInputs.compactMap {$0.0}
+                for (i,t) in [aa,bb,out,degradation].enumerated() {e.setTexture(t,index: i)}
+                var amount=t;e.setBytes(&amount,length: 4,index: 0);e.setBytes(&bits,length: 4,index: 1)
+                e.dispatchThreads(MTLSize(width: pw,height: ph,depth: 1),threadsPerThreadgroup: MTLSize(width: 16,height: 8,depth: 1));e.endEncoding()
+            }
+
         }
         if externalCommand == nil {
             command.commit(); command.waitUntilCompleted()

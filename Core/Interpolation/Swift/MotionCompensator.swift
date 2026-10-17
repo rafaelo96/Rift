@@ -205,6 +205,7 @@ public final class MotionCompensator {
         backValidationME.resetTemporalState()
         patchReverseME?.resetTemporalState()
         confidenceTemporal?.reset()
+        patchEstimator?.resetLocalConfidenceState()
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).
@@ -281,9 +282,12 @@ public final class MotionCompensator {
             do {
                 _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
                 _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
-                if let confidenceTemporal {dense.diagnosticTemporalVectors=try confidenceTemporal.acquire(a: a,b: b,context: temporal,backward: backward)}
+                if let confidenceTemporal {
+                    if !confidenceTemporal.isContinuous(a: a,before: temporal?.before) {dense.resetLocalConfidenceState()}
+                    dense.diagnosticTemporalVectors=try confidenceTemporal.acquire(a: a,b: b,context: temporal,backward: backward)
+                }
                 _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,context: temporal,nativeRenderer: { time,coordinates,blend,command in
-                    let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend,encodingInto: command)
+                    let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend,encodingInto: command,degradation: dense.localDegradationMap)
                     if let buffer { buffers.append(buffer) }; nativeMS+=cost
                 },downloadResults: false)
             } catch { buffers.removeAll(); print("[Frame+] Native patch interpolation failed: \(error)") }
