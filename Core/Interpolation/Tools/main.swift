@@ -2011,11 +2011,23 @@ for i in 0..<pairCount {
             }
             let folder=ProcessInfo.processInfo.environment["MV_DENSE_OUTPUT"] ?? (envInt("MV_DENSE_TV",0)==1 ? "/tmp/rift-dense-avatar-tv" : (envInt("MV_DENSE_ZERO",0)==1 ? "/tmp/rift-dense-avatar-zero" : "/tmp/rift-dense-avatar"))
             try FileManager.default.createDirectory(atPath: folder,withIntermediateDirectories: true)
+            func diagnosticContext(_ first: Int,_ last: Int) -> DenseMotionPrototype.TemporalContext? {
+                let distance=envInt("MV_DENSE_CONTEXT_STRIDE",1)
+                precondition((1...4).contains(distance),"Diagnostic context stride must be 1...4")
+                let before=first-distance,after=last+distance
+                guard before>=0,after<frames.count else { return nil }
+                let span=frameTimes[last]-frameTimes[first]
+                guard span>0 else { return nil }
+                let beforeInterval=Float((frameTimes[first]-frameTimes[before])/span)
+                let afterInterval=Float((frameTimes[after]-frameTimes[last])/span)
+                guard beforeInterval.isFinite,afterInterval.isFinite,
+                      (0.25...4).contains(beforeInterval),(0.25...4).contains(afterInterval) else { return nil }
+                return DenseMotionPrototype.TemporalContext(before: frames[before],after: frames[after],
+                    beforeInterval: beforeInterval,afterInterval: afterInterval)
+            }
             let times: [Float]=[0.25,0.5,0.75]
             let samples=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times)
-            if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+2<frames.count {
-                let span=frameTimes[i+1]-frameTimes[i]
-                let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+2],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+2]-frameTimes[i+1])/span))
+            if envInt("MV_DENSE_FOUR",0)==1,let context=diagnosticContext(i,i+1) {
                 if i==envInt("MV_DENSE_TRACE_PAIR",-1) {
                     var sequence=0
                     dense.diagnosticObserver={ name,w,h,field in
@@ -2127,8 +2139,7 @@ for i in 0..<pairCount {
                         precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_\(name).png"))
                     }
                 }
-                if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+3<frames.count {
-                    let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+3],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+3]-frameTimes[i+2])/span))
+                if envInt("MV_DENSE_FOUR",0)==1,let context=diagnosticContext(i,i+2) {
                     let four=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time,context: context)
                     print("DENSE FOUR GROUND TRUTH: pair=\(i), dense2 MAE=\(mae(result.pixels)), dense4 MAE=\(mae(four.pixels)), ms=\(four.milliseconds)")
                     precondition(writeGrayPNG(four.pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_four.png"))

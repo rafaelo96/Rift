@@ -19,3 +19,11 @@ Do not integrate this selector into Frame+. Region shape and color add useful pr
 Reproduce proposal: `python3 Core/Interpolation/Tools/RegionSurfaceRegularized.py /tmp/rift-chroma300 /tmp/rift-current-trace300/trace_40_d0_assessment_denseTVAssess.f32 /tmp/rift-current-trace300/trace_41_d1_assessment_denseTVAssess.f32 /tmp/rift-region-supported300`. Render with `SURFACE_REASSESS=1 Core/Interpolation/Tools/SurfaceSynthesisRender.sh` followed by thetwo sourcePNGs, field0.f32, field1.f32 and an outputdirectory. Source inputPNG is already preserved in patch-stage-2026-10-16 assets; rawfields remain temporary.
 
 Next independent evidence question: nearest context images in this animated sequence are retained copies of the central poses. Compare farther but bounded source neighbors with accurate PTS ratios before assuming that four input buffers supply four distinct observations.
+
+## Bounded context distance follow-up
+
+MVProbe now accepts MV_DENSE_CONTEXT_STRIDE=1...4, with default1 preserving old behavior. It uses actual sourcePTS ratios and omits unavailable/out-of-contract context. Twelve adjacent pairs around300s permit comparison atstride2. Atpair4 the farther neighbors activate temporal selection atcoarselevels in both directions; the nearest retained-pose context didnot. Thus fourbuffers didnot previously imply fourdistinctobservations atthispair.
+
+This extra observation alone is not a fix. Hidden-frame MAEs atpairs2/3/4 change20.98821/34.38383/22.95082→20.82046/34.20686/23.53296: mixed results. Pair4adjacent midpoint staysfragmented. Injecting the earlier globalphotometricseeds with farthercontext produces a clearer-looking endpointface but substantial clothingdamage and sourcecopies; it doesnot demonstrate smooth newlygenerated geometry. No context policy or sourcebufferwindow is changed in production.
+
+Defaultdense and native8/10bit regressions pass afterbatching. Probe timingswithstageobserver areintrusive and notperformanceacceptance. The next acceptedcandidate stillneeds realidentitycoverage and visualmotion, not only morecontext orfewerfolds.
