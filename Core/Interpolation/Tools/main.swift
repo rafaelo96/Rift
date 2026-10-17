@@ -77,6 +77,34 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_DIAGNOSTIC_CHROMA_CHECK",0)==1 {
+    for format in [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange] {
+        var image: CVPixelBuffer?
+        precondition(CVPixelBufferCreate(nil,8,4,format,nil,&image)==kCVReturnSuccess)
+        let buffer=image!
+        precondition(CVPixelBufferLockBaseAddress(buffer,[])==kCVReturnSuccess)
+        let base=CVPixelBufferGetBaseAddressOfPlane(buffer,1)!
+        for y in 0..<CVPixelBufferGetHeightOfPlane(buffer,1) {
+            let row=base.advanced(by: y*CVPixelBufferGetBytesPerRowOfPlane(buffer,1))
+            for x in 0..<CVPixelBufferGetWidthOfPlane(buffer,1) {
+                if format==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange {
+                    row.assumingMemoryBound(to: UInt8.self)[2*x]=96
+                    row.assumingMemoryBound(to: UInt8.self)[2*x+1]=160
+                } else {
+                    row.assumingMemoryBound(to: UInt16.self)[2*x]=384<<6
+                    row.assumingMemoryBound(to: UInt16.self)[2*x+1]=640<<6
+                }
+            }
+        }
+        CVPixelBufferUnlockBaseAddress(buffer,[])
+        let planes=diagnosticChroma(buffer,width: 13,height: 7)!
+        precondition(planes[0]==Array(repeating: 96,count: 91))
+        precondition(planes[1]==Array(repeating: 160,count: 91))
+        precondition(diagnosticChroma(buffer,width: 0,height: 7)==nil)
+    }
+    print("DIAGNOSTIC CHROMA CHECK passed: 8/10-bit, 420/422, padded rows, channel order and resampling")
+    exit(0)
+}
 if envInt("MV_NATIVE_PATCH_CHECK",0)==1 {
     setbuf(stdout,nil)
     do { try checkNativePatchIntegration(); exit(0) }
@@ -563,6 +591,34 @@ private func scaledLuma(_ buffer: CVPixelBuffer) -> Data? {
 }
 
 // MARK: - PNG export helpers
+
+private func diagnosticChroma(_ image: CVPixelBuffer,width: Int,height: Int) -> [[UInt8]]? {
+    let format=CVPixelBufferGetPixelFormatType(image)
+    let tenBit=format==kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange || format==kCVPixelFormatType_420YpCbCr10BiPlanarFullRange || format==kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange || format==kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
+    guard tenBit || format==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format==kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+          width>0,height>0,CVPixelBufferGetPlaneCount(image)==2,
+          CVPixelBufferLockBaseAddress(image,.readOnly)==kCVReturnSuccess else { return nil }
+    defer { CVPixelBufferUnlockBaseAddress(image,.readOnly) }
+    guard let base=CVPixelBufferGetBaseAddressOfPlane(image,1) else { return nil }
+    let sourceWidth=CVPixelBufferGetWidthOfPlane(image,1),sourceHeight=CVPixelBufferGetHeightOfPlane(image,1)
+    let rowBytes=CVPixelBufferGetBytesPerRowOfPlane(image,1)
+    func value(_ x: Int,_ y: Int,_ channel: Int) -> Double {
+        let row=base.advanced(by: y*rowBytes),index=x*2+channel
+        return tenBit ? Double(row.assumingMemoryBound(to: UInt16.self)[index]>>6)/4 : Double(row.assumingMemoryBound(to: UInt8.self)[index])
+    }
+    var planes=Array(repeating: [UInt8](repeating: 0,count: width*height),count: 2)
+    for y in 0..<height { for x in 0..<width {
+        let px=max(0,min(Double(sourceWidth-1),(Double(x)+0.5)*Double(sourceWidth)/Double(width)-0.5))
+        let py=max(0,min(Double(sourceHeight-1),(Double(y)+0.5)*Double(sourceHeight)/Double(height)-0.5))
+        let ix=Int(px),iy=Int(py),jx=min(ix+1,sourceWidth-1),jy=min(iy+1,sourceHeight-1)
+        for channel in 0..<2 {
+            let top=value(ix,iy,channel)*(1-(px-Double(ix)))+value(jx,iy,channel)*(px-Double(ix))
+            let bottom=value(ix,jy,channel)*(1-(px-Double(ix)))+value(jx,jy,channel)*(px-Double(ix))
+            planes[channel][y*width+x]=UInt8(clamping: Int((top*(1-(py-Double(iy)))+bottom*(py-Double(iy))).rounded()))
+        }
+    } }
+    return planes
+}
 
 private func writeGrayPNG(_ gray: [UInt8], width: Int, height: Int, to path: String) -> Bool {
     guard let ctx = CGContext(
@@ -1940,8 +1996,19 @@ for i in 0..<pairCount {
         do {
             _=reverse.runPair(cur: frames[i+1],ref: frames[i])
             let forwardSearch=engine.downloadMV(level: 0),backwardSearch=reverse.downloadMV(level: 0)
-            let forward=envInt("MV_DENSE_ZERO",0)==1 ? [SIMD2<Int32>](repeating: .zero,count: forwardSearch.count) : forwardSearch
-            let backward=envInt("MV_DENSE_ZERO",0)==1 ? [SIMD2<Int32>](repeating: .zero,count: backwardSearch.count) : backwardSearch
+            var forward=envInt("MV_DENSE_ZERO",0)==1 ? [SIMD2<Int32>](repeating: .zero,count: forwardSearch.count) : forwardSearch
+            var backward=envInt("MV_DENSE_ZERO",0)==1 ? [SIMD2<Int32>](repeating: .zero,count: backwardSearch.count) : backwardSearch
+            if i==envInt("MV_EXTERNAL_SEED_PAIR",-1),let prefix=ProcessInfo.processInfo.environment["MV_EXTERNAL_SEEDS_PREFIX"] {
+                func readSeeds(_ direction: Int) throws -> [SIMD2<Int32>] {
+                    let bytes=try Data(contentsOf: URL(fileURLWithPath: "\(prefix)_\(direction).i32"))
+                    guard bytes.count==forward.count*MemoryLayout<SIMD2<Int32>>.stride else { throw MotionSearchEngine.EngineError.pipeline("Invalid diagnostic seed count") }
+                    return bytes.withUnsafeBytes { raw in
+                        (0..<forward.count).map { raw.loadUnaligned(fromByteOffset: $0*MemoryLayout<SIMD2<Int32>>.stride,as: SIMD2<Int32>.self) }
+                    }
+                }
+                forward=try readSeeds(0);backward=try readSeeds(1)
+                print("EXTERNAL SEEDS: diagnostic pair=\(i), prefix=\(prefix)")
+            }
             let folder=ProcessInfo.processInfo.environment["MV_DENSE_OUTPUT"] ?? (envInt("MV_DENSE_TV",0)==1 ? "/tmp/rift-dense-avatar-tv" : (envInt("MV_DENSE_ZERO",0)==1 ? "/tmp/rift-dense-avatar-zero" : "/tmp/rift-dense-avatar"))
             try FileManager.default.createDirectory(atPath: folder,withIntermediateDirectories: true)
             let times: [Float]=[0.25,0.5,0.75]
@@ -1960,6 +2027,12 @@ for i in 0..<pairCount {
                     }
                     for (name,pixels) in [("trace_input0",cur),("trace_input1",ref)] {
                         precondition(writeGrayPNG(pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/\(name).png"))
+                    }
+                    for (name,image) in [("trace_input0",frameBuffers[i]),("trace_input1",frameBuffers[i+1])] {
+                        guard let planes=diagnosticChroma(image,width: workWidth/2,height: workHeight/2) else { fatalError("Unsupported diagnostic chroma") }
+                        for (channel,plane) in planes.enumerated() {
+                            precondition(writeGrayPNG(plane,width: workWidth/2,height: workHeight/2,to: "\(folder)/\(name)_uv\(channel).png"))
+                        }
                     }
                 }
                 let four=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,context: context)

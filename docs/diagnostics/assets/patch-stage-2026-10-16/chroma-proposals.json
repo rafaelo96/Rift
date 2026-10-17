@@ -1,0 +1,68 @@
+{
+  "luma_0": {
+    "patch_shape": [
+      16,
+      37,
+      2
+    ],
+    "block_shape": [
+      60,
+      144,
+      2
+    ],
+    "point29_8_native": [
+      -208.0,
+      -80.0
+    ]
+  },
+  "luma_1": {
+    "patch_shape": [
+      16,
+      37,
+      2
+    ],
+    "block_shape": [
+      60,
+      144,
+      2
+    ],
+    "point29_8_native": [
+      32.0,
+      -224.0
+    ]
+  },
+  "color_0": {
+    "patch_shape": [
+      16,
+      37,
+      2
+    ],
+    "block_shape": [
+      60,
+      144,
+      2
+    ],
+    "point29_8_native": [
+      -208.0,
+      -80.0
+    ]
+  },
+  "color_1": {
+    "patch_shape": [
+      16,
+      37,
+      2
+    ],
+    "block_shape": [
+      60,
+      144,
+      2
+    ],
+    "point29_8_native": [
+      32.0,
+      -224.0
+    ]
+  },
+  "seconds": 0.370479875,
+  "scope": "offline ablation; not realtime; no claim of correct correspondence"
+}
