@@ -4,6 +4,14 @@ import Foundation
 public let denseMotionMSL = """
 #include <metal_stdlib>
 using namespace metal;
+// Diagnostic variant records evaluated proposals, including rejected ones. Compiles away by default.
+#ifdef DENSE_CANDIDATES
+#define TRACE_ARG , device float4 *trace [[buffer(10)]]
+#define TRACE(slot, vector, cost, admitted) trace[(p.y*patchWidth+p.x)*16+(slot)]=float4(vector,cost,admitted)
+#else
+#define TRACE_ARG
+#define TRACE(slot, vector, cost, admitted)
+#endif
 constexpr sampler linearPixel(coord::pixel,address::clamp_to_edge,filter::linear);
 float4 denseRead(texture2d<float,access::sample> image,float2 p) { return image.sample(linearPixel,p+0.5f); }
 kernel void denseUpload(texture2d<uint,access::read> input [[texture(0)]],texture2d<float,access::write> output [[texture(1)]],uint2 p [[thread_position_in_grid]]) {
@@ -38,14 +46,17 @@ float densePatchCost(texture2d<float,access::sample> a,texture2d<float,access::s
     }
     return cost/64;
 }
-kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> seed [[texture(2)]],texture2d<float,access::write> patches [[texture(3)]],uint2 p [[thread_position_in_grid]] TRACE_ARG) {
     if(p.x>=patches.get_width()||p.y>=patches.get_height()) return;
+    uint patchWidth=patches.get_width();
     float2 center=float2(p)*4,v=denseRead(seed,center).xy;
     float best=densePatchCost(a,b,center,v);
+    TRACE(0,v,best,1);
     const float2 neighbors[5]={float2(-4,0),float2(4,0),float2(0,-4),float2(0,4),float2(0)};
     for(int i=0;i<5;++i) {
         float2 candidate=i==4 ? float2(0) : denseRead(seed,center+neighbors[i]).xy;
         float cost=densePatchCost(a,b,center,candidate);
+        TRACE(i+1,candidate,cost,1);
         if(cost<best) { best=cost; v=candidate; }
     }
     float values[64]; float2 gradients[64]; float hxx=0,hxy=0,hyy=0;
@@ -65,20 +76,24 @@ kernel void densePatchSearch(texture2d<float,access::sample> a [[texture(0)]],te
         float2 step=float2(hyy*rhs.x-hxy*rhs.y,hxx*rhs.y-hxy*rhs.x)/det;
         step/=max(1.0f,length(step)/2.0f);
         float2 candidate=v+step; float cost=densePatchCost(a,b,center,candidate);
+        TRACE(iteration+6,candidate,cost,1);
         if(cost>=best) break;
         best=cost; v=candidate;
         if(dot(step,step)<1e-5f) break;
     }
     patches.write(float4(v,exp(-20*sqrt(best)),best),p);
 }
-kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]]) {
+kernel void densePatchPropagate(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],uint2 p [[thread_position_in_grid]] TRACE_ARG) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    uint patchWidth=output.get_width();
     float2 center=float2(p)*4,v=denseRead(input,float2(p)).xy;
     float best=densePatchCost(a,b,center,v);
+    TRACE(0,v,best,1);
     const float2 neighbors[4]={float2(-1,0),float2(1,0),float2(0,-1),float2(0,1)};
     for(int i=0;i<4;++i) {
         float2 candidate=denseRead(input,float2(p)+neighbors[i]).xy;
         float cost=densePatchCost(a,b,center,candidate);
+        TRACE(i+1,candidate,cost,1);
         if(cost<best) { best=cost; v=candidate; }
     }
     output.write(float4(v,exp(-20*sqrt(best)),best),p);
@@ -144,15 +159,19 @@ float denseTemporalPatchCost(texture2d<float,access::sample> a,texture2d<float,a
     }
     return cost+(weight>0 ? 0.5f*evidence/weight : 0);
 }
-kernel void densePatchTemporalSelect(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::sample> before [[texture(4)]],texture2d<float,access::sample> after [[texture(5)]],constant float2 &intervals [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
+kernel void densePatchTemporalSelect(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::sample> before [[texture(4)]],texture2d<float,access::sample> after [[texture(5)]],constant float2 &intervals [[buffer(0)]],uint2 p [[thread_position_in_grid]] TRACE_ARG) {
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    uint patchWidth=output.get_width();
     float2 center=float2(p)*4,v=denseRead(input,float2(p)).xy;
     float central=densePatchCost(a,b,center,v);
     float best=denseTemporalPatchCost(a,b,before,after,center,v,intervals);
+    TRACE(0,v,best,1);
     const float2 neighbors[4]={float2(-1,0),float2(1,0),float2(0,-1),float2(0,1)};
     for(int i=0;i<4;++i) {
         float2 candidate=denseRead(input,float2(p)+neighbors[i]).xy;
-        if(densePatchCost(a,b,center,candidate)>central+4.0f/(1023.0f*1023.0f)) continue;
+        float cc=densePatchCost(a,b,center,candidate);
+        TRACE(i+1,candidate,cc,cc<=central+4.0f/(1023.0f*1023.0f) ? 1 : -1);
+        if(cc>central+4.0f/(1023.0f*1023.0f)) continue;
         float cost=denseTemporalPatchCost(a,b,before,after,center,candidate,intervals);
         if(cost<best) { best=cost; v=candidate; }
     }
@@ -416,14 +435,21 @@ kernel void denseProject(texture2d<float,access::sample> source [[texture(0)]],t
         atomic_fetch_max_explicit(&ownership[uint(p.y)*w+uint(p.x)],key,memory_order_relaxed);
     }
 }
-kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],texture2d<float,access::write> coordinates [[texture(7)]],texture2d<float,access::write> blend [[texture(8)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],constant float &offset [[buffer(4)]],uint2 gid [[thread_position_in_grid]]) {
+kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> forward [[texture(2)]],texture2d<float,access::sample> backward [[texture(3)]],texture2d<uint,access::write> output [[texture(4)]],texture2d<float,access::write> reliability [[texture(5)]],texture2d<float,access::write> mappingResidual [[texture(6)]],texture2d<float,access::write> coordinates [[texture(7)]],texture2d<float,access::write> blend [[texture(8)]],constant float &t [[buffer(0)]],constant uint2 &projection [[buffer(1)]],device const uint *ownership0 [[buffer(2)]],device const uint *ownership1 [[buffer(3)]],constant float &offset [[buffer(4)]],uint2 gid [[thread_position_in_grid]] TRACE_ARG) {
     uint w=output.get_width(),h=output.get_height();
     if(gid.x>=w||gid.y>=h) return;
     float2 p=float2(gid);
     float av=denseRead(a,p).r,bv=denseRead(b,p).r;
+    #ifdef DENSE_CANDIDATES
+    trace[2*(gid.y*w+gid.x)]=float4(0);
+    trace[2*(gid.y*w+gid.x)+1]=float4(0);
+#endif
     if(t==0 || t==1) { output.write(uint((t==0?av:bv)*1023+0.5f),gid); reliability.write(1.0f,gid); mappingResidual.write(float4(0),gid); coordinates.write(float4(0),gid); blend.write(t,gid); return; }
     float2 q0=denseInverse(forward,p,t),q1=denseInverse(backward,p,1-t);
     const float2 initialQ0=q0,initialQ1=q1;
+#ifdef DENSE_CANDIDATES
+    trace[2*(gid.y*w+gid.x)]=float4(q0-p,q1-p);
+#endif
     float2 initial0=denseRead(forward,q0).xy,initial1=-denseRead(backward,q1).xy;
     bool owned=false; float ownerValue=0,ownerConfidence=0,ownerAlpha=0;
     // Bilinear flow at a layer boundary can hide a large motion discontinuity.
@@ -502,6 +528,9 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     if(weights<=1e-4f && !owned) { q0=p; q1=p; }
     if(owned) { value=ownerValue; weights=ownerConfidence; alpha=ownerAlpha; }
     if(still) { value=av+t*offset; q0=p; q1=p; alpha=offset!=0 ? t : 0; }
+    #ifdef DENSE_CANDIDATES
+    trace[2*(gid.y*w+gid.x)+1]=float4(still ? 1 : 0,weights,owned ? 1 : 0,alpha);
+#endif
     coordinates.write(float4(q0-p,q1-p),gid); blend.write(alpha,gid);
     output.write(uint(clamp(value,0.0f,1.0f)*1023+0.5f),gid);
     reliability.write(still?1.0f:weights,gid);

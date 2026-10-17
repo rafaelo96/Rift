@@ -41,6 +41,10 @@ public final class DenseMotionPrototype {
     private let ownership: [MTLBuffer]
     /// Intrusive diagnostic snapshots; callers must serialize access and exclude timings from benchmarks.
     public var diagnosticObserver: ((String,Int,Int,[SIMD4<Float>])->Void)?
+    /// Requires RIFT_DENSE_CANDIDATES=1 at construction. 16 slots/patch; w=0 unused,
+    /// w=1 evaluated/admitted, w=-1 rejected by temporal central-cost gate. Intrusive, offline only.
+    public var candidateObserver: ((String,Int,Int,[SIMD4<Float>])->Void)?
+    private let candidateTrace: MTLBuffer?
     private let inverseSearch: Bool
     private let profileStages=ProcessInfo.processInfo.environment["RIFT_DENSE_PROFILE"] == "1"
     private let temporalPatchSearch=ProcessInfo.processInfo.environment["RIFT_PATCH_TEMPORAL"] != "0"
@@ -64,7 +68,12 @@ public final class DenseMotionPrototype {
             guard let buffer=device.makeBuffer(length: width*height*4,options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Ownership allocation failed") }
             return buffer
         }
-        let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+        let candidateMode=ProcessInfo.processInfo.environment["RIFT_DENSE_CANDIDATES"] == "1"
+        if candidateMode {
+            guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
+            candidateTrace=trace
+        } else { candidateTrace=nil }
+        let library=try device.makeLibrary(source: (candidateMode ? "#define DENSE_CANDIDATES 1\n" : "")+denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
         for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
@@ -176,20 +185,34 @@ public final class DenseMotionPrototype {
         guard var command=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense command allocation failed") }
         var traceLabel=""
         func encode(_ name: String,_ textures: [MTLTexture],_ target: MTLTexture,_ setup: (MTLComputeCommandEncoder)->Void = { _ in }) throws {
+            let captureCandidates=candidateTrace != nil && ["densePatchSearch","densePatchPropagate","densePatchTemporalSelect"].contains(name)
+            if captureCandidates { memset(candidateTrace!.contents(),0,candidateTrace!.length) }
             guard let encoder=command.makeComputeCommandEncoder(),let pipeline=pipelines[name] else { throw MotionSearchEngine.EngineError.pipeline("Dense encoder allocation failed") }
             encoder.setComputePipelineState(pipeline)
             for (i,texture) in textures.enumerated() { encoder.setTexture(texture,index: i) }
             setup(encoder)
+            if captureCandidates || (candidateTrace != nil && name=="denseSynthesize") { encoder.setBuffer(candidateTrace,offset: 0,index: 10) }
             encoder.dispatchThreads(MTLSize(width: target.width,height: target.height,depth: 1),threadsPerThreadgroup: MTLSize(width: 8,height: 8,depth: 1))
             encoder.endEncoding()
             let trace=diagnosticObserver != nil && target.pixelFormat == .rgba32Float
-            if profileStages || trace {
+            if profileStages || trace || captureCandidates {
                 command.commit(); command.waitUntilCompleted()
                 guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline("Dense profiling GPU failure") }
                 gpuStages[name,default: 0]+=(command.gpuEndTime-command.gpuStartTime)*1000
+                if captureCandidates,let observer=candidateObserver {
+                    let count=target.width*target.height*16
+                    let records=Array(UnsafeBufferPointer(start: candidateTrace!.contents().assumingMemoryBound(to: SIMD4<Float>.self),count: count))
+                    observer("\(traceLabel)/\(name)",target.width,target.height,records)
+                }
                 if trace {
                     var field=[SIMD4<Float>](repeating: .zero,count: target.width*target.height)
                     field.withUnsafeMutableBytes { target.getBytes($0.baseAddress!,bytesPerRow: target.width*16,from: MTLRegionMake2D(0,0,target.width,target.height),mipmapLevel: 0) }
+                    if name=="densePatchAggregate" || name=="densePatchAggregateAffine" {
+                        let input=textures[2]
+                        var proposals=[SIMD4<Float>](repeating: .zero,count: input.width*input.height)
+                        proposals.withUnsafeMutableBytes { input.getBytes($0.baseAddress!,bytesPerRow: input.width*16,from: MTLRegionMake2D(0,0,input.width,input.height),mipmapLevel: 0) }
+                        diagnosticObserver?("\(traceLabel)/aggregateCandidates",input.width,input.height,proposals)
+                    }
                     diagnosticObserver?("\(traceLabel)/\(name)",target.width,target.height,field)
                 }
                 guard let next=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense profiling command allocation failed") }
@@ -299,7 +322,7 @@ public final class DenseMotionPrototype {
         }
         var results: [Result]=[]
         var fields: [[SIMD4<Float>]]=[]
-        let batchNative = !downloadResults && !profileStages && diagnosticObserver == nil
+        let batchNative = !downloadResults && !profileStages && diagnosticObserver == nil && candidateTrace == nil
         var accountedMS=0.0
         for (sample,time) in times.enumerated() {
             let sampleStart=sample==0 ? start : DispatchTime.now().uptimeNanoseconds
@@ -338,6 +361,21 @@ public final class DenseMotionPrototype {
             if !batchNative || sample==times.count-1 {
                 command.commit(); command.waitUntilCompleted()
                 guard command.status == .completed else { throw MotionSearchEngine.EngineError.pipeline(command.error?.localizedDescription ?? "Dense GPU failure") }
+            }
+            if let observer=diagnosticObserver {
+                var coordinates=[SIMD4<Float>](repeating: .zero,count: width*height)
+                coordinates.withUnsafeMutableBytes { nativeCoordinates.getBytes($0.baseAddress!,bytesPerRow: width*16,from: region,mipmapLevel: 0) }
+                if let candidateTrace {
+                    let records=candidateTrace.contents().assumingMemoryBound(to: SIMD4<Float>.self)
+                    let initial=(0..<width*height).map { records[2*$0] }
+                    let flags=(0..<width*height).map { records[2*$0+1] }
+                    observer("synthesis/t\(time)/inverseCoordinates",width,height,initial)
+                    observer("synthesis/t\(time)/decisions",width,height,flags)
+                }
+                observer("synthesis/t\(time)/coordinates",width,height,coordinates)
+                var weights=[Float](repeating: 0,count: width*height)
+                weights.withUnsafeMutableBytes { nativeBlend.getBytes($0.baseAddress!,bytesPerRow: width*4,from: region,mipmapLevel: 0) }
+                observer("synthesis/t\(time)/blend",width,height,weights.map { SIMD4($0,0,0,0) })
             }
             if profileStages { gpuStages["nativeColor",default: 0]+=(command.gpuEndTime-command.gpuStartTime)*1000 }
             let cumulativeMS=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6

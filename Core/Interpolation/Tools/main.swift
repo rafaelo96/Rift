@@ -66,6 +66,15 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if envInt("MV_TRAJECTORY_CHECK",0)==1 {
+    do { try checkTrajectoryDiagnostic(); exit(0) }
+    catch { print("TRAJECTORY CHECK FAILED: \(error)");exit(3) }
+}
+if let folder=ProcessInfo.processInfo.environment["MV_TRAJECTORY_REPLAY"] {
+    do { try replayTrajectoryDiagnostic(folder: folder); exit(0) }
+    catch { print("TRAJECTORY FAILED: \(error)"); exit(3) }
+}
+
 let pairCount = envInt("MV_PAIRS", 120)
 if ProcessInfo.processInfo.environment["MV_CADENCE_REPORT"] != nil && !(2...31).contains(pairCount) {
     print("FAIL: cadence diagnostic requires MV_PAIRS=2...31")
@@ -1699,6 +1708,11 @@ frameTimes = displayOrder.map { frameTimes[$0] }
 guard zip(frameTimes, frameTimes.dropFirst()).allSatisfy({ $0 < $1 }) else {
     print("FAIL: diagnostic frames must have strictly increasing presentation times")
     exit(2)
+}
+
+if let folder=ProcessInfo.processInfo.environment["MV_TRAJECTORY_EXPORT"] {
+    do { try exportTrajectoryWindow(frames: frames,times: frameTimes,width: workWidth,height: workHeight,source: path,folder: folder);exit(0) }
+    catch { print("TRAJECTORY EXPORT FAILED: \(error)");exit(3) }
 }
 
 if let reportPath=ProcessInfo.processInfo.environment["MV_CADENCE_REPORT"] {
