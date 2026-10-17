@@ -1,0 +1,12 @@
+BATCHED SEARCH: 1 levels, raw and filtered vectors identical
+BATCHED SEARCH: 4 levels, raw and filtered vectors identical
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+[Frame+] Four-source temporal context active on bounded pair
+E2_TEMPORAL actual=1 searches=2 previousReverseReused=false blocks=48
+E2_TEMPORAL actual=1 searches=2 previousReverseReused=false blocks=48
+NATIVE PATCH: 8-bit format, chroma, endpoints and metadata passed; total=9.429166ms
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+[Frame+] Four-source temporal context active on bounded pair
+E2_TEMPORAL actual=1 searches=2 previousReverseReused=false blocks=48
+E2_TEMPORAL actual=1 searches=2 previousReverseReused=false blocks=48
+NATIVE PATCH: 10-bit format, chroma, endpoints and metadata passed; total=8.98275ms

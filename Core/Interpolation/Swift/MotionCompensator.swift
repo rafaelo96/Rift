@@ -104,6 +104,7 @@ public final class MotionCompensator {
     private let patchEstimator: DenseMotionPrototype?
     private var loggedTemporalContext=false
     private let patchReverseME: MotionSearchEngine?
+    private let confidenceTemporal: ConfidenceTemporalEvidence?
     private let validationWidth: Int
     private let validationHeight: Int
 
@@ -179,6 +180,7 @@ public final class MotionCompensator {
                 gateL0: true,
                 temporalGatePx: 0
             )
+            confidenceTemporal=patchEnabled && ProcessInfo.processInfo.environment["RIFT_E2"]=="1" ? try ConfidenceTemporalEvidence(spec: spec,lambda: config.lambdaPx,width: config.workWidth,height: config.workHeight,blockSize: config.blockSize) : nil
             if patchEnabled {
                 self.patchEstimator=try DenseMotionPrototype(width: config.workWidth,height: config.workHeight,blockSize: config.blockSize,inverseSearch: true)
                 self.patchReverseME=try MotionSearchEngine(msl: motionShadersMSL,spec: spec,lambdaPx: config.lambdaPx,smoothL0: true,gateL0: true,temporalGatePx: 0)
@@ -202,6 +204,7 @@ public final class MotionCompensator {
         me.resetTemporalState()
         backValidationME.resetTemporalState()
         patchReverseME?.resetTemporalState()
+        confidenceTemporal?.reset()
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).
@@ -278,6 +281,7 @@ public final class MotionCompensator {
             do {
                 _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
                 _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
+                if let confidenceTemporal {dense.diagnosticTemporalVectors=try confidenceTemporal.acquire(a: a,b: b,context: temporal,backward: backward)}
                 _=try dense.interpolate(first: a,last: b,forward: forward,backward: backward,times: tValues,context: temporal,nativeRenderer: { time,coordinates,blend,command in
                     let (buffer,cost)=self.warp.renderDense(I0: I0,I1: I1,t: time,coordinates: coordinates,blend: blend,encodingInto: command)
                     if let buffer { buffers.append(buffer) }; nativeMS+=cost
