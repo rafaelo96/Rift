@@ -1,0 +1,40 @@
+{
+  "luma": {
+    "four_source": [
+      {
+        "pair": 1,
+        "mae": 23.352607783564814,
+        "milliseconds": 14.48
+      },
+      {
+        "pair": 2,
+        "mae": 20.988207103587964,
+        "milliseconds": 13.570959
+      },
+      {
+        "pair": 3,
+        "mae": 34.38382884837963,
+        "milliseconds": 14.305833
+      }
+    ]
+  },
+  "color": {
+    "four_source": [
+      {
+        "pair": 1,
+        "mae": 23.487628399884258,
+        "milliseconds": 39.051417
+      },
+      {
+        "pair": 2,
+        "mae": 22.388529007523147,
+        "milliseconds": 40.366084
+      },
+      {
+        "pair": 3,
+        "mae": 34.23051938657407,
+        "milliseconds": 41.151167
+      }
+    ]
+  }
+}

@@ -77,6 +77,10 @@ let tjitOn = envInt("MV_TJITTER", 0) != 0
 let tjitDir = ProcessInfo.processInfo.environment["MV_TJDIR"] ?? "/tmp/rift_tj"
 let temporalGatePx = envInt("MV_TEMA", 0)
 let tmaResetAt = envInt("MV_TEMARESET_AT", -1)
+if envInt("MV_CHROMA_CORRESPONDENCE_CHECK",0)==1 {
+    try checkChromaCorrespondence()
+    exit(0)
+}
 if envInt("MV_DIAGNOSTIC_CHROMA_CHECK",0)==1 {
     for format in [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange] {
         var image: CVPixelBuffer?
@@ -1811,7 +1815,7 @@ let densePrototype: DenseMotionPrototype?
 let denseReverseSearch: MotionSearchEngine?
 do {
     if envInt("MV_DENSE",0)==1 {
-        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),projectedOwnership: envInt("MV_DENSE_OWNERSHIP",1)==1,inverseSearch: envInt("MV_DENSE_PATCH",0)==1)
+        densePrototype=try DenseMotionPrototype(width: workWidth,height: workHeight,variational: envInt("MV_DENSE_TV",0)==1,finestIterations: envInt("MV_DENSE_FINE_ITERS",8),projectedOwnership: envInt("MV_DENSE_OWNERSHIP",1)==1,inverseSearch: envInt("MV_DENSE_PATCH",0)==1,colorMatching: envInt("MV_DENSE_COLOR",0)==1)
         denseReverseSearch=try MotionSearchEngine(msl: motionShadersMSL,spec: pyramidSpec,lambdaPx: UInt32(lambdaPx),smoothL0: true,gateL0: true,temporalGatePx: 0)
     } else { densePrototype=nil; denseReverseSearch=nil }
 } catch { fatalError("Dense prototype init failed: \(error)") }
@@ -2011,8 +2015,16 @@ for i in 0..<pairCount {
             }
             let folder=ProcessInfo.processInfo.environment["MV_DENSE_OUTPUT"] ?? (envInt("MV_DENSE_TV",0)==1 ? "/tmp/rift-dense-avatar-tv" : (envInt("MV_DENSE_ZERO",0)==1 ? "/tmp/rift-dense-avatar-zero" : "/tmp/rift-dense-avatar"))
             try FileManager.default.createDirectory(atPath: folder,withIntermediateDirectories: true)
+            func chromaForPair(_ a: Int,_ b: Int) throws -> [Data]? {
+                guard envInt("MV_DENSE_COLOR",0)==1 else { return nil }
+                return try [a,b].map { index in
+                    guard let planes=diagnosticChroma(frameBuffers[index],width: workWidth,height: workHeight) else { throw MotionSearchEngine.EngineError.pipeline("Unsupported correspondence chroma") }
+                    let values=(0..<workWidth*workHeight).map { SIMD2(Float(planes[0][$0])/255,Float(planes[1][$0])/255) }
+                    return values.withUnsafeBytes { Data($0) }
+                }
+            }
             let times: [Float]=[0.25,0.5,0.75]
-            let samples=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times)
+            let samples=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,correspondenceChroma: chromaForPair(i,i+1))
             if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+2<frames.count {
                 let span=frameTimes[i+1]-frameTimes[i]
                 let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+2],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+2]-frameTimes[i+1])/span))
@@ -2035,7 +2047,7 @@ for i in 0..<pairCount {
                         }
                     }
                 }
-                let four=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,context: context)
+                let four=try dense.interpolate(first: frames[i],last: frames[i+1],forward: forward,backward: backward,times: times,context: context,correspondenceChroma: chromaForPair(i,i+1))
                 dense.diagnosticObserver=nil
                 print("DENSE FOUR PAIR: pair=\(i), ms=\(four.reduce(0.0) { $0+$1.milliseconds })")
                 if envInt("MV_DENSE_EVIDENCE",0)==1 {
@@ -2111,7 +2123,7 @@ for i in 0..<pairCount {
                 let groundForward=reverse.downloadMV(level: 0)
                 _=reverse.runPair(cur: frames[i+2],ref: frames[i])
                 let groundBackward=reverse.downloadMV(level: 0)
-                let result=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time)
+                let result=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time,correspondenceChroma: chromaForPair(i,i+2))
                 let end: [UInt16]=frames[i+2].withUnsafeBytes { Array($0.bindMemory(to: UInt16.self)) }
                 let baseline=warpEngine.interpolate(I0: cur,I1: end,mv: groundForward,width: workWidth,height: workHeight,gridW: measureGW,gridH: measureGH,blockSize: measureBS,t: time).0
                 func mae(_ pixels: [UInt16]) -> Double { zip(pixels,ref).reduce(0.0) { $0+Double(abs(Int($1.0)-Int($1.1))) }/Double(ref.count) }
@@ -2129,7 +2141,7 @@ for i in 0..<pairCount {
                 }
                 if envInt("MV_DENSE_FOUR",0)==1 && i>0 && i+3<frames.count {
                     let context=DenseMotionPrototype.TemporalContext(before: frames[i-1],after: frames[i+3],beforeInterval: Float((frameTimes[i]-frameTimes[i-1])/span),afterInterval: Float((frameTimes[i+3]-frameTimes[i+2])/span))
-                    let four=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time,context: context)
+                    let four=try dense.interpolate(first: frames[i],last: frames[i+2],forward: groundForward,backward: groundBackward,time: time,context: context,correspondenceChroma: chromaForPair(i,i+2))
                     print("DENSE FOUR GROUND TRUTH: pair=\(i), dense2 MAE=\(mae(result.pixels)), dense4 MAE=\(mae(four.pixels)), ms=\(four.milliseconds)")
                     precondition(writeGrayPNG(four.pixels.map { UInt8(clamping: Int($0)/4) },width: workWidth,height: workHeight,to: "\(folder)/ground\(i)_four.png"))
                 }

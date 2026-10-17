@@ -1,7 +1,7 @@
 import Foundation
 import Metal
 
-/// Isolated luma prototype; no decoder, disk, UI, or production state.
+/// Isolated correspondence prototype; no decoder, disk, UI, or production state.
 public final class DenseMotionPrototype {
     public struct TemporalContext {
         public let before: Data, after: Data
@@ -27,6 +27,7 @@ public final class DenseMotionPrototype {
     private let pipelines: [String:MTLComputePipelineState]
     private let raw: [MTLTexture]
     private let original: [MTLTexture]
+    private let chromaInputs: [MTLTexture]
     private let images: [[MTLTexture]]
     private let flows: [[[MTLTexture]]]
     private let seeds: [MTLBuffer]
@@ -50,7 +51,9 @@ public final class DenseMotionPrototype {
     private let dual: [[MTLTexture]]
     private let linear: [MTLTexture]
 
-    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8,projectedOwnership: Bool=true,inverseSearch: Bool=false) throws {
+    /// colorMatching is an opt-in diagnostic; default allocation and luma shaders are preserved.
+    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8,projectedOwnership: Bool=true,inverseSearch: Bool=false,colorMatching: Bool=false) throws {
+        guard !colorMatching || (inverseSearch && !variational && ProcessInfo.processInfo.environment["RIFT_PATCH_AFFINE"] != "1") else { throw MotionSearchEngine.EngineError.pipeline("Color correspondence requires the isolated translation patch path") }
         guard width>=8,height>=8,width<=8192,height<=8192,blockSize>0,blockSize<=64 else { throw MotionSearchEngine.EngineError.pipeline("Invalid dense geometry") }
         guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
         self.device=device; self.queue=queue
@@ -64,9 +67,9 @@ public final class DenseMotionPrototype {
             guard let buffer=device.makeBuffer(length: width*height*4,options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Ownership allocation failed") }
             return buffer
         }
-        let library=try device.makeLibrary(source: denseMotionMSL,options: nil)
+        let library=try device.makeLibrary(source: (colorMatching ? "#define DENSE_COLOR 1\n" : "")+denseMotionMSL,options: nil)
         var compiled: [String:MTLComputePipelineState]=[:]
-        for name in ["denseUpload","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
+        for name in ["denseUpload","denseUploadColor","denseAnalysisBlur","denseDown","denseSeed","denseExpand","densePatchSearch","densePatchAffine","densePatchAggregateAffine","densePatchPropagate","densePatchTemporalSelect","densePatchAggregate","denseLK","denseRegularize","denseTVReset","denseTVLinearize","denseTVPrimal","denseTVDual","denseTVAssess","denseTemporalAssess","denseProject","denseSynthesize"] {
             guard let function=library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name]=try device.makeComputePipelineState(function: function)
         }
@@ -79,7 +82,8 @@ public final class DenseMotionPrototype {
             return result
         }
         raw=try (0..<4).map { _ in try texture(.r16Uint,width,height) }
-        original=try (0..<4).map { _ in try texture(.r32Float,width,height) }
+        original=try (0..<4).map { _ in try texture(colorMatching ? .rgba32Float : .r32Float,width,height) }
+        chromaInputs=colorMatching ? try (0..<2).map { _ in try texture(.rg32Float,width,height) } : []
         output=try texture(.r16Uint,width,height)
         reliability=try texture(.r32Float,width,height)
         mappingResidual=try texture(.rg32Float,width,height)
@@ -87,7 +91,7 @@ public final class DenseMotionPrototype {
         nativeBlend=try texture(.r32Float,width,height)
         var sizes=[(width,height)]
         while sizes.count<4,let last=sizes.last,last.0>=16,last.1>=16 { sizes.append(((last.0+1)/2,(last.1+1)/2)) }
-        images=try (0..<4).map { _ in try sizes.map { try texture(.r32Float,$0.0,$0.1) } }
+        images=try (0..<4).map { _ in try sizes.map { try texture(colorMatching ? .rgba32Float : .r32Float,$0.0,$0.1) } }
         patches=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
         patchScratch=inverseSearch ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
         patchJacobians=inverseSearch && ProcessInfo.processInfo.environment["RIFT_PATCH_AFFINE"] == "1" ? try sizes.map { try texture(.rgba32Float,($0.0+3)/4+1,($0.1+3)/4+1) } : []
@@ -103,19 +107,25 @@ public final class DenseMotionPrototype {
 
     /// UInt16 work-plane luma in 0...1023; vectors in half-pixel units.
     /// Resources are reused; callers must serialize access to this instance.
-    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],time: Float,context: TemporalContext?=nil) throws -> Result {
-        try interpolate(first: first,last: last,forward: forward,backward: backward,times: [time],context: context)[0]
+    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],time: Float,context: TemporalContext?=nil,correspondenceChroma: [Data]?=nil) throws -> Result {
+        try interpolate(first: first,last: last,forward: forward,backward: backward,times: [time],context: context,correspondenceChroma: correspondenceChroma)[0]
     }
 
     /// One bounded pair analysis shared by up to four temporal samples.
     /// The first result's milliseconds includes analysis; subsequent results measure synthesis.
     /// nativeRenderer may encode into the supplied command, but must not submit it.
-    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
+    public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void)?=nil,downloadResults: Bool=true,correspondenceChroma: [Data]?=nil) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
         guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=4,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               forward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }),backward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }) else {
             throw MotionSearchEngine.EngineError.pipeline("Invalid dense input")
         }
+        if !chromaInputs.isEmpty {
+            guard let correspondenceChroma,correspondenceChroma.count==2,
+                  correspondenceChroma.allSatisfy({ $0.count==width*height*8 && $0.withUnsafeBytes { bytes in
+                      stride(from: 0,to: bytes.count,by: 4).allSatisfy { let v=bytes.loadUnaligned(fromByteOffset: $0,as: Float.self); return v.isFinite && v>=0 && v<=1 }
+                  } }) else { throw MotionSearchEngine.EngineError.pipeline("Invalid correspondence chroma") }
+        } else if correspondenceChroma != nil { throw MotionSearchEngine.EngineError.pipeline("Chroma matching was not enabled") }
         var inputs=[first,last]
         if let context {
             guard context.before.count==first.count,context.after.count==first.count,
@@ -171,6 +181,9 @@ public final class DenseMotionPrototype {
         }
         let region=MTLRegionMake2D(0,0,width,height)
         for (i,data) in inputs.enumerated() { data.withUnsafeBytes { raw[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*2) } }
+        if let correspondenceChroma { for (i,data) in correspondenceChroma.enumerated() {
+            data.withUnsafeBytes { chromaInputs[i].replace(region: region,mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: width*8) }
+        } }
         for (i,field) in [forward,backward].enumerated() { field.withUnsafeBytes { bytes in _=memcpy(seeds[i].contents(),bytes.baseAddress!,bytes.count) } }
         guard var command=queue.makeCommandBuffer() else { throw MotionSearchEngine.EngineError.pipeline("Dense command allocation failed") }
         var traceLabel=""
@@ -196,7 +209,9 @@ public final class DenseMotionPrototype {
             }
         }
         for direction in inputs.indices {
-            try encode("denseUpload",[raw[direction],original[direction]],original[direction])
+            if direction<chromaInputs.count {
+                try encode("denseUploadColor",[raw[direction],chromaInputs[direction],original[direction]],original[direction])
+            } else { try encode("denseUpload",[raw[direction],original[direction]],original[direction]) }
             var offset=offsets[direction]
             try encode("denseAnalysisBlur",[original[direction],images[direction][0]],images[direction][0]) { $0.setBytes(&offset,length: 4,index: 0) }
             for level in 1..<images[direction].count { try encode("denseDown",[images[direction][level-1],images[direction][level]],images[direction][level]) }

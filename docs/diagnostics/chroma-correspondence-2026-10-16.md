@@ -29,3 +29,17 @@ Do not discard chroma merely because a seed-only experiment fails: subsequent na
 Measured here on Apple M4. Python coarse proposal generation took about0.37s offline; this is neither realtime nor a projection of Metal cost. No Motion² equivalence is claimed. The app remains on the previously validated runtime route.
 
 Reproduce the proposal: `python3 Core/Interpolation/Tools/chroma_correspondence_probe.py /tmp/rift-chroma300 --out /tmp/rift-chroma-proposals300`. Diagnostic injection: set `MV_EXTERNAL_SEED_PAIR=4` and `MV_EXTERNAL_SEEDS_PREFIX=/tmp/rift-chroma-proposals300/luma` (or `/color`) with the existing `MV_DENSE_FOUR=1`, pair300s probe. Invalid seed byte counts are rejected before loading vectors.
+
+## Follow-up: shared color cost in Metal — rejected for deployment
+
+Implemented and measured an isolated opt-in Metal variant: RGBA work pyramid carries Y/U/V; patch search/propagation uses summed YUV SSD; aggregation uses local YUV residual plus patch penalty. Luminance gradients still propose subpixel updates, which the combined objective accepts/rejects. Temporal evidence remains luminance-based. Central UV is validated and uploaded from bounded diagnostic buffers only; no runtime caller was changed to enable it. This is a controlled translation-patch experiment, not a complete color optical-flow solver.
+
+Regression fixture: equal periodic luminance, known8px translation, competing16px seeds. Existing luma route has8.0px flow error, color route0.0px; invalid chroma input rejected. Existing dense checks pass, including endpoints, static, deterministic traces, known translation and held/noisy neighbors. Release probe builds successfully.
+
+Same executable, same Avatar300s six adjacent pairs and five hidden-frame reconstructions, Apple M4: four-source hidden pairs1/2/3 have MAE23.35261/20.98821/34.38383 without color versus23.48763/22.38853/34.23052 with color. Measured analysis+synthesis times for those references rise from14.48/13.57/14.31ms to39.05/40.37/41.15ms. Diagnostic CPU chroma extraction precedes those timings; decode, display and production native-color reconstruction are excluded. Thus these timings understate full playback cost. Adjacent pair4 midpoint still visibly fragments the face and clothing.
+
+The combined objective is not a general visual improvement and does not meet the budget in this form. The analytic fixture is not sufficient acceptance evidence. Preserve the experiment in Git for reproducibility, then remove its opt-in runtime API/shader path from the active source. Keep the validated export/seed diagnostic and this record. Source-color information can distinguish one ambiguity but does not solve missing non-rigid surface correspondences.
+
+Permanent compact measurements: `assets/patch-stage-2026-10-16/chroma-metal-results.json`. Reproduce in the experimental commit with `MV_CHROMA_CORRESPONDENCE_CHECK=1`; the real diagnostic uses `MV_DENSE_COLOR=1` alongside existing patch/four/ground-truth flags.
+
+The next investigation must address correspondence topology across the changing pose, with independently visible landmarks and forward/reverse surface consistency; do not repeat a wider photometric search or promote lower endpoint residual as image-quality evidence.
