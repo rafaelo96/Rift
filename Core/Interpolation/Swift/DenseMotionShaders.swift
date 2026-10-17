@@ -124,6 +124,97 @@ kernel void densePatchAffine(texture2d<float,access::sample> a [[texture(0)]],te
     }
     output.write(selected,p); jacobian.write(gradient,p);
 }
+float denseAffineImageCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 center,thread const float *model) {
+    float cost=0;
+    for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+        float2 d=float2(x,y),v=float2(model[0],model[1])+float(x)*0.25f*float2(model[2],model[3])+float(y)*0.25f*float2(model[4],model[5]);
+        float e=denseRead(a,center+d).r-denseRead(b,center+d+v).r;
+        cost+=e*e/64;
+    }
+    return cost;
+}
+bool denseSolveAffine6(thread const float *h,thread const float *rhs,thread float *answer) {
+    float augmented[42];
+    for(int y=0;y<6;++y) { for(int x=0;x<6;++x) augmented[y*7+x]=h[y*6+x]; augmented[y*7+6]=rhs[y]; }
+    for(int column=0;column<6;++column) {
+        int pivot=column;
+        for(int y=column+1;y<6;++y) if(abs(augmented[y*7+column])>abs(augmented[pivot*7+column])) pivot=y;
+        if(abs(augmented[pivot*7+column])<1e-10f) return false;
+        for(int x=column;x<=6;++x) { float v=augmented[column*7+x];augmented[column*7+x]=augmented[pivot*7+x];augmented[pivot*7+x]=v; }
+        float diagonal=augmented[column*7+column];
+        for(int x=column;x<=6;++x) augmented[column*7+x]/=diagonal;
+        for(int y=0;y<6;++y) if(y!=column) {
+            float factor=augmented[y*7+column];
+            for(int x=column;x<=6;++x) augmented[y*7+x]-=factor*augmented[column*7+x];
+        }
+    }
+    for(int i=0;i<6;++i) { answer[i]=augmented[i*7+6];if(!isfinite(answer[i])) return false; }
+    return true;
+}
+kernel void densePatchImageAffine(texture2d<float,access::sample> a [[texture(0)]],texture2d<float,access::sample> b [[texture(1)]],texture2d<float,access::sample> input [[texture(2)]],texture2d<float,access::write> output [[texture(3)]],texture2d<float,access::write> jacobian [[texture(4)]],texture2d<float,access::sample> detailA [[texture(5)]],texture2d<float,access::sample> detailB [[texture(6)]],device const int2 *seeds [[buffer(0)]],constant uint4 &geometry [[buffer(1)]],constant float &exposure [[buffer(2)]],uint2 p [[thread_position_in_grid]]) {
+    if(p.x>=output.get_width()||p.y>=output.get_height()) return;
+    float4 selected=denseRead(input,float2(p)),gradient=0;
+    float2 center=float2(p)*4;
+    if(geometry.w>=4) {
+        float h[36],values[64],derivatives[384];
+        for(int i=0;i<36;++i) h[i]=0;
+        for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+            int k=(y+4)*8+x+4;float2 q=center+float2(x,y);
+            values[k]=denseRead(a,q).r;
+            float gx=(denseRead(a,q+float2(1,0)).r-denseRead(a,q-float2(1,0)).r)*0.5f;
+            float gy=(denseRead(a,q+float2(0,1)).r-denseRead(a,q-float2(0,1)).r)*0.5f;
+            float d[6]={gx,gy,gx*float(x)*0.25f,gy*float(x)*0.25f,gx*float(y)*0.25f,gy*float(y)*0.25f};
+            for(int i=0;i<6;++i) { derivatives[k*6+i]=d[i];for(int j=0;j<6;++j) h[i*6+j]+=d[i]*d[j]/64; }
+        }
+        for(int i=0;i<6;++i) h[i*6+i]+=i<2 ? 1e-7f : 1e-5f;
+        float best=densePatchCost(a,b,center,selected.xy);
+        for(int seed=0;seed<2;++seed) {
+            uint2 anchor=min(uint2((center+0.5f)*float(geometry.w)/float(geometry.z)),geometry.xy-1);
+            float2 initial=seed==0 ? selected.xy : float2(seeds[anchor.y*geometry.x+anchor.x])/(2.0f*float(geometry.w));
+            float model[6]={initial.x,initial.y,0,0,0,0};
+            float cost=denseAffineImageCost(a,b,center,model);
+            for(int iteration=0;iteration<8;++iteration) {
+                float rhs[6],step[6];for(int i=0;i<6;++i) rhs[i]=0;
+                for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+                    int k=(y+4)*8+x+4;
+                    float2 v=float2(model[0],model[1])+float(x)*0.25f*float2(model[2],model[3])+float(y)*0.25f*float2(model[4],model[5]);
+                    float e=values[k]-denseRead(b,center+float2(x,y)+v).r;
+                    for(int i=0;i<6;++i) rhs[i]+=derivatives[k*6+i]*e/64;
+                }
+                if(!denseSolveAffine6(h,rhs,step)) break;
+                float norm=0;for(int i=0;i<6;++i) norm=max(norm,abs(step[i]));
+                float scale=1/max(1.0f,norm/2.0f);bool accepted=false;
+                for(int line=0;line<3;++line) {
+                    float candidate[6];for(int i=0;i<6;++i) candidate[i]=model[i]+scale*step[i];
+                    float det=(1+candidate[2]*0.25f)*(1+candidate[5]*0.25f)-candidate[3]*candidate[4]*0.0625f;
+                    float candidateCost=denseAffineImageCost(a,b,center,candidate);
+                    if(det>0.25f && det<4 && candidateCost<cost) {
+                        for(int i=0;i<6;++i) model[i]=candidate[i];cost=candidateCost;accepted=true;break;
+                    }
+                    scale*=0.5f;
+                }
+                if(!accepted) break;
+            }
+            if(cost<best) {
+                float oldDetail=0,newDetail=0,scale=float(geometry.w);
+                for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
+                    float2 q=(center+float2(x,y)+0.5f)*scale-0.5f;
+                    float2 v=float2(model[0],model[1])+float(x)*0.25f*float2(model[2],model[3])+float(y)*0.25f*float2(model[4],model[5]);
+                    float value=denseRead(detailA,q).r;
+                    float oldError=value-denseRead(detailB,q+selected.xy*scale).r+exposure;
+                    float newError=value-denseRead(detailB,q+v*scale).r+exposure;
+                    oldDetail+=oldError*oldError;newDetail+=newError*newError;
+                }
+                if(newDetail<oldDetail) {
+                    best=cost;selected=float4(model[0],model[1],exp(-20*sqrt(cost)),cost);
+                    gradient=float4(model[2],model[3],model[4],model[5])*0.25f;
+                }
+            }
+        }
+    }
+    output.write(selected,p);jacobian.write(gradient,p);
+}
+
 float denseTemporalPatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,texture2d<float,access::sample> before,texture2d<float,access::sample> after,float2 center,float2 v,float2 intervals) {
     float cost=densePatchCost(a,b,center,v),evidence=0,weight=0;
     for(int neighbor=0;neighbor<2;++neighbor) {
