@@ -1,0 +1,81 @@
+import Foundation
+import Metal
+
+// Isolate production synthesis from motion estimation using exact visible-layer flows.
+@main struct SurfaceSynthesisCheck {
+    static func main() throws {
+        guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { fatalError("Metal unavailable") }
+        let w=160,h=96,n=w*h
+        func texture(_ format: MTLPixelFormat) -> MTLTexture {
+            let d=MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,width: w,height: h,mipmapped: false)
+            d.storageMode = .shared; d.usage=[.shaderRead,.shaderWrite]
+            return device.makeTexture(descriptor: d)!
+        }
+        func upload<T>(_ values: [T],_ format: MTLPixelFormat) -> MTLTexture {
+            let t=texture(format)
+            values.withUnsafeBytes { t.replace(region: MTLRegionMake2D(0,0,w,h),mipmapLevel: 0,withBytes: $0.baseAddress!,bytesPerRow: w*MemoryLayout<T>.stride) }
+            return t
+        }
+        var records=[[String:Any]]()
+        for variant in ["current","no-projection","membership","owner-first"] {
+            var source=denseMotionMSL
+            if variant=="membership" { source=source.replacingOccurrences(of: "if(has0&&has1) {",with: "if(surface0&&surface1) {") }
+            if variant=="owner-first" { source=source.replacingOccurrences(of: "if(still) { value=av+t*offset;",with: "if(still && !owned) { value=av+t*offset;") }
+            let library=try device.makeLibrary(source: source,options: nil)
+            let project=try device.makeComputePipelineState(function: library.makeFunction(name: "denseProject")!)
+            let synth=try device.makeComputePipelineState(function: library.makeFunction(name: "denseSynthesize")!)
+            for fieldMode in ["oracle","wrong-surface"] { for displacement in [0,16,40,72] { for noise in [Float(0),Float(1.0/1023.0)] {
+                func foreground(_ x: Float,_ y: Float) -> Bool { x>=30 && x<64 && y>=24 && y<72 }
+                func value(_ x: Float,_ y: Float,_ fg: Bool) -> Float {
+                    if fg { return 0.45+0.15*sin(x*0.19)*cos(y*0.13) }
+                    return 0.25+0.08*sin(x*0.07)*cos(y*0.05)
+                }
+                func image(_ t: Float) -> [Float] { (0..<n).map { i in
+                    let x=Float(i%w),y=Float(i/w),q=x-t*Float(displacement),fg=foreground(q,y)
+                    return value(fg ? q : x,y,fg)+(t==1 ? noise*sin(Float(i)*13.71) : 0)
+                } }
+                let first=image(0),last=image(1)
+                let flows=(0..<2).map { direction -> [SIMD4<Float>] in (0..<n).map { i in
+                    let x=Float(i%w),y=Float(i/w),d=Float(displacement),fg=foreground(x-Float(direction)*d,y)
+                    let localX=x-Float(direction)*d
+                    let wrong=fieldMode=="wrong-surface" && fg && localX>=38 && localX<58 && y>=32 && y<64
+                    let v=fg && !wrong ? (direction==0 ? d : -d) : 0
+                    let destinationForeground=foreground(x+v-Float(1-direction)*d,y)
+                    return SIMD4<Float>(v,0,1,fg==destinationForeground ? 0 : -1)
+                } }
+                let a=upload(first,.r32Float),b=upload(last,.r32Float),f=upload(flows[0],.rgba32Float),r=upload(flows[1],.rgba32Float)
+                for time in [Float(0),0.25,0.5,0.75,1] {
+                    let out=texture(.r16Uint),confidence=texture(.r32Float),residual=texture(.rg32Float),coords=texture(.rgba32Float),blend=texture(.r32Float)
+                    let ownership=(0..<2).map { _ in device.makeBuffer(length: n*4,options: .storageModeShared)! }
+                    for buffer in ownership { memset(buffer.contents(),0,n*4) }
+                    let command=queue.makeCommandBuffer()!
+                    var bits=UInt32(ceil(log2(Double(n+1)))),offset=Float(0)
+                    func dispatch(_ e: MTLComputeCommandEncoder) { e.dispatchThreads(MTLSize(width:w,height:h,depth:1),threadsPerThreadgroup:MTLSize(width:16,height:8,depth:1)); e.endEncoding() }
+                    for direction in 0..<2 {
+                        let e=command.makeComputeCommandEncoder()!; e.setComputePipelineState(project)
+                        for (i,t) in (direction==0 ? [a,b,f,r] : [b,a,r,f]).enumerated() { e.setTexture(t,index:i) }
+                        var amount=direction==0 ? time : 1-time
+                        e.setBuffer(ownership[direction],offset:0,index:0);e.setBytes(&bits,length:4,index:1);e.setBytes(&amount,length:4,index:2);e.setBytes(&offset,length:4,index:3);dispatch(e)
+                    }
+                    let e=command.makeComputeCommandEncoder()!; e.setComputePipelineState(synth)
+                    for (i,t) in [a,b,f,r,out,confidence,residual,coords,blend].enumerated() { e.setTexture(t,index:i) }
+                    var t=time,projection=SIMD2<UInt32>(bits,variant=="no-projection" ? 0 : 1)
+                    e.setBytes(&t,length:4,index:0);e.setBytes(&projection,length:8,index:1);e.setBuffer(ownership[0],offset:0,index:2);e.setBuffer(ownership[1],offset:0,index:3);e.setBytes(&offset,length:4,index:4);dispatch(e)
+                    command.commit();command.waitUntilCompleted(); if let error=command.error { throw error }
+                    var pixels=[UInt16](repeating:0,count:n)
+                    pixels.withUnsafeMutableBytes { out.getBytes($0.baseAddress!,bytesPerRow:w*2,from:MTLRegionMake2D(0,0,w,h),mipmapLevel:0) }
+                    let truth=image(time)
+                    var error=0.0,bad=0
+                    for i in 0..<n { let delta=abs(Double(pixels[i])/1023-Double(truth[i]));error+=delta;if delta>0.05 {bad+=1} }
+                    if time==0 || time==1 { precondition(error/Double(n)<0.0005,"Endpoints changed") }
+                    if variant=="current" && fieldMode=="oracle" { precondition(bad==0,"Oracle surface synthesis damaged a visible layer") }
+                    records.append(["field":fieldMode,"variant":variant,"displacement":displacement,"noise":noise,"t":time,"mae":error/Double(n),"badPixels":bad])
+                }
+            } } }
+        }
+        precondition(records.contains { $0["variant"] as? String == "no-projection" && $0["field"] as? String == "oracle" && ($0["badPixels"] as? Int ?? 0)>0 },"Projection ablation did not expose a collision")
+        precondition(records.contains { $0["variant"] as? String == "current" && $0["field"] as? String == "wrong-surface" && ($0["badPixels"] as? Int ?? 0)>0 },"Wrong-surface fixture did not reproduce damage")
+        let result=try JSONSerialization.data(withJSONObject:records,options:[.prettyPrinted,.sortedKeys])
+        FileHandle.standardOutput.write(result)
+    }
+}
