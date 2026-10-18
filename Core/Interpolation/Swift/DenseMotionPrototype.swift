@@ -54,6 +54,7 @@ public final class DenseMotionPrototype {
     public var diagnosticTemporalVectors: [SIMD4<Float>]?
     private let pairConfidence: PairConfidenceDiagnostics?
     private let localConfidence: LocalConfidenceDegradation?
+    private let edgeRegularizer: FramePlusEdgeRegularizer?
     public var localConfidenceHistoryStep: Float=1
     public var localDegradationMap: MTLTexture? {localConfidence?.map}
     public func resetLocalConfidenceState() {localConfidence?.reset()}
@@ -72,6 +73,12 @@ public final class DenseMotionPrototype {
         guard width>=8,height>=8,width<=8192,height<=8192,blockSize>0,blockSize<=64 else { throw MotionSearchEngine.EngineError.pipeline("Invalid dense geometry") }
         guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
         self.device=device; self.queue=queue
+        let f2Enabled = ProcessInfo.processInfo.environment["RIFT_FRAMEPLUS_F2"] == "1"
+        guard !f2Enabled || ProcessInfo.processInfo.environment["RIFT_E2"] != "1" else {
+            throw MotionSearchEngine.EngineError.pipeline("F2 trial requires E2 disabled")
+        }
+        edgeRegularizer = f2Enabled ? try FramePlusEdgeRegularizer(device: device, width: width, height: height) : nil
+        if f2Enabled { print("[Frame+] Experimental F2 edge regularization enabled; E2 off") }
         self.width=width; self.height=height; self.blockSize=blockSize
         self.variational=variational
         guard finestIterations>=1,finestIterations<=8 else { throw MotionSearchEngine.EngineError.pipeline("Invalid finest-level iteration count") }
@@ -336,6 +343,9 @@ public final class DenseMotionPrototype {
                 temporal.append(next)
             }
             finalFlows=temporal
+        }
+        if let edgeRegularizer {
+            finalFlows = try edgeRegularizer.encode(command: command, fields: finalFlows, luma: raw)
         }
         if oracleEnabled,let override=diagnosticFlowOverride {
             command.commit(); command.waitUntilCompleted()

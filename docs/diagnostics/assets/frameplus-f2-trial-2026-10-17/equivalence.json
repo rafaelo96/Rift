@@ -1,0 +1,32 @@
+[
+  {
+    "case": "avatar69",
+    "mode": "off",
+    "identicalToOffline": true
+  },
+  {
+    "case": "avatar69",
+    "mode": "on",
+    "identicalToOffline": true
+  },
+  {
+    "case": "avatar300",
+    "mode": "off",
+    "identicalToOffline": true
+  },
+  {
+    "case": "avatar300",
+    "mode": "on",
+    "identicalToOffline": true
+  },
+  {
+    "case": "anime1082",
+    "mode": "off",
+    "identicalToOffline": true
+  },
+  {
+    "case": "anime1082",
+    "mode": "on",
+    "identicalToOffline": true
+  }
+]
