@@ -66,6 +66,9 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if envInt("MV_F2_DIAGNOSTIC",0)==1 {
+    do {try runEdgeFieldDiagnostic();exit(0)} catch {print("F2 FAILED: \(error)");exit(3)}
+}
 if envInt("MV_E2_STATIC_CHECK",0)==1 {
     do {try checkE2Stationary();exit(0)} catch {print("E2 STATIC FAILED: \(error)");exit(3)}
 }
