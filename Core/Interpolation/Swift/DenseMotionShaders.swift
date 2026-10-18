@@ -517,6 +517,9 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     float v0=denseRead(a,q0).r,v1=denseRead(b,q1).r;
     float closure0=length(f.xy+denseRead(backward,q0+f.xy).xy);
     float closure1=length(r.xy+denseRead(forward,q1+r.xy).xy);
+    // Discard highly inconsistent or high-residual backward/forward path mappings to prevent tearing/deformation
+    if (error0 > 4.0f || closure0 > 3.0f) { f.z = 0; }
+    if (error1 > 4.0f || closure1 > 3.0f) { r.z = 0; }
     float c0=denseInside(q0,w,h)&&denseInside(q0+f.xy,w,h) ? f.z*exp(-0.5f*(closure0*closure0+error0*error0)-5.0f*max(f.w,0.0f)) : 0;
     float c1=denseInside(q1,w,h)&&denseInside(q1+r.xy,w,h) ? r.z*exp(-0.5f*(closure1*closure1+error1*error1)-5.0f*max(r.w,0.0f)) : 0;
     // A surface leaving the crop still exists in its visible source frame.
