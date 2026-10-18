@@ -1,0 +1,302 @@
+[
+  {
+    "case": "avatar69",
+    "region": "pan-background",
+    "mask": "ROI",
+    "pixels": 20480,
+    "MAE8bitCodes": 0.42871093749999994,
+    "gradientVectorError8bitCodesPerPixel": 0.4390306934283948,
+    "localSSIMMean": 0.9869824424724507,
+    "localSSIMLossMean": 0.0130175575275493
+  },
+  {
+    "case": "avatar69",
+    "region": "pan-background",
+    "mask": "candidate",
+    "pixels": 1904,
+    "MAE8bitCodes": 2.184348739495798,
+    "gradientVectorError8bitCodesPerPixel": 2.260606185379211,
+    "localSSIMMean": 0.9119099895446762,
+    "localSSIMLossMean": 0.08809001045532382
+  },
+  {
+    "case": "avatar69",
+    "region": "pan-background",
+    "mask": "core",
+    "pixels": 197,
+    "MAE8bitCodes": 7.928934010152283,
+    "gradientVectorError8bitCodesPerPixel": 9.334937204009565,
+    "localSSIMMean": 0.43714933897869673,
+    "localSSIMLossMean": 0.5628506610213032
+  },
+  {
+    "case": "avatar69",
+    "region": "crossing-bison",
+    "mask": "ROI",
+    "pixels": 20480,
+    "MAE8bitCodes": 0.35146484375000003,
+    "gradientVectorError8bitCodesPerPixel": 0.1595195015876466,
+    "localSSIMMean": 0.9945786482933767,
+    "localSSIMLossMean": 0.005421351706623252
+  },
+  {
+    "case": "avatar69",
+    "region": "crossing-bison",
+    "mask": "candidate",
+    "pixels": 117,
+    "MAE8bitCodes": 10.982905982905987,
+    "gradientVectorError8bitCodesPerPixel": 4.803825094963731,
+    "localSSIMMean": 0.5861650748444744,
+    "localSSIMLossMean": 0.4138349251555255
+  },
+  {
+    "case": "avatar69",
+    "region": "crossing-bison",
+    "mask": "core",
+    "pixels": 82,
+    "MAE8bitCodes": 7.878048780487806,
+    "gradientVectorError8bitCodesPerPixel": 6.595735411168168,
+    "localSSIMMean": 0.4887715836103339,
+    "localSSIMLossMean": 0.5112284163896662
+  },
+  {
+    "case": "avatar69",
+    "region": "blur-foreground",
+    "mask": "ROI",
+    "pixels": 24576,
+    "MAE8bitCodes": 0.1254069010416663,
+    "gradientVectorError8bitCodesPerPixel": 0.06217586094543786,
+    "localSSIMMean": 0.9989735601482214,
+    "localSSIMLossMean": 0.001026439851778755
+  },
+  {
+    "case": "avatar69",
+    "region": "blur-foreground",
+    "mask": "candidate",
+    "pixels": 86,
+    "MAE8bitCodes": 2.116279069767441,
+    "gradientVectorError8bitCodesPerPixel": 1.4264344843410137,
+    "localSSIMMean": 0.9445348508801037,
+    "localSSIMLossMean": 0.05546514911989641
+  },
+  {
+    "case": "avatar69",
+    "region": "blur-foreground",
+    "mask": "core",
+    "pixels": 0,
+    "MAE8bitCodes": null,
+    "gradientVectorError8bitCodesPerPixel": null,
+    "localSSIMMean": null,
+    "localSSIMLossMean": null
+  },
+  {
+    "case": "avatar69",
+    "region": "union",
+    "mask": "ROI",
+    "pixels": 65536,
+    "MAE8bitCodes": 0.29083251953124983,
+    "gradientVectorError8bitCodesPerPixel": 0.21036288379705212,
+    "localSSIMMean": 0.993852925919904,
+    "localSSIMLossMean": 0.006147074080095955
+  },
+  {
+    "case": "avatar69",
+    "region": "union",
+    "mask": "candidate",
+    "pixels": 2107,
+    "MAE8bitCodes": 2.6701471286188894,
+    "gradientVectorError8bitCodesPerPixel": 2.367781242869531,
+    "localSSIMMean": 0.8951532657928599,
+    "localSSIMLossMean": 0.10484673420714008
+  },
+  {
+    "case": "avatar69",
+    "region": "union",
+    "mask": "core",
+    "pixels": 279,
+    "MAE8bitCodes": 7.913978494623658,
+    "gradientVectorError8bitCodesPerPixel": 8.52986714303109,
+    "localSSIMMean": 0.4523214682252712,
+    "localSSIMLossMean": 0.5476785317747288
+  },
+  {
+    "case": "avatar300",
+    "region": "face-contour",
+    "mask": "ROI",
+    "pixels": 20480,
+    "MAE8bitCodes": 4.754638671875,
+    "gradientVectorError8bitCodesPerPixel": 2.232034922853314,
+    "localSSIMMean": 0.8251528523306535,
+    "localSSIMLossMean": 0.1748471476693466
+  },
+  {
+    "case": "avatar300",
+    "region": "face-contour",
+    "mask": "candidate",
+    "pixels": 14448,
+    "MAE8bitCodes": 5.821220930232558,
+    "gradientVectorError8bitCodesPerPixel": 3.04983369558228,
+    "localSSIMMean": 0.7728981758679216,
+    "localSSIMLossMean": 0.22710182413207833
+  },
+  {
+    "case": "avatar300",
+    "region": "face-contour",
+    "mask": "core",
+    "pixels": 8085,
+    "MAE8bitCodes": 7.1134199134199125,
+    "gradientVectorError8bitCodesPerPixel": 4.5583574049963,
+    "localSSIMMean": 0.6818555333673243,
+    "localSSIMLossMean": 0.31814446663267565
+  },
+  {
+    "case": "avatar300",
+    "region": "clothing-contour",
+    "mask": "ROI",
+    "pixels": 20480,
+    "MAE8bitCodes": 4.073779296874999,
+    "gradientVectorError8bitCodesPerPixel": 0.8168818245693644,
+    "localSSIMMean": 0.9238701490088534,
+    "localSSIMLossMean": 0.07612985099114665
+  },
+  {
+    "case": "avatar300",
+    "region": "clothing-contour",
+    "mask": "candidate",
+    "pixels": 2246,
+    "MAE8bitCodes": 18.15805877114871,
+    "gradientVectorError8bitCodesPerPixel": 6.77319677864515,
+    "localSSIMMean": 0.49423584213454147,
+    "localSSIMLossMean": 0.5057641578654586
+  },
+  {
+    "case": "avatar300",
+    "region": "clothing-contour",
+    "mask": "core",
+    "pixels": 1157,
+    "MAE8bitCodes": 21.52808988764045,
+    "gradientVectorError8bitCodesPerPixel": 12.181525221056686,
+    "localSSIMMean": 0.24059631654470617,
+    "localSSIMLossMean": 0.7594036834552937
+  },
+  {
+    "case": "avatar300",
+    "region": "union",
+    "mask": "ROI",
+    "pixels": 40960,
+    "MAE8bitCodes": 4.4142089843750005,
+    "gradientVectorError8bitCodesPerPixel": 1.5244583737113393,
+    "localSSIMMean": 0.8745115006697534,
+    "localSSIMLossMean": 0.1254884993302466
+  },
+  {
+    "case": "avatar300",
+    "region": "union",
+    "mask": "candidate",
+    "pixels": 16694,
+    "MAE8bitCodes": 7.481011141727567,
+    "gradientVectorError8bitCodesPerPixel": 3.5507725649101345,
+    "localSSIMMean": 0.7354071250972752,
+    "localSSIMLossMean": 0.26459287490272476
+  },
+  {
+    "case": "avatar300",
+    "region": "union",
+    "mask": "core",
+    "pixels": 9242,
+    "MAE8bitCodes": 8.91798312053668,
+    "gradientVectorError8bitCodesPerPixel": 5.51269685134794,
+    "localSSIMMean": 0.6266145775283535,
+    "localSSIMLossMean": 0.3733854224716466
+  },
+  {
+    "case": "anime1082",
+    "region": "bird-contour",
+    "mask": "ROI",
+    "pixels": 13824,
+    "MAE8bitCodes": 0.12651909722222218,
+    "gradientVectorError8bitCodesPerPixel": 0.15359052342983043,
+    "localSSIMMean": 0.9983385709772098,
+    "localSSIMLossMean": 0.0016614290227902311
+  },
+  {
+    "case": "anime1082",
+    "region": "bird-contour",
+    "mask": "candidate",
+    "pixels": 14,
+    "MAE8bitCodes": 1.7142857142857142,
+    "gradientVectorError8bitCodesPerPixel": 1.3206543570741534,
+    "localSSIMMean": 0.9835670982103835,
+    "localSSIMLossMean": 0.0164329017896166
+  },
+  {
+    "case": "anime1082",
+    "region": "bird-contour",
+    "mask": "core",
+    "pixels": 0,
+    "MAE8bitCodes": null,
+    "gradientVectorError8bitCodesPerPixel": null,
+    "localSSIMMean": null,
+    "localSSIMLossMean": null
+  },
+  {
+    "case": "anime1082",
+    "region": "landscape-pan",
+    "mask": "ROI",
+    "pixels": 20480,
+    "MAE8bitCodes": 0.13369140625,
+    "gradientVectorError8bitCodesPerPixel": 0.15425261508877233,
+    "localSSIMMean": 0.9984393462894084,
+    "localSSIMLossMean": 0.0015606537105915708
+  },
+  {
+    "case": "anime1082",
+    "region": "landscape-pan",
+    "mask": "candidate",
+    "pixels": 39,
+    "MAE8bitCodes": 1.4102564102564104,
+    "gradientVectorError8bitCodesPerPixel": 1.1915243804572893,
+    "localSSIMMean": 0.9845542190080815,
+    "localSSIMLossMean": 0.015445780991918543
+  },
+  {
+    "case": "anime1082",
+    "region": "landscape-pan",
+    "mask": "core",
+    "pixels": 0,
+    "MAE8bitCodes": null,
+    "gradientVectorError8bitCodesPerPixel": null,
+    "localSSIMMean": null,
+    "localSSIMLossMean": null
+  },
+  {
+    "case": "anime1082",
+    "region": "union",
+    "mask": "ROI",
+    "pixels": 34304,
+    "MAE8bitCodes": 0.13080107276119401,
+    "gradientVectorError8bitCodesPerPixel": 0.1539858020321838,
+    "localSSIMMean": 0.9983987353427016,
+    "localSSIMLossMean": 0.0016012646572984934
+  },
+  {
+    "case": "anime1082",
+    "region": "union",
+    "mask": "candidate",
+    "pixels": 53,
+    "MAE8bitCodes": 1.4905660377358492,
+    "gradientVectorError8bitCodesPerPixel": 1.225634185601367,
+    "localSSIMMean": 0.9842934701181234,
+    "localSSIMLossMean": 0.01570652988187652
+  },
+  {
+    "case": "anime1082",
+    "region": "union",
+    "mask": "core",
+    "pixels": 0,
+    "MAE8bitCodes": null,
+    "gradientVectorError8bitCodesPerPixel": null,
+    "localSSIMMean": null,
+    "localSSIMLossMean": null
+  }
+]

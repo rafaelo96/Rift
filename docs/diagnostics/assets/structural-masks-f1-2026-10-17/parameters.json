@@ -1,0 +1,19 @@
+{
+  "pairFirst": 4,
+  "span": 2,
+  "prediction": "E2-off before PNG",
+  "inputBits": 8,
+  "ssimWindow": 11,
+  "ssimGaussianSigma": 1.5,
+  "K1": 0.01,
+  "K2": 0.03,
+  "gradient": "3x3 Sobel /8, reflect padding, vector difference magnitude",
+  "sensitiveSSIMLoss": 0.01,
+  "sensitiveGradientCodesPerPixel": 0.5,
+  "coreSSIMLoss": 0.1,
+  "coreGradientCodesPerPixel": 2,
+  "minimumSensitiveComponentPixels": 8,
+  "connectivity": 4,
+  "morphologicalExpansion": false,
+  "status": "CANDIDATE; NOT VALIDATED; NOT USED FOR F2"
+}
