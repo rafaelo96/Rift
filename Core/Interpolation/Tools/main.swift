@@ -1765,6 +1765,10 @@ guard zip(frameTimes, frameTimes.dropFirst()).allSatisfy({ $0 < $1 }) else {
     exit(2)
 }
 
+if let output=ProcessInfo.processInfo.environment["MV_NATIVE_SCENE_OUTPUT"] {
+    do {try auditNativeScene(buffers:frameBuffers,pts:frameTimes,output:output);exit(0)}
+    catch {print("NATIVE SCENE FAILED: \(error)");exit(3)}
+}
 if let folder=ProcessInfo.processInfo.environment["MV_TRAJECTORY_EXPORT"] {
     do { try exportTrajectoryWindow(frames: frames,times: frameTimes,width: workWidth,height: workHeight,source: path,folder: folder);exit(0) }
     catch { print("TRAJECTORY EXPORT FAILED: \(error)");exit(3) }

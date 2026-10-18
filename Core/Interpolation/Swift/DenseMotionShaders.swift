@@ -396,7 +396,6 @@ float denseMatch(texture2d<float,access::sample> a,texture2d<float,access::sampl
     for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) { float2 d=float2(x,y); cost+=abs(denseRead(a,q0+d).r-denseRead(b,q1+d).r+offset); }
     return cost/9;
 }
-#ifdef DENSE_STATIC_MOTION
 float denseStaticPatchCost(texture2d<float,access::sample> a,texture2d<float,access::sample> b,float2 q0,float2 q1) {
     float cost=0;
     for(int y=-4;y<4;++y) for(int x=-4;x<4;++x) {
@@ -404,7 +403,6 @@ float denseStaticPatchCost(texture2d<float,access::sample> a,texture2d<float,acc
     }
     return cost/64;
 }
-#endif
 bool denseSurfaceMembership(texture2d<float,access::sample> flow,float2 q,float2 velocity) {
     float2 anchor=round(q),center=denseRead(flow,anchor).xy;
     if(length(center-velocity)<1) return true;
@@ -519,29 +517,24 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     float v0=denseRead(a,q0).r,v1=denseRead(b,q1).r;
     float closure0=length(f.xy+denseRead(backward,q0+f.xy).xy);
     float closure1=length(r.xy+denseRead(forward,q1+r.xy).xy);
-    float c0=denseInside(q0,w,h)&&denseInside(q0+f.xy,w,h) ? f.z*exp(-closure0*closure0-error0*error0-10*max(f.w,0.0f)) : 0;
-    float c1=denseInside(q1,w,h)&&denseInside(q1+r.xy,w,h) ? r.z*exp(-closure1*closure1-error1*error1-10*max(r.w,0.0f)) : 0;
+    float c0=denseInside(q0,w,h)&&denseInside(q0+f.xy,w,h) ? f.z*exp(-0.5f*(closure0*closure0+error0*error0)-5.0f*max(f.w,0.0f)) : 0;
+    float c1=denseInside(q1,w,h)&&denseInside(q1+r.xy,w,h) ? r.z*exp(-0.5f*(closure1*closure1+error1*error1)-5.0f*max(r.w,0.0f)) : 0;
     // A surface leaving the crop still exists in its visible source frame.
-    if(denseInside(q0,w,h)&&!denseInside(q0+f.xy,w,h)&&denseSurfaceMembership(forward,q0,f.xy)) c0=f.z*exp(-error0*error0);
-    if(denseInside(q1,w,h)&&!denseInside(q1+r.xy,w,h)&&denseSurfaceMembership(backward,q1,r.xy)) c1=r.z*exp(-error1*error1);
+    if(denseInside(q0,w,h)&&!denseInside(q0+f.xy,w,h)&&denseSurfaceMembership(forward,q0,f.xy)) c0=f.z*exp(-0.5f*error0*error0);
+    if(denseInside(q1,w,h)&&!denseInside(q1+r.xy,w,h)&&denseSurfaceMembership(backward,q1,r.xy)) c1=r.z*exp(-0.5f*error1*error1);
     // Static protection requires agreement along both transport paths.
     bool still=abs(av-bv+offset)*16<=av+bv && abs(v0-denseRead(b,q0).r+offset)*16<=v0+denseRead(b,q0).r && abs(v1-denseRead(a,q1).r-offset)*16<=v1+denseRead(a,q1).r;
     // A near-periodic moving texture can look static at the original pixel.
     // Do not freeze it when compensation gives a clearly better correspondence.
     still=still && abs(av-bv+offset)<=2*abs(v0-v1+offset)+1.0f/1023.0f;
-    // During an exposure change, point-wise equality cannot override a verified moving patch.
-    if(offset!=0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) still=false;
-#ifdef DENSE_STATIC_MOTION
-    // Point equality can alias motion. Require reciprocal, supported flow and a substantial
-    // 8x8 patch improvement before overriding static protection; noise-level ties stay static.
-    if(still && offset==0 && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) {
+    // Verified moving patches with reciprocal flow must never be overridden by point-wise static protection.
+    if(length(f.xy)>0.5f && length(r.xy)>0.5f && closure0<1.5f && closure1<1.5f && f.z>0.3f && r.z>0.3f) still=false;
+    if(still && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) {
         if(denseStaticPatchCost(a,b,q0,q1)<0.8f*denseStaticPatchCost(a,b,p,p)) still=false;
     }
-#endif
     float weights=(1-t)*c0+t*c1;
-    float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : (t<0.5f?av:bv);
-    float alpha=weights>1e-4f ? t*c1/weights : (t<0.5f ? 0 : 1);
-    if(weights<=1e-4f && !owned) { q0=p; q1=p; }
+    float alpha=weights>1e-4f ? t*c1/weights : t;
+    float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : ((1-t)*v0+t*v1);
     if(owned) { value=ownerValue; weights=ownerConfidence; alpha=ownerAlpha; }
     if(still) { value=av+t*offset; q0=p; q1=p; alpha=offset!=0 ? t : 0; }
     #ifdef DENSE_CANDIDATES

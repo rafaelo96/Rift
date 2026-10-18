@@ -42,9 +42,28 @@ kernel void denseNativeRender(DENSE_NATIVE_INPUT first [[texture(0)]],DENSE_NATI
     if(p.x>=output.get_width()||p.y>=output.get_height()) return;
     float2 scale=float2(coordinates.get_width(),coordinates.get_height())/float2(output.get_width(),output.get_height());
     float2 work=(float2(p)+0.5f)*scale-0.5f;
-    // Never interpolate coordinates belonging to different surface hypotheses.
-    uint2 cell=uint2(clamp(round(work),float2(0),float2(coordinates.get_width()-1,coordinates.get_height()-1)));
+    uint maxCoordX=coordinates.get_width()-1;
+    uint maxCoordY=coordinates.get_height()-1;
+    uint2 cell=uint2(clamp(round(work),float2(0),float2(maxCoordX,maxCoordY)));
     float4 motion=coordinates.read(cell); float alpha=clamp(blend.read(cell).r,0.0f,1.0f);
+    float2 clampedWork=clamp(work,float2(0),float2(maxCoordX,maxCoordY));
+    int2 i0=int2(floor(clampedWork));
+    int2 i1=min(i0+1,int2(maxCoordX,maxCoordY));
+    float2 f=fract(clampedWork);
+    float4 m00=coordinates.read(uint2(i0.x,i0.y));
+    float4 m10=coordinates.read(uint2(i1.x,i0.y));
+    float4 m01=coordinates.read(uint2(i0.x,i1.y));
+    float4 m11=coordinates.read(uint2(i1.x,i1.y));
+    bool smoothSurface=length(m00.xy-m10.xy)<1.5f && length(m00.xy-m01.xy)<1.5f && length(m00.xy-m11.xy)<1.5f
+                     && length(m00.zw-m10.zw)<1.5f && length(m00.zw-m01.zw)<1.5f && length(m00.zw-m11.zw)<1.5f;
+    if(smoothSurface) {
+        motion=mix(mix(m00,m10,f.x),mix(m01,m11,f.x),f.y);
+        float a00=blend.read(uint2(i0.x,i0.y)).r;
+        float a10=blend.read(uint2(i1.x,i0.y)).r;
+        float a01=blend.read(uint2(i0.x,i1.y)).r;
+        float a11=blend.read(uint2(i1.x,i1.y)).r;
+        alpha=clamp(mix(mix(a00,a10,f.x),mix(a01,a11,f.x),f.y),0.0f,1.0f);
+    }
     float maximum=tenBit!=0 ? 65535.0f : 255.0f;
     float4 value;
     if(alpha<=0) value=denseNativeSample(first,float2(p)+motion.xy/scale,maximum);
