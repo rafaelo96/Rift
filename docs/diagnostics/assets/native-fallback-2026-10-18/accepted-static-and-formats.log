@@ -1,0 +1,16 @@
+NATIVE FALLBACK format=875704438, t=0.25: 3072 pixels, max native/work error=2
+NATIVE FALLBACK format=875704438, t=0.5: 3072 pixels, max native/work error=2
+NATIVE FALLBACK format=875704438, t=0.75: 3072 pixels, max native/work error=2
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+STATIC format=875704438: four exact-identity controls passed
+NATIVE FALLBACK format=2016686640, t=0.25: 3072 pixels, max native/work error=1
+NATIVE FALLBACK format=2016686640, t=0.5: 3072 pixels, max native/work error=0
+NATIVE FALLBACK format=2016686640, t=0.75: 3072 pixels, max native/work error=1
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+STATIC format=2016686640: four exact-identity controls passed
+NATIVE FALLBACK format=2016686642, t=0.25: 3072 pixels, max native/work error=1
+NATIVE FALLBACK format=2016686642, t=0.5: 3072 pixels, max native/work error=0
+NATIVE FALLBACK format=2016686642, t=0.75: 3072 pixels, max native/work error=1
+[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)
+STATIC format=2016686642: four exact-identity controls passed
+PASS: native fallback agrees with work-plane mixture on 27648 pixels; device=Apple M4

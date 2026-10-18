@@ -60,6 +60,27 @@ import CoreVideo
                 precondition(maxError <= (ten ? 2:4),"Native fallback still uses rejected warp coordinates")
                 totalFallback+=fallback
             }
+            func payload(_ image: CVPixelBuffer) -> Data {
+                CVPixelBufferLockBaseAddress(image,.readOnly);defer {CVPixelBufferUnlockBaseAddress(image,.readOnly)}
+                var bytes=Data()
+                for plane in 0..<2 {
+                    let count=CVPixelBufferGetWidthOfPlane(image,plane)*(plane==0 ? 1:2)*(ten ? 2:1),stride=CVPixelBufferGetBytesPerRowOfPlane(image,plane),base=CVPixelBufferGetBaseAddressOfPlane(image,plane)!
+                    for y in 0..<CVPixelBufferGetHeightOfPlane(image,plane) {bytes.append(base.advanced(by:y*stride).assumingMemoryBound(to:UInt8.self),count:count)}
+                };return bytes
+            }
+            let stationary=try MotionCompensator(config:InterpolationConfig(workWidth:w,workHeight:h))
+            for pattern in 0..<4 {
+                let pixels=(0..<n).map {i -> UInt16 in
+                    if pattern==0 {return 500}
+                    if pattern==1 {return UInt16(200+(i%w)*8)}
+                    if pattern==2 {return i%w<w/2 ? 200:700}
+                    return a[i]
+                }
+                let input=source(pixels,format),expected=payload(input)
+                let result=stationary.interpolatePair(I0:input,I1:input,tValues:[0.25,0.5,0.75]).pixelBuffers
+                precondition(result.count==3 && result.allSatisfy{payload($0)==expected},"Static output changed")
+            }
+            print("STATIC format=\(format): four exact-identity controls passed")
         }
         print("PASS: native fallback agrees with work-plane mixture on \(totalFallback) pixels; device=\(device.name)")
     }

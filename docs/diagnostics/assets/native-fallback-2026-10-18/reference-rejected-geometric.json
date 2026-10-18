@@ -1,0 +1,107 @@
+[
+  {
+    "case": "avatar69",
+    "before": {
+      "inside": {
+        "pixels": 2107,
+        "MAE8bitCodes": 2.2202183198860936,
+        "gradientVectorError8bitCodesPerPixel": 1.9400588493674187,
+        "localSSIMMean": 0.921381392902752,
+        "localSSIMLossMean": 0.07861860709724802
+      },
+      "outside": {
+        "pixels": 550853,
+        "MAE8bitCodes": 1.2541839655951774,
+        "gradientVectorError8bitCodesPerPixel": 0.5590783328062892,
+        "localSSIMMean": 0.9631839789525638,
+        "localSSIMLossMean": 0.03681602104743626
+      }
+    },
+    "geometric": {
+      "inside": {
+        "pixels": 2107,
+        "MAE8bitCodes": 2.5182724252491693,
+        "gradientVectorError8bitCodesPerPixel": 2.1015314078254206,
+        "localSSIMMean": 0.9056789613791011,
+        "localSSIMLossMean": 0.09432103862089895
+      },
+      "outside": {
+        "pixels": 550853,
+        "MAE8bitCodes": 1.345309910266441,
+        "gradientVectorError8bitCodesPerPixel": 0.6337700773879473,
+        "localSSIMMean": 0.9552298599370236,
+        "localSSIMLossMean": 0.0447701400629762
+      }
+    }
+  },
+  {
+    "case": "avatar300",
+    "before": {
+      "inside": {
+        "pixels": 9242,
+        "MAE8bitCodes": 10.638173555507466,
+        "gradientVectorError8bitCodesPerPixel": 4.427579755790208,
+        "localSSIMMean": 0.6780711452341167,
+        "localSSIMLossMean": 0.3219288547658833
+      },
+      "outside": {
+        "pixels": 543718,
+        "MAE8bitCodes": 8.605313783983611,
+        "gradientVectorError8bitCodesPerPixel": 1.0770340805103877,
+        "localSSIMMean": 0.8920274543947389,
+        "localSSIMLossMean": 0.1079725456052611
+      }
+    },
+    "geometric": {
+      "inside": {
+        "pixels": 9242,
+        "MAE8bitCodes": 10.629625622159704,
+        "gradientVectorError8bitCodesPerPixel": 4.422502496377782,
+        "localSSIMMean": 0.6782574636280649,
+        "localSSIMLossMean": 0.3217425363719351
+      },
+      "outside": {
+        "pixels": 543718,
+        "MAE8bitCodes": 8.593728734380688,
+        "gradientVectorError8bitCodesPerPixel": 1.0870287431572951,
+        "localSSIMMean": 0.8912139646474875,
+        "localSSIMLossMean": 0.10878603535251263
+      }
+    }
+  },
+  {
+    "case": "anime1082",
+    "before": {
+      "inside": {
+        "pixels": 1989,
+        "MAE8bitCodes": 0.20462543991955734,
+        "gradientVectorError8bitCodesPerPixel": 0.21139168653615578,
+        "localSSIMMean": 0.9981790957311744,
+        "localSSIMLossMean": 0.0018209042688256856
+      },
+      "outside": {
+        "pixels": 550971,
+        "MAE8bitCodes": 0.3011138517272234,
+        "gradientVectorError8bitCodesPerPixel": 0.22735168446556678,
+        "localSSIMMean": 0.9958334153172431,
+        "localSSIMLossMean": 0.004166584682756951
+      }
+    },
+    "geometric": {
+      "inside": {
+        "pixels": 1989,
+        "MAE8bitCodes": 0.20462543991955734,
+        "gradientVectorError8bitCodesPerPixel": 0.21139168653615578,
+        "localSSIMMean": 0.9981790957311744,
+        "localSSIMLossMean": 0.0018209042688256856
+      },
+      "outside": {
+        "pixels": 550971,
+        "MAE8bitCodes": 0.30059295316813406,
+        "gradientVectorError8bitCodesPerPixel": 0.228875925726214,
+        "localSSIMMean": 0.9957698576136641,
+        "localSSIMLossMean": 0.004230142386336008
+      }
+    }
+  }
+]

@@ -1,0 +1,13 @@
+diff --git a/Core/Interpolation/Swift/DenseMotionShaders.swift b/Core/Interpolation/Swift/DenseMotionShaders.swift
+index 5bef0c5..6249ed8 100644
+--- a/Core/Interpolation/Swift/DenseMotionShaders.swift
++++ b/Core/Interpolation/Swift/DenseMotionShaders.swift
+@@ -537,6 +537,8 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
+     if(still && length(f.xy)>1 && length(r.xy)>1 && closure0<1 && closure1<1 && f.z>0.5f && r.z>0.5f) {
+         if(denseStaticPatchCost(a,b,q0,q1)<0.8f*denseStaticPatchCost(a,b,p,p)) still=false;
+     }
++    // An occlusion hypothesis still has to reach the destination pixel.
++    if(owned && ((ownerAlpha<1 && error0>2.0f) || (ownerAlpha>0 && error1>2.0f))) owned=false;
+     float weights=(1-t)*c0+t*c1;
+     float alpha=weights>1e-4f ? t*c1/weights : t;
+     // In high-motion / unmatchable regions (weights <= 1e-4), fall back to clean linear cross-fade ((1-t)*av + t*bv)

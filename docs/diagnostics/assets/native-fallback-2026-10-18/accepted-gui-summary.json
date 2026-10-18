@@ -1,0 +1,14 @@
+{
+  "scope": "One accepted-build GUI smoke run; discard first5s from first measured pair; not five alternating runs or a comparative budget result",
+  "pairs": 327,
+  "p95MS": 46.8534167,
+  "medianMS": 32.7425,
+  "hardware": "Apple M4",
+  "workPlane": [
+    736,
+    320
+  ],
+  "decode": "VideoToolbox",
+  "Strong": "requested; first5 processed samples logged; later adaptive bypass not fully traced",
+  "temporalContext": "real four-source context logged"
+}
