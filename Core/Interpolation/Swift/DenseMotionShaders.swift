@@ -520,8 +520,10 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     // Strict validation guard: discard inconsistent or high-residual backward/forward path mappings
     if (error0 > 2.0f || closure0 > 1.5f || f.z < 0.1f) { f.z = 0; }
     if (error1 > 2.0f || closure1 > 1.5f || r.z < 0.1f) { r.z = 0; }
-    float c0=denseInside(q0,w,h)&&denseInside(q0+f.xy,w,h) ? f.z*exp(-0.5f*(closure0*closure0+error0*error0)-5.0f*max(f.w,0.0f)) : 0;
-    float c1=denseInside(q1,w,h)&&denseInside(q1+r.xy,w,h) ? r.z*exp(-0.5f*(closure1*closure1+error1*error1)-5.0f*max(r.w,0.0f)) : 0;
+    float speedPenalty0 = exp(-0.02f * max(0.0f, length(f.xy) - 12.0f));
+    float speedPenalty1 = exp(-0.02f * max(0.0f, length(r.xy) - 12.0f));
+    float c0=denseInside(q0,w,h)&&denseInside(q0+f.xy,w,h) ? f.z*speedPenalty0*exp(-0.5f*(closure0*closure0+error0*error0)-5.0f*max(f.w,0.0f)) : 0;
+    float c1=denseInside(q1,w,h)&&denseInside(q1+r.xy,w,h) ? r.z*speedPenalty1*exp(-0.5f*(closure1*closure1+error1*error1)-5.0f*max(r.w,0.0f)) : 0;
     // A surface leaving the crop still exists in its visible source frame.
     if(denseInside(q0,w,h)&&!denseInside(q0+f.xy,w,h)&&denseSurfaceMembership(forward,q0,f.xy)) c0=f.z*exp(-0.5f*error0*error0);
     if(denseInside(q1,w,h)&&!denseInside(q1+r.xy,w,h)&&denseSurfaceMembership(backward,q1,r.xy)) c1=r.z*exp(-0.5f*error1*error1);
