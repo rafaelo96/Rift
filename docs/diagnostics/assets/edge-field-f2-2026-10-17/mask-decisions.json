@@ -1,0 +1,76 @@
+[
+  {
+    "case": "avatar69",
+    "selection": "Select sensitive mask; do not label shared real motion blur as deformation.",
+    "primaryPixels": 2107,
+    "secondaryPixels": 2107,
+    "polygons": null,
+    "status": "Selected by assistant under user delegation; not independently human annotated",
+    "sha256": "efe58554d4328605ee06e6ee767c27edfd6923a8fcb11f6a0d6929f52db9481b"
+  },
+  {
+    "case": "avatar300",
+    "selection": "Select strict structural core; it captures the fragmented residual at the old face position, including ghosted background. No unsupported pose exclusion.",
+    "primaryPixels": 9242,
+    "secondaryPixels": 16694,
+    "polygons": null,
+    "status": "Selected by assistant under user delegation; not independently human annotated",
+    "sha256": "cf511967c204073e01fd64ccbf91a63121ba0556b58439ee894729f4b7fd864d"
+  },
+  {
+    "case": "anime1082",
+    "selection": "Manual envelope around visible bird; no face features exist in this frame. Not a certified defect label.",
+    "primaryPixels": 1989,
+    "secondaryPixels": 53,
+    "polygons": [
+      [
+        [
+          442,
+          263
+        ],
+        [
+          454,
+          268
+        ],
+        [
+          471,
+          291
+        ],
+        [
+          480,
+          302
+        ],
+        [
+          498,
+          320
+        ],
+        [
+          506,
+          346
+        ],
+        [
+          497,
+          352
+        ],
+        [
+          481,
+          333
+        ],
+        [
+          462,
+          322
+        ],
+        [
+          453,
+          302
+        ],
+        [
+          447,
+          283
+        ]
+      ]
+    ],
+    "status": "Selected by assistant under user delegation; not independently human annotated",
+    "sha256": "e2e14acd81216dabc34a0ab9b0db538c217049236386a123c135f606a1ede74a"
+  }
+]
