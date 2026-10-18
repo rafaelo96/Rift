@@ -1,0 +1,10 @@
+NATIVE FALLBACK format=875704438, t=0.25: 3072 pixels, max native/work error=2
+NATIVE FALLBACK format=875704438, t=0.5: 3072 pixels, max native/work error=2
+NATIVE FALLBACK format=875704438, t=0.75: 3072 pixels, max native/work error=2
+NATIVE FALLBACK format=2016686640, t=0.25: 3072 pixels, max native/work error=1
+NATIVE FALLBACK format=2016686640, t=0.5: 3072 pixels, max native/work error=0
+NATIVE FALLBACK format=2016686640, t=0.75: 3072 pixels, max native/work error=1
+NATIVE FALLBACK format=2016686642, t=0.25: 3072 pixels, max native/work error=1
+NATIVE FALLBACK format=2016686642, t=0.5: 3072 pixels, max native/work error=0
+NATIVE FALLBACK format=2016686642, t=0.75: 3072 pixels, max native/work error=1
+PASS: native fallback agrees with work-plane mixture on 27648 pixels; device=Apple M4
