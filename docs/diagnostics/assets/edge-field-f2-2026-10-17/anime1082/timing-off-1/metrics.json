@@ -1,0 +1,731 @@
+{
+  "E2" : false,
+  "enabled" : false,
+  "height" : 480,
+  "identityOrdinary" : false,
+  "phase" : "timing",
+  "records" : [
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 0,
+      "MEms" : 45.0045,
+      "PTS" : [
+        1082.039,
+        1082.0809999999999
+      ],
+      "regularizationMS" : 0.000417,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 17.764792,
+      "totalMS" : 62.769708999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 1,
+      "MEms" : 39.039375,
+      "PTS" : [
+        1082.0809999999999,
+        1082.123
+      ],
+      "regularizationMS" : 0.00025000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 15.877916000000001,
+      "totalMS" : 54.917541
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 2,
+      "MEms" : 36.868749999999999,
+      "PTS" : [
+        1082.123,
+        1082.164
+      ],
+      "regularizationMS" : 0.000125,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 15.3095,
+      "totalMS" : 52.178375000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 3,
+      "MEms" : 38.492584000000001,
+      "PTS" : [
+        1082.164,
+        1082.2059999999999
+      ],
+      "regularizationMS" : 8.2999999999999998e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.954208,
+      "totalMS" : 53.446874999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 4,
+      "MEms" : 36.227333000000002,
+      "PTS" : [
+        1082.2059999999999,
+        1082.248
+      ],
+      "regularizationMS" : 8.3999999999999995e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 15.361041,
+      "totalMS" : 51.588458000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 5,
+      "MEms" : 38.431291999999999,
+      "PTS" : [
+        1082.248,
+        1082.29
+      ],
+      "regularizationMS" : 0.00029100000000000003,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 15.450167,
+      "totalMS" : 53.881749999999997
+    },
+    {
+      "crossesCut" : true,
+      "enabled" : false,
+      "first" : 6,
+      "MEms" : 38.621957999999999,
+      "PTS" : [
+        1082.29,
+        1082.3309999999999
+      ],
+      "regularizationMS" : 0.00045800000000000002,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 18.738209000000001,
+      "totalMS" : 57.360624999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 7,
+      "MEms" : 37.723125000000003,
+      "PTS" : [
+        1082.3309999999999,
+        1082.373
+      ],
+      "regularizationMS" : 8.2999999999999998e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.861917,
+      "totalMS" : 51.585124999999998
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 8,
+      "MEms" : 36.697875000000003,
+      "PTS" : [
+        1082.373,
+        1082.415
+      ],
+      "regularizationMS" : 0.00058399999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.21725,
+      "totalMS" : 49.915709
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 9,
+      "MEms" : 38.998291999999999,
+      "PTS" : [
+        1082.415,
+        1082.4559999999999
+      ],
+      "regularizationMS" : 0.00033300000000000002,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.505709,
+      "totalMS" : 52.504334
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 10,
+      "MEms" : 38.832374999999999,
+      "PTS" : [
+        1082.4559999999999,
+        1082.498
+      ],
+      "regularizationMS" : 0.00029100000000000003,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.403834,
+      "totalMS" : 52.236499999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 11,
+      "MEms" : 37.184708000000001,
+      "PTS" : [
+        1082.498,
+        1082.54
+      ],
+      "regularizationMS" : 0.00033300000000000002,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.366250000000001,
+      "totalMS" : 50.551290999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 12,
+      "MEms" : 37.711333000000003,
+      "PTS" : [
+        1082.54,
+        1082.5809999999999
+      ],
+      "regularizationMS" : 0.000292,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.327208000000001,
+      "totalMS" : 51.038832999999997
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 13,
+      "MEms" : 37.626874999999998,
+      "PTS" : [
+        1082.5809999999999,
+        1082.623
+      ],
+      "regularizationMS" : 0.00016699999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 12.912540999999999,
+      "totalMS" : 50.539583
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 14,
+      "MEms" : 38.896500000000003,
+      "PTS" : [
+        1082.623,
+        1082.665
+      ],
+      "regularizationMS" : 0.000417,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.615665999999999,
+      "totalMS" : 52.512582999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 15,
+      "MEms" : 38.173915999999998,
+      "PTS" : [
+        1082.665,
+        1082.7070000000001
+      ],
+      "regularizationMS" : 8.3999999999999995e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.150207999999999,
+      "totalMS" : 51.324207999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 16,
+      "MEms" : 38.290291000000003,
+      "PTS" : [
+        1082.7070000000001,
+        1082.748
+      ],
+      "regularizationMS" : 4.1999999999999998e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.605582999999999,
+      "totalMS" : 52.895916
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 17,
+      "MEms" : 37.730874999999997,
+      "PTS" : [
+        1082.748,
+        1082.79
+      ],
+      "regularizationMS" : 0.000125,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 16.216833999999999,
+      "totalMS" : 53.947834
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 18,
+      "MEms" : 54.46275,
+      "PTS" : [
+        1082.79,
+        1082.8320000000001
+      ],
+      "regularizationMS" : 8.3999999999999995e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 18.397375,
+      "totalMS" : 72.860208999999998
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 19,
+      "MEms" : 53.276584,
+      "PTS" : [
+        1082.8320000000001,
+        1082.873
+      ],
+      "regularizationMS" : 0.00070799999999999997,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.678583,
+      "totalMS" : 67.955875000000006
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 20,
+      "MEms" : 57.242249999999999,
+      "PTS" : [
+        1082.873,
+        1082.915
+      ],
+      "regularizationMS" : 0.00050000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 16.922916000000001,
+      "totalMS" : 74.165666000000002
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 21,
+      "MEms" : 61.970041000000002,
+      "PTS" : [
+        1082.915,
+        1082.9570000000001
+      ],
+      "regularizationMS" : 0.00045899999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 15.620457999999999,
+      "totalMS" : 77.590958000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 22,
+      "MEms" : 46.579166999999998,
+      "PTS" : [
+        1082.9570000000001,
+        1082.999
+      ],
+      "regularizationMS" : 0.00016699999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 16.251916000000001,
+      "totalMS" : 62.831249999999997
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 23,
+      "MEms" : 49.609833000000002,
+      "PTS" : [
+        1082.999,
+        1083.04
+      ],
+      "regularizationMS" : 0.00050000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 18.644209,
+      "totalMS" : 68.254542000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 24,
+      "MEms" : 52.872208000000001,
+      "PTS" : [
+        1083.04,
+        1083.0820000000001
+      ],
+      "regularizationMS" : 0.00016699999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 18.306750000000001,
+      "totalMS" : 71.179124999999999
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 25,
+      "MEms" : 51.660249999999998,
+      "PTS" : [
+        1083.0820000000001,
+        1083.124
+      ],
+      "regularizationMS" : 0.00016699999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.790082999999999,
+      "totalMS" : 65.450500000000005
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 26,
+      "MEms" : 38.692416999999999,
+      "PTS" : [
+        1083.124,
+        1083.165
+      ],
+      "regularizationMS" : 0.00020799999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 12.684917,
+      "totalMS" : 51.377541999999998
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 27,
+      "MEms" : 35.587541000000002,
+      "PTS" : [
+        1083.165,
+        1083.2070000000001
+      ],
+      "regularizationMS" : 0.00020900000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.724625,
+      "totalMS" : 49.312375000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 28,
+      "MEms" : 36.198791999999997,
+      "PTS" : [
+        1083.2070000000001,
+        1083.249
+      ],
+      "regularizationMS" : 8.2999999999999998e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.115792000000001,
+      "totalMS" : 50.314667
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 29,
+      "MEms" : 37.039749999999998,
+      "PTS" : [
+        1083.249,
+        1083.2909999999999
+      ],
+      "regularizationMS" : 0.000125,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 12.649209000000001,
+      "totalMS" : 49.689084000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 30,
+      "MEms" : 39.133875000000003,
+      "PTS" : [
+        1083.2909999999999,
+        1083.3320000000001
+      ],
+      "regularizationMS" : 0.000417,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.594166,
+      "totalMS" : 52.728458000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 31,
+      "MEms" : 38.77375,
+      "PTS" : [
+        1083.3320000000001,
+        1083.374
+      ],
+      "regularizationMS" : 0.00025000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.746874999999999,
+      "totalMS" : 53.520874999999997
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 32,
+      "MEms" : 38.567999999999998,
+      "PTS" : [
+        1083.374,
+        1083.4159999999999
+      ],
+      "regularizationMS" : 4.1e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 12.997,
+      "totalMS" : 51.565041000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 33,
+      "MEms" : 37.979833999999997,
+      "PTS" : [
+        1083.4159999999999,
+        1083.4570000000001
+      ],
+      "regularizationMS" : 0.000166,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.782792000000001,
+      "totalMS" : 51.762791999999997
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 34,
+      "MEms" : 36.374124999999999,
+      "PTS" : [
+        1083.4570000000001,
+        1083.499
+      ],
+      "regularizationMS" : 0.000125,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.47725,
+      "totalMS" : 50.851500000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 35,
+      "MEms" : 36.388167000000003,
+      "PTS" : [
+        1083.499,
+        1083.5409999999999
+      ],
+      "regularizationMS" : 0.00020799999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.695625,
+      "totalMS" : 50.084000000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 36,
+      "MEms" : 36.888792000000002,
+      "PTS" : [
+        1083.5409999999999,
+        1083.5820000000001
+      ],
+      "regularizationMS" : 0.00025000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 12.960540999999999,
+      "totalMS" : 49.849583000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 37,
+      "MEms" : 36.479832999999999,
+      "PTS" : [
+        1083.5820000000001,
+        1083.624
+      ],
+      "regularizationMS" : 4.1999999999999998e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.987292,
+      "totalMS" : 50.467167000000003
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 38,
+      "MEms" : 37.388083999999999,
+      "PTS" : [
+        1083.624,
+        1083.6659999999999
+      ],
+      "regularizationMS" : 0.00020799999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.420042,
+      "totalMS" : 50.808334000000002
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 39,
+      "MEms" : 36.132958000000002,
+      "PTS" : [
+        1083.6659999999999,
+        1083.7080000000001
+      ],
+      "regularizationMS" : 0.000417,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.666166,
+      "totalMS" : 49.799540999999998
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 40,
+      "MEms" : 38.258875000000003,
+      "PTS" : [
+        1083.7080000000001,
+        1083.749
+      ],
+      "regularizationMS" : 0.00054199999999999995,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.045667,
+      "totalMS" : 51.305084000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 41,
+      "MEms" : 48.479917,
+      "PTS" : [
+        1083.749,
+        1083.7909999999999
+      ],
+      "regularizationMS" : 0.000292,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 15.100166,
+      "totalMS" : 63.580374999999997
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 42,
+      "MEms" : 40.325499999999998,
+      "PTS" : [
+        1083.7909999999999,
+        1083.8330000000001
+      ],
+      "regularizationMS" : 0.00025000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.099333,
+      "totalMS" : 53.425083000000001
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 43,
+      "MEms" : 36.987875000000003,
+      "PTS" : [
+        1083.8330000000001,
+        1083.874
+      ],
+      "regularizationMS" : 0.000417,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.455166,
+      "totalMS" : 50.443458
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 44,
+      "MEms" : 36.474417000000003,
+      "PTS" : [
+        1083.874,
+        1083.9159999999999
+      ],
+      "regularizationMS" : 0.00020799999999999999,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 13.748125,
+      "totalMS" : 50.222749999999998
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 45,
+      "MEms" : 37.911040999999997,
+      "PTS" : [
+        1083.9159999999999,
+        1083.9580000000001
+      ],
+      "regularizationMS" : 0.000292,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.046625000000001,
+      "totalMS" : 51.957957999999998
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 46,
+      "MEms" : 37.717874999999999,
+      "PTS" : [
+        1083.9580000000001,
+        1084
+      ],
+      "regularizationMS" : 0.00025000000000000001,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.382375,
+      "totalMS" : 52.100499999999997
+    },
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 47,
+      "MEms" : 34.088042000000002,
+      "PTS" : [
+        1084,
+        1084.0409999999999
+      ],
+      "regularizationMS" : 8.2999999999999998e-05,
+      "span" : 1,
+      "subframes" : 3,
+      "synthesisMS" : 14.569375000000001,
+      "totalMS" : 48.657499999999999
+    }
+  ],
+  "timingScope" : "Offline work-plane wall times including diagnostic readback\/reupload. ME includes seed searches and dense estimation; synthesis includes projection, luma synthesis and result readback; excludes decode, native color and Strong.",
+  "width" : 1152
+}

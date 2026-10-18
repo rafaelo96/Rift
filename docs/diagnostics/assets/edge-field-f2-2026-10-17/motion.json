@@ -1,0 +1,42 @@
+[
+  {
+    "case": "avatar69",
+    "region": "pan-background",
+    "blockPairObservations": 15360,
+    "meanVectorBefore": [
+      -16.899830692153774,
+      0.34820541485334666
+    ],
+    "meanVectorAfter": [
+      -17.133794147006846,
+      0.3534351756551862
+    ],
+    "meanMagnitudeBefore": 17.116934391555745,
+    "meanMagnitudeAfter": 17.323749077397277,
+    "meanMagnitudeRelativeDeltaPercent": 1.2082460627035996,
+    "meanVectorChange": 0.7985142023771902,
+    "p95VectorChange": 3.3766231536865234,
+    "changedBlocksFraction": 0.6302083333333334,
+    "scope": "Estimated final vectors, not physical motion truth. Known anime cut pair6 excluded."
+  },
+  {
+    "case": "anime1082",
+    "region": "landscape-pan",
+    "blockPairObservations": 15040,
+    "meanVectorBefore": [
+      0.6726105126803914,
+      -0.22059937693818
+    ],
+    "meanVectorAfter": [
+      0.6731907868018319,
+      -0.22309988678616863
+    ],
+    "meanMagnitudeBefore": 0.8880232890393127,
+    "meanMagnitudeAfter": 0.8860355112499559,
+    "meanMagnitudeRelativeDeltaPercent": -0.22384297955825305,
+    "meanVectorChange": 0.041183118242417584,
+    "p95VectorChange": 0.13837719499427967,
+    "changedBlocksFraction": 0.8115026595744681,
+    "scope": "Estimated final vectors, not physical motion truth. Known anime cut pair6 excluded."
+  }
+]

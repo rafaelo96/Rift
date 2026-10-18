@@ -1,0 +1,7 @@
+{
+  "configuration": "Release",
+  "chip": "Apple M4",
+  "binarySHA256": "4b0e2621712972d41a7b8c6cf397a37cc7633b7bc476a56f183a7da4c23fef2a",
+  "E2": false,
+  "stageScope": "Offline work-plane; excludes source decode/Strong/native color. Same identity field hook in both arms; includes readback/reupload overhead."
+}

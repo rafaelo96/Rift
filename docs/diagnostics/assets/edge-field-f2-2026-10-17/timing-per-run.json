@@ -1,0 +1,402 @@
+[
+  {
+    "state": "off",
+    "run": 1,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 60.872625,
+    "regularizationMS": 0.000583,
+    "synthesisMS": 25.542708,
+    "totalMS": 87.746709
+  },
+  {
+    "state": "off",
+    "run": 1,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 62.70025,
+    "regularizationMS": 0.0005,
+    "synthesisMS": 20.986042,
+    "totalMS": 85.140792
+  },
+  {
+    "state": "off",
+    "run": 1,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 54.46275,
+    "regularizationMS": 0.000542,
+    "synthesisMS": 18.397375,
+    "totalMS": 72.860209
+  },
+  {
+    "state": "off",
+    "run": 1,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 60.872625,
+    "regularizationMS": 0.000583,
+    "synthesisMS": 24.188708,
+    "totalMS": 85.140792
+  },
+  {
+    "state": "off",
+    "run": 2,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 54.533458,
+    "regularizationMS": 0.0005,
+    "synthesisMS": 24.087083,
+    "totalMS": 78.123375
+  },
+  {
+    "state": "off",
+    "run": 2,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 54.397292,
+    "regularizationMS": 0.000542,
+    "synthesisMS": 19.997583,
+    "totalMS": 74.395208
+  },
+  {
+    "state": "off",
+    "run": 2,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 56.094042,
+    "regularizationMS": 0.000708,
+    "synthesisMS": 18.289375,
+    "totalMS": 73.186709
+  },
+  {
+    "state": "off",
+    "run": 2,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 55.528542,
+    "regularizationMS": 0.000584,
+    "synthesisMS": 21.4195,
+    "totalMS": 74.484167
+  },
+  {
+    "state": "off",
+    "run": 3,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 57.300791,
+    "regularizationMS": 0.0005,
+    "synthesisMS": 25.745125,
+    "totalMS": 82.238042
+  },
+  {
+    "state": "off",
+    "run": 3,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 60.872125,
+    "regularizationMS": 0.000583,
+    "synthesisMS": 20.7075,
+    "totalMS": 82.02075
+  },
+  {
+    "state": "off",
+    "run": 3,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 60.830167,
+    "regularizationMS": 0.0005,
+    "synthesisMS": 20.924125,
+    "totalMS": 79.041542
+  },
+  {
+    "state": "off",
+    "run": 3,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 60.872125,
+    "regularizationMS": 0.000542,
+    "synthesisMS": 21.668416,
+    "totalMS": 82.02075
+  },
+  {
+    "state": "off",
+    "run": 4,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 54.690875,
+    "regularizationMS": 0.000541,
+    "synthesisMS": 25.882584,
+    "totalMS": 79.184875
+  },
+  {
+    "state": "off",
+    "run": 4,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 58.375333,
+    "regularizationMS": 0.000625,
+    "synthesisMS": 22.220042,
+    "totalMS": 78.440958
+  },
+  {
+    "state": "off",
+    "run": 4,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 59.203708,
+    "regularizationMS": 0.000625,
+    "synthesisMS": 18.182166,
+    "totalMS": 77.386208
+  },
+  {
+    "state": "off",
+    "run": 4,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 58.375333,
+    "regularizationMS": 0.000625,
+    "synthesisMS": 22.478375,
+    "totalMS": 79.184875
+  },
+  {
+    "state": "off",
+    "run": 5,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 53.444791,
+    "regularizationMS": 0.000417,
+    "synthesisMS": 23.816333,
+    "totalMS": 77.261458
+  },
+  {
+    "state": "off",
+    "run": 5,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 52.981959,
+    "regularizationMS": 0.000542,
+    "synthesisMS": 19.068667,
+    "totalMS": 70.968584
+  },
+  {
+    "state": "off",
+    "run": 5,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 59.364584,
+    "regularizationMS": 0.000417,
+    "synthesisMS": 18.011833,
+    "totalMS": 75.244625
+  },
+  {
+    "state": "off",
+    "run": 5,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 55.347792,
+    "regularizationMS": 0.000541,
+    "synthesisMS": 21.08475,
+    "totalMS": 75.751541
+  },
+  {
+    "state": "on",
+    "run": 1,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 57.349167,
+    "regularizationMS": 10.24525,
+    "synthesisMS": 27.794084,
+    "totalMS": 90.656666
+  },
+  {
+    "state": "on",
+    "run": 1,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 51.972083,
+    "regularizationMS": 8.329458,
+    "synthesisMS": 19.888667,
+    "totalMS": 77.662833
+  },
+  {
+    "state": "on",
+    "run": 1,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 54.14475,
+    "regularizationMS": 8.540708,
+    "synthesisMS": 18.722084,
+    "totalMS": 83.797583
+  },
+  {
+    "state": "on",
+    "run": 1,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 56.9425,
+    "regularizationMS": 8.75175,
+    "synthesisMS": 20.466375,
+    "totalMS": 86.543375
+  },
+  {
+    "state": "on",
+    "run": 2,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 61.181083,
+    "regularizationMS": 10.555708,
+    "synthesisMS": 24.337209,
+    "totalMS": 96.488
+  },
+  {
+    "state": "on",
+    "run": 2,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 57.204042,
+    "regularizationMS": 9.156291,
+    "synthesisMS": 19.806084,
+    "totalMS": 82.149125
+  },
+  {
+    "state": "on",
+    "run": 2,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 61.974959,
+    "regularizationMS": 9.3485,
+    "synthesisMS": 17.623708,
+    "totalMS": 87.88725
+  },
+  {
+    "state": "on",
+    "run": 2,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 59.930542,
+    "regularizationMS": 9.410209,
+    "synthesisMS": 21.622042,
+    "totalMS": 88.947167
+  },
+  {
+    "state": "on",
+    "run": 3,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 61.753292,
+    "regularizationMS": 10.027,
+    "synthesisMS": 25.854542,
+    "totalMS": 99.335416
+  },
+  {
+    "state": "on",
+    "run": 3,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 57.348083,
+    "regularizationMS": 9.159166,
+    "synthesisMS": 19.39375,
+    "totalMS": 87.189875
+  },
+  {
+    "state": "on",
+    "run": 3,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 59.481792,
+    "regularizationMS": 9.768125,
+    "synthesisMS": 19.048958,
+    "totalMS": 86.700416
+  },
+  {
+    "state": "on",
+    "run": 3,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 59.481792,
+    "regularizationMS": 9.802625,
+    "synthesisMS": 20.642208,
+    "totalMS": 88.994792
+  },
+  {
+    "state": "on",
+    "run": 4,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 59.635125,
+    "regularizationMS": 9.571708,
+    "synthesisMS": 25.0775,
+    "totalMS": 96.281917
+  },
+  {
+    "state": "on",
+    "run": 4,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 53.246959,
+    "regularizationMS": 9.96975,
+    "synthesisMS": 20.241709,
+    "totalMS": 85.267042
+  },
+  {
+    "state": "on",
+    "run": 4,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 59.833791,
+    "regularizationMS": 9.575,
+    "synthesisMS": 18.887458,
+    "totalMS": 85.599125
+  },
+  {
+    "state": "on",
+    "run": 4,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 59.833791,
+    "regularizationMS": 9.96975,
+    "synthesisMS": 21.914667,
+    "totalMS": 91.933042
+  },
+  {
+    "state": "on",
+    "run": 5,
+    "case": "avatar69",
+    "pairs": 44,
+    "MEms": 58.083,
+    "regularizationMS": 8.843125,
+    "synthesisMS": 24.638958,
+    "totalMS": 90.973125
+  },
+  {
+    "state": "on",
+    "run": 5,
+    "case": "avatar300",
+    "pairs": 44,
+    "MEms": 60.356,
+    "regularizationMS": 9.987958,
+    "synthesisMS": 25.790666,
+    "totalMS": 93.250625
+  },
+  {
+    "state": "on",
+    "run": 5,
+    "case": "anime1082",
+    "pairs": 44,
+    "MEms": 55.285208,
+    "regularizationMS": 8.427,
+    "synthesisMS": 17.490292,
+    "totalMS": 79.713334
+  },
+  {
+    "state": "on",
+    "run": 5,
+    "case": "all",
+    "pairs": 132,
+    "MEms": 58.083,
+    "regularizationMS": 9.364042,
+    "synthesisMS": 24.476958,
+    "totalMS": 90.973125
+  }
+]

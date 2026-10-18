@@ -1,9 +1,9 @@
 """Bounded offline F2 comparisons; E2 always off, no source decoding or player changes."""
 from pathlib import Path
 import os,subprocess,argparse,json,hashlib
-p=argparse.ArgumentParser();p.add_argument('phase',choices=['quality','timing','motion']);args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('phase',choices=['quality','timing','motion']);p.add_argument('--repeat',type=int,choices=range(1,6));args=p.parse_args()
 R=Path(__file__).resolve().parents[3];O=R/'docs/diagnostics/assets/edge-field-f2-2026-10-17';CASES=['avatar69','avatar300','anime1082']
-for repeat in (range(1,6) if args.phase=='timing' else [0]):
+for repeat in (([args.repeat] if args.repeat else range(1,6)) if args.phase=='timing' else [0]):
  for state in ['off','on']:
   for case in CASES:
    out=O/case/(f'timing-{state}-{repeat}' if repeat else args.phase+'-'+state);out.mkdir(exist_ok=True);print(args.phase,repeat,state,case,flush=True)

@@ -1,0 +1,26 @@
+{
+  "E2" : false,
+  "enabled" : false,
+  "height" : 480,
+  "identityOrdinary" : true,
+  "phase" : "quality",
+  "records" : [
+    {
+      "crossesCut" : false,
+      "enabled" : false,
+      "first" : 4,
+      "MEms" : 62.537916000000003,
+      "PTS" : [
+        69.194000000000003,
+        69.278000000000006
+      ],
+      "regularizationMS" : 0.0011249999999999999,
+      "span" : 2,
+      "subframes" : 1,
+      "synthesisMS" : 15.611667000000001,
+      "totalMS" : 78.150707999999995
+    }
+  ],
+  "timingScope" : "Offline work-plane wall times including diagnostic readback\/reupload. ME includes seed searches and dense estimation; synthesis includes projection, luma synthesis and result readback; excludes decode, native color and Strong.",
+  "width" : 1152
+}
