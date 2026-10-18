@@ -537,7 +537,9 @@ kernel void denseSynthesize(texture2d<float,access::sample> a [[texture(0)]],tex
     }
     float weights=(1-t)*c0+t*c1;
     float alpha=weights>1e-4f ? t*c1/weights : t;
-    float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : ((1-t)*v0+t*v1);
+    // In high-motion / unmatchable regions (weights <= 1e-4), fall back to clean linear cross-fade ((1-t)*av + t*bv)
+    // instead of warping with unreliable vectors or blending mismatched motion samples (v0, v1).
+    float value=weights>1e-4f ? ((1-t)*c0*v0+t*c1*v1)/weights : ((1-t)*av + t*bv);
     if(owned) { value=ownerValue; weights=ownerConfidence; alpha=ownerAlpha; }
     if(still) { value=av+t*offset; q0=p; q1=p; alpha=offset!=0 ? t : 0; }
     #ifdef DENSE_CANDIDATES
