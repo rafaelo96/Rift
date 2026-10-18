@@ -66,6 +66,10 @@ private func envDouble(_ key: String) -> Double? {
     return v
 }
 
+if let folder=ProcessInfo.processInfo.environment["MV_SCREENSHOT_AUDIT_WINDOW"], let output=ProcessInfo.processInfo.environment["MV_SCREENSHOT_AUDIT_OUTPUT"] {
+    do { try runFramePlusScreenshotAudit(folder: folder, output: output); exit(0) }
+    catch { print("SCREENSHOT AUDIT FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_F2_DIAGNOSTIC",0)==1 {
     do {try runEdgeFieldDiagnostic();exit(0)} catch {print("F2 FAILED: \(error)");exit(3)}
 }
