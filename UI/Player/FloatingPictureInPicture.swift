@@ -104,10 +104,11 @@ final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
     private let panel: FloatingVideoPanel
     private var dismissed = false
 
-    init(state: RiftPlayerState, displayLayer: AVSampleBufferDisplayLayer, aspectRatio: CGFloat) {
+    init(state: RiftPlayerState, displayLayer: AVSampleBufferDisplayLayer, aspectRatio: CGFloat,
+         sourceWindow playerWindow: NSWindow? = nil) {
         self.state = state
         self.displayLayer = displayLayer
-        sourceWindow = (displayLayer.superlayer?.delegate as? NSView)?.window
+        sourceWindow = playerWindow ?? (displayLayer.superlayer?.delegate as? NSView)?.window
             ?? NSApp.mainWindow ?? NSApp.keyWindow
         sourceLayer = displayLayer.superlayer
         sourceFrame = displayLayer.frame
@@ -119,7 +120,7 @@ final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
         let size = CGSize(width: width, height: width / ratio)
         panel = FloatingVideoPanel(
             contentRect: CGRect(x: visible.maxX - size.width - 20,
-                                y: visible.minY + 20, width: size.width, height: size.height),
+                                y: visible.maxY - size.height - 20, width: size.width, height: size.height),
             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false
         )
         super.init()
@@ -161,11 +162,12 @@ final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
             minimum: panel.contentMinSize), display: true)
     }
 
-    func show() {
+    func show(automatically: Bool = false) {
         guard !dismissed else { return }
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.alphaValue = 0
-        panel.makeKeyAndOrderFront(nil)
+        if automatically { panel.orderFrontRegardless() }
+        else { panel.makeKeyAndOrderFront(nil) }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             panel.alphaValue = 1
         } else {
@@ -197,12 +199,13 @@ final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
     private func restore() {
         let window = sourceWindow
         state?.closeFloatingPictureInPicture()
-        window?.makeKeyAndOrderFront(nil)
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
         NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        state?.closeFloatingPictureInPicture()
+        state?.stopFloatingPictureInPicture()
         return false
     }
 }
@@ -246,7 +249,7 @@ private struct FloatingVideoContent: View {
             VStack {
                 HStack {
                     control("xmark", label: "Close Picture in Picture") {
-                        state.closeFloatingPictureInPicture()
+                        state.stopFloatingPictureInPicture()
                     }
                     Spacer()
                     control("pip.exit", label: "Restore video window", action: restore)
@@ -316,5 +319,43 @@ private struct FloatingVideoContent: View {
         .buttonStyle(.plain)
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+/// Watches the player window, never the floating panel or a preferences window.
+struct AutomaticPictureInPictureObserver: NSViewRepresentable {
+    let state: RiftPlayerState
+
+    func makeNSView(context: Context) -> ObserverView {
+        let view = ObserverView()
+        view.state = state
+        return view
+    }
+
+    func updateNSView(_ view: ObserverView, context: Context) { view.state = state }
+
+    final class ObserverView: NSView {
+        weak var state: RiftPlayerState?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            let center = NotificationCenter.default
+            center.removeObserver(self)
+            guard let window else { return }
+            state?.pictureInPicturePlayerWindow = window
+            for name in [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
+                center.addObserver(self, selector: #selector(changed), name: name, object: window)
+            }
+            for name in [NSApplication.didResignActiveNotification, NSApplication.didBecomeActiveNotification] {
+                center.addObserver(self, selector: #selector(changed), name: name, object: NSApp)
+            }
+        }
+
+        @objc private func changed(_ notification: Notification) {
+            guard let window else { return }
+            state?.updateAutomaticPictureInPicture(for: window)
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
     }
 }

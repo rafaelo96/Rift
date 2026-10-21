@@ -30,6 +30,10 @@ struct RiftApp: App {
                 }
                 .keyboardShortcut("o", modifiers: .command)
             }
+            CommandMenu("Picture in Picture") {
+                Toggle("Automatically when minimized", isOn: $state.automaticPiPOnMinimize)
+                Toggle("Automatically when switching apps", isOn: $state.automaticPiPOnAppSwitch)
+            }
             CommandMenu("Language") {
                 Button("English") { AppDelegate.setLanguage("en") }
                 Button("Spanish") { AppDelegate.setLanguage("es") }
@@ -59,7 +63,6 @@ struct RiftApp: App {
         Settings {
             RiftSettingsView(state: state)
         }
-
     }
 }
 

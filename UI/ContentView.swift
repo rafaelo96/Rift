@@ -162,6 +162,7 @@ private struct TopChromeGlyph: View {
         Image(systemName: systemName)
             .font(.system(size: 13, weight: .medium))
             .frame(width: 22, height: 22)
+            .contentTransition(.symbolEffect(.replace))
     }
 }
 
@@ -335,6 +336,12 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .background(appBackdrop)
+        .background {
+            if let rift = state as? RiftPlayerState {
+                AutomaticPictureInPictureObserver(state: rift)
+                    .frame(width: 0, height: 0)
+            }
+        }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: handleDrop)
         .animation(controlVisibilityAnimation, value: state.hasVideo)
         .animation(controlDragAnimation, value: isDropTargeted)
@@ -413,9 +420,18 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .overlay {
                     if rift.isPictureInPictureActive {
                         pictureInPicturePlaceholder
-                            .transition(.opacity)
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity
+                                        .combined(with: .scale(scale: 0.92))
+                                        .animation(pipTransitionAnimation),
+                                    removal: .opacity
+                                        .animation(pipTransitionAnimation)
+                                )
+                            )
                     }
                 }
+                .animation(pipTransitionAnimation, value: rift.isPictureInPictureActive)
         } else if let rift = state as? RiftPlayerState, let p = rift.player {
             PlayerView(player: p, videoGravity: presentationMode.videoGravity)
         } else {
@@ -425,12 +441,23 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private var pictureInPicturePlaceholder: some View {
         ZStack {
-            Color.black
+            // Frosted dark glass — matches macOS system PiP placeholder feel
+            Color.black.opacity(0.72)
+                .background(.ultraThinMaterial)
+
+            // Subtle radial vignette
+            RadialGradient(
+                colors: [.clear, .black.opacity(0.18)],
+                center: .center,
+                startRadius: 80,
+                endRadius: 420
+            )
 
             VStack(spacing: 18) {
                 Image(systemName: "pip")
                     .font(.system(size: 58, weight: .light))
                     .foregroundStyle(.white.opacity(0.64))
+                    .symbolRenderingMode(.hierarchical)
 
                 Text(NSLocalizedString("This video is playing in picture in picture.", comment: ""))
                     .font(.system(size: 16, weight: .medium, design: .rounded))
@@ -440,8 +467,15 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             .padding(32)
         }
         .allowsHitTesting(false)
-        .animation(controlVisibilityAnimation, value: (state as? RiftPlayerState)?.isPictureInPictureActive)
         .accessibilityElement(children: .combine)
+    }
+
+    /// macOS-native easing for PiP enter/exit — mirrors the system window
+    /// minimize/restore curve (fast out, gentle settle).
+    private var pipTransitionAnimation: Animation {
+        reduceMotion
+            ? .linear(duration: 0.01)
+            : .timingCurve(0.22, 1, 0.36, 1, duration: 0.42)
     }
 
     private var topPlayerControls: some View {
@@ -617,6 +651,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 ) {
                     rift.togglePictureInPicture()
                 }
+                .animation(pipTransitionAnimation, value: rift.isPictureInPictureActive)
             }
 
             TopChromeButton(

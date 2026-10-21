@@ -122,12 +122,17 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
     }
 
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
-        guard let state, state.duration > 0 else { return .invalid }
-        return CMTimeRange(start: .zero, duration: CMTime(seconds: state.duration, preferredTimescale: 600))
+        let duration = state?.duration ?? 0
+        let current = state?.currentTime ?? 0
+        let range: CMTimeRange = duration > 0
+            ? CMTimeRange(start: .zero, duration: CMTime(seconds: duration, preferredTimescale: 600))
+            : .invalid
+        return range
     }
 
     func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
-        !(state?.isPlaying ?? false)
+        let paused = !(state?.isPlaying ?? false)
+        return paused
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {
@@ -135,8 +140,13 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion: @escaping () -> Void) {
-        state?.seek(by: skipInterval.seconds)
-        completion()
+        // Contrato de AVKit: el completion debe dispararse SOLO cuando el seek
+        // terminó de verdad (timebase re-anclado en el destino). Se entrega a la
+        // cola de seeks de RiftPlayerState, que lo invoca al terminar performSeek.
+        // Si el estado ya no existe (teardown), dispararlo de inmediato para no
+        // dejar la UI del PiP pegada en estado "seeking".
+        guard let state else { completion(); return }
+        state.enqueueSeek(by: skipInterval.seconds, completion: completion)
     }
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
@@ -298,6 +308,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         return lease
     }
+    weak var pictureInPicturePlayerWindow: NSWindow?
+    private var automaticallyOpenedPiP = false
     private var floatingPictureInPicture: FloatingPictureInPictureController?
     private var resumePlaybackDialog: ResumePlaybackDialog?
     private var resumePlaybackRequestID = UUID()
@@ -500,6 +512,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// el target y una única tarea drenadora los ejecuta en orden.
     private var pendingSeekTarget: Double?
     private var seekTask: Task<Void, Never>?
+    /// Completions de seeks pendientes (contrato de AVPictureInPictureController:
+    /// el completionHandler de skipByInterval debe dispararse solo cuando el
+    /// timebase ya refleja el nuevo tiempo — ver drainPendingSeekCompletions).
+    private var pendingSeekCompletions: [() -> Void] = []
     /// Cada seek invalida tanto el decode como la presentación que pertenecían
     /// al segmento anterior. Sin esta generación, un display task cancelado
     /// puede volver de Metal y descartar/consumir frames del seek nuevo usando
@@ -883,6 +899,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         )
     }
 
+    func saveSessionBeforeTermination() { persistCurrentSession(force: true) }
+
     private func persistCurrentSession(force: Bool = false) {
         guard let sourceURL, duration > 0, currentTime.isFinite else { return }
         guard force || abs(currentTime - lastPersistedPlaybackPosition) >= 5 else { return }
@@ -909,8 +927,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         recentVideos = []
         UserDefaults.standard.removeObject(forKey: Self.recentVideosKey)
     }
-
-    func saveSessionBeforeTermination() { persistCurrentSession(force: true) }
 
     func replacePlaylist(with urls: [URL]) {
         let items = deduplicatedPlaylistItems(from: urls)
@@ -1082,6 +1098,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // Start display only after Frame+ has finished its one-shot warm-up.
         if isPlaying, framePlusAdmissionTask == nil { startDisplayLoop() }
         updateTimePolling()
+        invalidatePictureInPicturePlaybackState()
     }
     private func updateTimePolling() {
         if isPlaying {
@@ -1163,9 +1180,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             cue.start <= adjustedTime && adjustedTime < cue.end
         }?.text
     }
-    func seek(to time: Double) {
+    // Witnesses exactos de PlaybackControlling / PlayerStateProviding.
+    func seek(to time: Double) { enqueueSeek(to: time, completion: nil) }
+    func seek(by delta: Double) { enqueueSeek(by: delta, completion: nil) }
+
+    /// Seek con completion opcional. El contrato de AVPictureInPictureController
+    /// exige que su completionHandler se dispare solo cuando el timebase ya
+    /// refleja el destino; por eso encola y no invoca en línea.
+    func enqueueSeek(to time: Double, completion: (() -> Void)? = nil) {
         pendingSeekTarget = time
+        if let completion { pendingSeekCompletions.append(completion) }
         pumpSeekQueue()
+    }
+    func enqueueSeek(by delta: Double, completion: (() -> Void)? = nil) {
+        enqueueSeek(to: currentTime + delta, completion: completion)
     }
     /// Drena seeks pendientes en orden; si llega otro seek mientras el actual
     /// corre, el drainer lo retoma al terminar (sin llamadas superpuestas y
@@ -1175,7 +1203,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         seekTask = Task { @MainActor [weak self] in
             while let target = self?.takePendingSeek() {
                 await self?.performSeek(to: target)
+                // El seek terminó y el timebase quedó anclado en el destino: es
+                // el momento seguro de avisar a AVKit (contrato del PiP).
+                self?.drainPendingSeekCompletions()
             }
+            // Red de seguridad: nunca dejar completions sin disparar.
+            self?.drainPendingSeekCompletions()
             self?.seekTask = nil
             // Re-chequeo: un seek que llegó en la ventana de teardown del
             // drainer no debe perderse (seekTask ya es nil → re-bombea).
@@ -1187,7 +1220,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         pendingSeekTarget = nil
         return t
     }
+    /// Dispara los completions acumulados de seeks. Contrato de AVKit (header
+    /// AVPictureInPictureController_AVSampleBufferDisplayLayerSupport.h): el
+    /// completionHandler de skipByInterval debe invocarse solo cuando el timebase
+    /// ya refleja el tiempo y rate actuales. Invocarlo antes (seek aún en vuelo)
+    /// deja la UI del PiP pegada en estado "seeking": barra de tiempo muerta.
+    private func drainPendingSeekCompletions() {
+        guard !pendingSeekCompletions.isEmpty else { return }
+        let completions = pendingSeekCompletions
+        pendingSeekCompletions.removeAll()
+        for completion in completions { completion() }
+        invalidatePictureInPicturePlaybackState()
+    }
     private func performSeek(to time: Double) async {
+        let seekStart = Date()
         let target = min(max(time, 0), duration)
         let shouldResume = isPlaying
         playbackGeneration &+= 1
@@ -1258,7 +1304,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // conserva PTS ni buffers del segmento anterior.
         startDecodeLoop(callDisplayLoopOnFirstFrame: false, minimumVideoPTS: target)
     }
-    func seek(by delta: Double) { seek(to: currentTime + delta) }
+    // (seek(by:) witness exacto declarado junto a seek(to:) arriba)
     func setVolume(_ v: Double) {
         volume = min(max(v, 0), 1)
         audioRenderer?.volume = Float(volume)
@@ -1367,6 +1413,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             Task { @MainActor in
                 guard let self, !self.isPointerOverControls else { return }
                 self.areControlsVisible = false
+                NSCursor.setHiddenUntilMouseMoves(true)
             }
         }
     }
@@ -1581,11 +1628,27 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
+    func updateAutomaticPictureInPicture(for window: NSWindow) {
+        pictureInPicturePlayerWindow = window
+        let minimized = window.isMiniaturized
+        let away = !NSApp.isActive
+        if automaticallyOpenedPiP {
+            if !minimized && !away { closeFloatingPictureInPicture() }
+        } else if floatingPictureInPicture == nil, hasVideo, isPlaying,
+                  (minimized && automaticPiPOnMinimize) || (away && automaticPiPOnAppSwitch) {
+            openFloatingPictureInPicture(automatically: true)
+        }
+    }
+
     func togglePictureInPicture() {
         if floatingPictureInPicture != nil {
             closeFloatingPictureInPicture()
             return
         }
+        openFloatingPictureInPicture(automatically: false)
+    }
+
+    private func openFloatingPictureInPicture(automatically: Bool) {
         guard let layer = renderer?.displayLayer else {
             statusMessage = "Picture in Picture is not available for this video"
             return
@@ -1593,22 +1656,34 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let width = CGFloat(videoTrack?.width ?? 16)
         let height = CGFloat(videoTrack?.height ?? 9)
         let floating = FloatingPictureInPictureController(
-            state: self, displayLayer: layer, aspectRatio: width / max(height, 1)
+            state: self, displayLayer: layer, aspectRatio: width / max(height, 1),
+            sourceWindow: pictureInPicturePlayerWindow
         )
+        automaticallyOpenedPiP = automatically
         floatingPictureInPicture = floating
         beginPictureInPictureSubtitlePresentation(composited: false)
         isPictureInPictureActive = true
-        floating.show()
+        floating.show(automatically: automatically)
+    }
+
+    func stopFloatingPictureInPicture() {
+        guard floatingPictureInPicture != nil else { return }
+        if isPlaying { togglePlay() }
+        closeFloatingPictureInPicture()
     }
 
     func closeFloatingPictureInPicture() {
         guard let floating = floatingPictureInPicture else { return }
         floating.dismiss()
         floatingPictureInPicture = nil
+        automaticallyOpenedPiP = false
         endPictureInPictureSubtitlePresentation()
     }
 
     fileprivate func beginPictureInPictureSubtitlePresentation(composited: Bool = true) {
+        if ProcessInfo.processInfo.environment["RIFT_AUTO_ACTIVATE"] == "1" {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         if composited {
             renderer?.pictureInPictureSubtitle = { [weak self] time in self?.subtitleText(at: time) }
         } else {
@@ -1624,6 +1699,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         renderer?.refreshSubtitlePresentation()
     }
 
+    /// AVKit exige (header del SDK) que la app avise al AVPictureInPictureController
+    /// cada vez que cambia el estado de reproducción (pausa/play, duración, fin de
+    /// un seek): en cada llamada re-consulta timeRangeForPlayback / isPlaybackPaused
+    /// y refresca la UI del panel PiP (barra de tiempo incluida).
+    private func invalidatePictureInPicturePlaybackState() {
+        pictureInPictureController?.invalidatePlaybackState()
+    }
+
     private func configurePictureInPicture() {
         // The floating window shares the existing display layer and synchronizer.
         isPictureInPictureAvailable = renderer != nil
@@ -1636,6 +1719,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     fileprivate func suppressBrokenPictureInPictureHostOverlay() {
         guard pictureInPictureController?.isPictureInPictureActive == true,
               let rootView = pictureInPicturePanel()?.contentView else { return }
+        // Evidencia (Fase 1): árbol de vistas del panel PiP antes de aplicar
+        // el workaround de Tahoe. Si la vista host que ocultamos contiene los
+        // controles (timeline incluido) en esta versión, ocultarla mata la barra.
         Self.hideBrokenPictureInPictureHost(in: rootView)
     }
 
@@ -1711,6 +1797,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             hideBrokenPictureInPictureHost(in: subview)
         }
     }
+
     func toggleVisualEnhancements() {
         visualEnhancementsEnabled.toggle()
         applyVisualAdjustments()
@@ -1980,6 +2067,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.videoTrack = v
         self.duration = info.duration
         self.currentTime = min(max(startTime, 0), info.duration)
+        invalidatePictureInPicturePlaybackState()
         self.sourceFrameRate = v.frameRate
         self.activePlaylistItemID = self.playlist.first(where: { $0.path == url.path })?.id
         self.markers = self.markersByPath[url.path] ?? []
