@@ -20,8 +20,14 @@ private struct RiftBrandMark: View {
     var size: CGFloat = 96
 
     var body: some View {
-        if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "png"),
+        if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "svg"),
            let image = NSImage(contentsOf: url) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        } else if let url = Bundle.module.url(forResource: "Rift-icon", withExtension: "png"),
+                  let image = NSImage(contentsOf: url) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -151,26 +157,12 @@ private enum VideoPresentationMode: CaseIterable, Identifiable {
 
 private struct TopChromeGlyph: View {
     let systemName: String
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isHovered = false
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white.opacity(isHovered ? 0.98 : 0.76))
-            .frame(width: 30, height: 30)
-            .contentShape(Circle())
-            .background {
-                Circle()
-                    .fill(.white.opacity(isHovered ? 0.16 : 0.001))
-            }
-            .overlay {
-                Circle()
-                    .strokeBorder(.white.opacity(isHovered ? 0.24 : 0.001), lineWidth: 0.5)
-            }
-            .scaleEffect(reduceMotion || !isHovered ? 1 : 1.04)
-            .animation(reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.16), value: isHovered)
-            .onHover { isHovered = $0 }
+            .font(.system(size: 13, weight: .medium))
+            .frame(width: 22, height: 22)
+            .contentTransition(.symbolEffect(.replace))
     }
 }
 
@@ -183,7 +175,8 @@ private struct TopChromeButton: View {
         Button(action: action) {
             TopChromeGlyph(systemName: systemName)
         }
-        .buttonStyle(.plain)
+        .riftGlassButton()
+        .buttonBorderShape(.circle)
         .accessibilityLabel(accessibilityLabel)
         .help(accessibilityLabel)
     }
@@ -343,15 +336,25 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .background(appBackdrop)
+        .background {
+            if let rift = state as? RiftPlayerState {
+                AutomaticPictureInPictureObserver(state: rift)
+                    .frame(width: 0, height: 0)
+            }
+        }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: handleDrop)
         .animation(controlVisibilityAnimation, value: state.hasVideo)
         .animation(controlDragAnimation, value: isDropTargeted)
         .onAppear {
             state.startHideTimer()
             setupKeyboardMonitor()
+            AppDelegate.playerState = state as? RiftPlayerState
             let pendingURLs = AppDelegate.takePendingOpenURLs()
             for url in pendingURLs {
                 (state as? RiftPlayerState)?.loadVideo(url)
+            }
+            if pendingURLs.isEmpty {
+                (state as? RiftPlayerState)?.restoreLastSessionIfAvailable()
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 interactiveReady = true
@@ -417,9 +420,18 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .overlay {
                     if rift.isPictureInPictureActive {
                         pictureInPicturePlaceholder
-                            .transition(.opacity)
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity
+                                        .combined(with: .scale(scale: 0.92))
+                                        .animation(pipTransitionAnimation),
+                                    removal: .opacity
+                                        .animation(pipTransitionAnimation)
+                                )
+                            )
                     }
                 }
+                .animation(pipTransitionAnimation, value: rift.isPictureInPictureActive)
         } else if let rift = state as? RiftPlayerState, let p = rift.player {
             PlayerView(player: p, videoGravity: presentationMode.videoGravity)
         } else {
@@ -429,12 +441,23 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private var pictureInPicturePlaceholder: some View {
         ZStack {
-            Color.black
+            // Frosted dark glass — matches macOS system PiP placeholder feel
+            Color.black.opacity(0.72)
+                .background(.ultraThinMaterial)
+
+            // Subtle radial vignette
+            RadialGradient(
+                colors: [.clear, .black.opacity(0.18)],
+                center: .center,
+                startRadius: 80,
+                endRadius: 420
+            )
 
             VStack(spacing: 18) {
                 Image(systemName: "pip")
                     .font(.system(size: 58, weight: .light))
                     .foregroundStyle(.white.opacity(0.64))
+                    .symbolRenderingMode(.hierarchical)
 
                 Text(NSLocalizedString("This video is playing in picture in picture.", comment: ""))
                     .font(.system(size: 16, weight: .medium, design: .rounded))
@@ -444,8 +467,15 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             .padding(32)
         }
         .allowsHitTesting(false)
-        .animation(controlVisibilityAnimation, value: (state as? RiftPlayerState)?.isPictureInPictureActive)
         .accessibilityElement(children: .combine)
+    }
+
+    /// macOS-native easing for PiP enter/exit — mirrors the system window
+    /// minimize/restore curve (fast out, gentle settle).
+    private var pipTransitionAnimation: Animation {
+        reduceMotion
+            ? .linear(duration: 0.01)
+            : .timingCurve(0.22, 1, 0.36, 1, duration: 0.42)
     }
 
     private var topPlayerControls: some View {
@@ -468,6 +498,16 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             .popover(isPresented: $showPlaybackOptions, arrowEdge: .top) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
+                if let message = (state as? RiftPlayerState)?.statusMessage,
+                   message != "Ready" {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 480)
+                        .accessibilityLabel(message)
+                }
+
                 Button {
                     (state as? RiftPlayerState)?.openVideo()
                 } label: {
@@ -601,6 +641,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .padding(10)
                 }
                 .frame(width: 290, height: 360)
+                .background(VideoOverlayGlass(cornerRadius: 16))
                 }
 
             if let rift = state as? RiftPlayerState, rift.isPictureInPictureAvailable {
@@ -610,6 +651,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 ) {
                     rift.togglePictureInPicture()
                 }
+                .animation(pipTransitionAnimation, value: rift.isPictureInPictureActive)
             }
 
             TopChromeButton(
@@ -620,19 +662,12 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .fixedSize()
-        .padding(4)
-        .background {
-            GlassBackground(cornerRadius: 19, effectOpacity: 0.34)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 19, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        .padding(6)
         .padding(.top, 12)
         .padding(.trailing, 14)
         .popover(isPresented: $showTechnicalInfo, arrowEdge: .top) {
             technicalInfoPanel
+                .background(VideoOverlayGlass(cornerRadius: 16))
         }
     }
 
@@ -653,21 +688,17 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     technicalInfoRow(NSLocalizedString("Duration", comment: ""), info.duration)
                 }
             }
-            .foregroundStyle(.white.opacity(0.92))
             .padding(18)
             .frame(width: 320, alignment: .leading)
-            .background {
-                GlassBackground(cornerRadius: 16, effectOpacity: 0.28)
-            }
         }
     }
 
     private func technicalInfoRow(_ label: String, _ value: String) -> some View {
         GridRow {
             Text(label)
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(.secondary)
             Text(value)
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.primary)
                 .lineLimit(1)
         }
         .font(.system(size: 12, weight: .medium))
@@ -802,10 +833,10 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 GlassBackground(
                     cornerRadius: 0,
                     blendingMode: .behindWindow,
-                    effectOpacity: 0.58
+                    effectOpacity: 0.42
                 )
 
-                Color.black.opacity(isDropTargeted ? 0.12 : 0.20)
+                Color.black.opacity(isDropTargeted ? 0.04 : 0.08)
             }
         }
         .ignoresSafeArea()
@@ -849,61 +880,88 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var openVideoPrompt: some View {
-        Button {
-            (state as? RiftPlayerState)?.openVideo()
-        } label: {
-            VStack(spacing: 22) {
-                RiftBrandMark(size: 100)
-                    .scaleEffect(isDropTargeted ? 1.06 : 1 + promptPulse * 0.018)
-                    .shadow(color: RiftPalette.blue.opacity(0.35 + promptPulse * 0.12), radius: 24, x: 0, y: 12)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .strokeBorder(.white.opacity(isDropTargeted ? 0.48 : 0.22), lineWidth: 0.5)
-                    }
+        ZStack {
+            VStack(spacing: 18) {
+                RiftBrandMark(size: 118)
+                    .scaleEffect(isDropTargeted ? 1.04 : 1)
+                    .shadow(color: Color.accentColor.opacity(0.32), radius: 22, y: 8)
 
-                VStack(spacing: 10) {
+                VStack(spacing: 7) {
                     Text(NSLocalizedString("Open Video", comment: ""))
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.96))
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
 
-                    Text(NSLocalizedString("Drop a file here or click to browse", comment: ""))
-                        .font(.system(size: 15, weight: .regular))
+                    Text(NSLocalizedString("Drop a video here or click to browse", comment: ""))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .foregroundStyle(.white.opacity(0.48))
-
-                    // TODO(Core): la referencia mostraba aquí `state.statusMessage`
-                    // y `state.conversionProgress` del pipeline (progreso de carga/
-                    // transcodificación). Sin Core/ esos estados no existen.
                 }
+
+                Button {
+                    (state as? RiftPlayerState)?.openVideo()
+                } label: {
+                    Label(NSLocalizedString("Choose Video…", comment: ""), systemImage: "folder")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 38)
+                }
+                .riftGlassButton(prominent: true)
+                .controlSize(.large)
             }
-            .contentShape(Rectangle())
+
+            VStack {
+                Spacer()
+
+                Divider()
+
+                HStack(spacing: 14) {
+                    Label(NSLocalizedString("Supports MKV, MP4, HEVC, AV1, 4K", comment: ""), systemImage: "folder")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    formatBadge("MKV")
+                    formatBadge("MP4")
+                    formatBadge("HEVC")
+                    formatBadge("AV1")
+                    formatBadge("4K")
+                }
+                .padding(.top, 8)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 36)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .animation(controlDragAnimation, value: isDropTargeted)
+    }
+
+    private func formatBadge(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background {
+                Capsule()
+                    .fill(.white.opacity(0.025))
+                    .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5) }
+            }
     }
 
     private func subtitleOverlay(_ text: String) -> some View {
         VStack {
             Spacer()
 
-            Text(text)
-                .font(.system(size: 28, weight: .semibold))
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.95), radius: 4, x: 0, y: 1)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .background {
-                    GlassBackground(cornerRadius: 12)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(RiftPalette.cyan.opacity(0.24), lineWidth: 0.5)
-                        }
-                }
+            SubtitleCaption(text: text,
+                fontSize: (state as? RiftPlayerState)?.subtitleFontSize ?? 28,
+                textColor: SubtitleColors.color((state as? RiftPlayerState)?.subtitleTextColorHex ?? "FFFFFF"),
+                backgroundStyle: (state as? RiftPlayerState)?.subtitleBackgroundStyle ?? .liquidGlass,
+                backgroundColor: SubtitleColors.color((state as? RiftPlayerState)?.subtitleBackgroundColorHex ?? "000000"),
+                backgroundOpacity: (state as? RiftPlayerState)?.subtitleBackgroundOpacity ?? 0.72)
                 .frame(maxWidth: 920)
                 .padding(.horizontal, 34)
-                .padding(.bottom, state.areControlsVisible ? 154 : 58)
+                .padding(.bottom, max((state as? RiftPlayerState)?.subtitleBottomInset ?? 58, state.areControlsVisible ? 154 : 0))
         }
         .allowsHitTesting(false)
         .animation(controlVisibilityAnimation, value: state.areControlsVisible)
@@ -927,12 +985,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 droppedURL = nil
             }
 
-            guard droppedURL != nil else { return }
+            guard let droppedURL, droppedURL.isFileURL else { return }
 
             Task { @MainActor in
-                // TODO(Core): la referencia llamaba `state.loadVideo(droppedURL)`.
-                // La carga/decodificación del video pertenece a Core/Demux +
-                // Core/Decode; aquí solo se acepta el drop y se marca el hueco.
+                (state as? RiftPlayerState)?.replacePlaylist(with: [droppedURL])
+                AppDelegate.bringPlayerWindowToFront()
             }
         }
 
