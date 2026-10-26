@@ -67,6 +67,62 @@ let decoder = VTDecoder()
 try decoder.prepare(track: video)
 printRSS(label: "after prepare")
 
+// MARK: Repeated-frame mode (FRAMEPOOL_MODE=dedup)
+//   FRAMEPOOL_SEEK=<s> FRAMEPOOL_SECONDS=<s>: streams the span through an N=4
+//   window consuming pairs like the player, once with droppingRepeats and once
+//   without; prints every dropped pts (DEDUP_DROP), pair spans, detector cost,
+//   RSS, and checks that droppingRepeats:false equals reservePair().
+if ProcessInfo.processInfo.environment["FRAMEPOOL_MODE"] == "dedup" {
+    let seekAt = Double(ProcessInfo.processInfo.environment["FRAMEPOOL_SEEK"] ?? "1170")!
+    let seconds = Double(ProcessInfo.processInfo.environment["FRAMEPOOL_SECONDS"] ?? "120")!
+    func run(dropping: Bool) throws -> (pairs: [(Double, Double)], dropped: [Double], ms: [Double], rss: [Int64]) {
+        try demuxer.seek(to: seekAt)
+        decoder.flush()
+        let window = SlidingFramePool(capacity: 4)
+        var pairs: [(Double, Double)] = [], dropped: [Double] = [], ms: [Double] = [], rss: [Int64] = []
+        var decoded = 0
+        func consume(minimum: Int) {
+            while window.count >= minimum {
+                let start = DispatchTime.now().uptimeNanoseconds
+                guard let reserved = window.reservePair(droppingRepeats: dropping) else { return }
+                ms.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
+                if !dropping, let plain = window.reservePair(), plain.0.pts != reserved.pair.0.pts || plain.1.pts != reserved.pair.1.pts {
+                    print("FAIL: droppingRepeats:false differs from reservePair()"); exit(1)
+                }
+                if let gone = reserved.dropped { dropped.append(gone.pts) }
+                pairs.append((reserved.pair.0.pts, reserved.pair.1.pts))
+                window.consumePair()
+            }
+        }
+        while let packet = try demuxer.nextPacket() {
+            guard packet.streamIndex == video.streamIndex else { continue }
+            guard let frame = try decoder.decodeFrame(packet) else { continue }
+            if frame.pts < seekAt { continue }
+            if frame.pts > seekAt + seconds { break }
+            window.add(buffer: frame.pixelBuffer, pts: frame.pts)
+            decoded += 1
+            if decoded % 250 == 0 { rss.append(physicalFootprintBytes()) }
+            consume(minimum: 4)
+        }
+        consume(minimum: 2)
+        return (pairs, dropped, ms, rss)
+    }
+    let plain = try run(dropping: false)
+    let dedup = try run(dropping: true)
+    let ordered = dedup.pairs.allSatisfy { $0.0 < $0.1 } && zip(dedup.pairs, dedup.pairs.dropFirst()).allSatisfy { $0.1 == $1.0 }
+    let period = plain.pairs.map { $0.1 - $0.0 }.sorted()[plain.pairs.count / 2]
+    let longest = dedup.pairs.map { $0.1 - $0.0 }.max() ?? 0
+    let sortedMS = dedup.ms.sorted()
+    let rssMB = dedup.rss.map { Double($0) / 1048576 }
+    for pts in dedup.dropped { print(String(format: "DEDUP_DROP %.3f", pts)) }
+    print(String(format: "DEDUP pairs plain=%d dedup=%d dropped=%d chained+ordered=%@ longest span=%.1f periods",
+                 plain.pairs.count, dedup.pairs.count, dedup.dropped.count, ordered ? "yes" : "NO", longest / period))
+    print(String(format: "DEDUP reserve cost median=%.2f ms p95=%.2f ms max=%.2f ms",
+                 sortedMS[sortedMS.count / 2], sortedMS[Int(Double(sortedMS.count - 1) * 0.95)], sortedMS.last ?? 0))
+    print(String(format: "DEDUP RSS min=%.1f max=%.1f MB", rssMB.min() ?? 0, rssMB.max() ?? 0))
+    exit(ordered && longest <= period * 2.05 ? 0 : 1)
+}
+
 let WINDOW = 4
 let pool = SlidingFramePool(capacity: WINDOW)
 print("pool window capacity N=\(WINDOW), a window of N frames yields N-1=\(WINDOW - 1) pairs")
