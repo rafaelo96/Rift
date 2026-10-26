@@ -75,21 +75,25 @@ printRSS(label: "after prepare")
 if ProcessInfo.processInfo.environment["FRAMEPOOL_MODE"] == "dedup" {
     let seekAt = Double(ProcessInfo.processInfo.environment["FRAMEPOOL_SEEK"] ?? "1170")!
     let seconds = Double(ProcessInfo.processInfo.environment["FRAMEPOOL_SECONDS"] ?? "120")!
+    // FRAMEPOOL_DEDUP_MAX=<n>: repeats dropped in a row (1 = player default, 2 = on threes).
+    let maxConsecutive = Int(ProcessInfo.processInfo.environment["FRAMEPOOL_DEDUP_MAX"] ?? "1")!
     func run(dropping: Bool) throws -> (pairs: [(Double, Double)], dropped: [Double], ms: [Double], rss: [Int64]) {
         try demuxer.seek(to: seekAt)
         decoder.flush()
-        let window = SlidingFramePool(capacity: 4)
+        // FRAMEPOOL_DEPTH=<n>: frames buffered before a pair is consumed (player: up to 8).
+        let depth = Int(ProcessInfo.processInfo.environment["FRAMEPOOL_DEPTH"] ?? "4")!
+        let window = SlidingFramePool(capacity: max(4, depth))
         var pairs: [(Double, Double)] = [], dropped: [Double] = [], ms: [Double] = [], rss: [Int64] = []
         var decoded = 0
         func consume(minimum: Int) {
             while window.count >= minimum {
                 let start = DispatchTime.now().uptimeNanoseconds
-                guard let reserved = window.reservePair(droppingRepeats: dropping) else { return }
+                guard let reserved = window.reservePair(droppingRepeats: dropping, maxConsecutive: maxConsecutive) else { return }
                 ms.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
                 if !dropping, let plain = window.reservePair(), plain.0.pts != reserved.pair.0.pts || plain.1.pts != reserved.pair.1.pts {
                     print("FAIL: droppingRepeats:false differs from reservePair()"); exit(1)
                 }
-                if let gone = reserved.dropped { dropped.append(gone.pts) }
+                dropped.append(contentsOf: reserved.dropped.map(\.pts))
                 pairs.append((reserved.pair.0.pts, reserved.pair.1.pts))
                 window.consumePair()
             }
@@ -102,7 +106,7 @@ if ProcessInfo.processInfo.environment["FRAMEPOOL_MODE"] == "dedup" {
             window.add(buffer: frame.pixelBuffer, pts: frame.pts)
             decoded += 1
             if decoded % 250 == 0 { rss.append(physicalFootprintBytes()) }
-            consume(minimum: 4)
+            consume(minimum: depth)
         }
         consume(minimum: 2)
         return (pairs, dropped, ms, rss)
@@ -120,7 +124,7 @@ if ProcessInfo.processInfo.environment["FRAMEPOOL_MODE"] == "dedup" {
     print(String(format: "DEDUP reserve cost median=%.2f ms p95=%.2f ms max=%.2f ms",
                  sortedMS[sortedMS.count / 2], sortedMS[Int(Double(sortedMS.count - 1) * 0.95)], sortedMS.last ?? 0))
     print(String(format: "DEDUP RSS min=%.1f max=%.1f MB", rssMB.min() ?? 0, rssMB.max() ?? 0))
-    exit(ordered && longest <= period * 2.05 ? 0 : 1)
+    exit(ordered && longest <= period * (Double(maxConsecutive) + 1.05) ? 0 : 1)
 }
 
 let WINDOW = 4

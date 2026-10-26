@@ -34,9 +34,9 @@ public final class SlidingFramePool {
     private var storage: [Frame] = []
     /// Firmas de repetición ya calculadas, por pts (solo frames aún en la ventana).
     private var signatures: [Double: RepeatedFrameDetector.Signature] = [:]
-    /// Ya se descartó un repetido para el frame más antiguo actual: reservar de
-    /// nuevo sin consumir no descarta otro, así un par abarca ≤ 2 periodos fuente.
-    private var droppedForOldest = false
+    /// Repetidos ya descartados para el frame más antiguo actual: reservar de nuevo
+    /// sin consumir no pasa del límite, así un par abarca ≤ límite+1 periodos.
+    private var droppedForOldest = 0
 
     public init(capacity: Int = 4) {
         precondition(capacity > 0, "SlidingFramePool capacity must be > 0")
@@ -63,7 +63,7 @@ public final class SlidingFramePool {
         storage.sort { $0.pts < $1.pts }
         if storage.count > capacity {
             storage.removeFirst(storage.count - capacity)
-            droppedForOldest = false
+            droppedForOldest = 0
             pruneSignatures()
         }
     }
@@ -98,17 +98,32 @@ public final class SlidingFramePool {
     /// Devuelve el frame descartado para que el llamador libere su slot
     /// (permiso del decode loop). Con solo 2 frames no deduplica: no espera.
     public func reservePair(droppingRepeats: Bool) -> (pair: (Frame, Frame), dropped: Frame?)? {
+        guard let reserved = reservePair(droppingRepeats: droppingRepeats, maxConsecutive: 1) else { return nil }
+        return (reserved.pair, reserved.dropped.first)
+    }
+
+    /// Como `reservePair(droppingRepeats:)`, pero descarta hasta `maxConsecutive`
+    /// repetidos seguidos del frame más antiguo (anime "en tres": 2 → el par abarca
+    /// hasta 3 periodos). Cada descarte compara de nuevo contra el frame más
+    /// antiguo y exige un frame detrás del candidato. Devuelve todos los descartes.
+    public func reservePair(droppingRepeats: Bool, maxConsecutive: Int) -> (pair: (Frame, Frame), dropped: [Frame])? {
         guard storage.count >= 2 else { return nil }
-        guard droppingRepeats else { return ((storage[0], storage[1]), nil) }
-        if !droppedForOldest, storage.count >= 3,
-           let first = signature(of: storage[0]), let second = signature(of: storage[1]),
-           RepeatedFrameDetector.isRepeat(first, second) {
-            let dropped = storage.remove(at: 1)
-            signatures[dropped.pts] = nil
-            droppedForOldest = true
-            return ((storage[0], storage[1]), dropped)
+        var dropped: [Frame] = []
+        // El decoder entrega en orden de decodificación: un frame intermedio puede no
+        // haber llegado aún. Solo se descarta si el frame que sigue al candidato es su
+        // sucesor inmediato (periodo = menor salto de la ventana), si no el par
+        // saltaría un frame que llega después y rompería la cadena de pares.
+        let period = zip(storage, storage.dropFirst()).map { $1.pts - $0.pts }.filter { $0 > 0 }.min() ?? 0
+        while droppingRepeats, droppedForOldest < maxConsecutive, storage.count >= 3,
+              storage[2].pts - storage[1].pts <= period * 1.5,
+              let first = signature(of: storage[0]), let second = signature(of: storage[1]),
+              RepeatedFrameDetector.isRepeat(first, second) {
+            let gone = storage.remove(at: 1)
+            signatures[gone.pts] = nil
+            droppedForOldest += 1
+            dropped.append(gone)
         }
-        return ((storage[0], storage[1]), nil)
+        return ((storage[0], storage[1]), dropped)
     }
 
     private func signature(of frame: Frame) -> RepeatedFrameDetector.Signature? {
@@ -131,7 +146,7 @@ public final class SlidingFramePool {
     public func consumePair() {
         guard !storage.isEmpty else { return }
         storage.removeFirst()
-        droppedForOldest = false
+        droppedForOldest = 0
         pruneSignatures()
     }
 
@@ -142,7 +157,7 @@ public final class SlidingFramePool {
     public func removeFirst() {
         if !storage.isEmpty {
             storage.removeFirst()
-            droppedForOldest = false
+            droppedForOldest = 0
             pruneSignatures()
         }
     }
@@ -152,6 +167,6 @@ public final class SlidingFramePool {
     public func flush() {
         storage.removeAll()
         signatures.removeAll()
-        droppedForOldest = false
+        droppedForOldest = 0
     }
 }
