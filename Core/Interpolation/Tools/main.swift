@@ -149,6 +149,11 @@ if envInt("MV_DIAGNOSTIC_CHROMA_CHECK",0)==1 {
     print("DIAGNOSTIC CHROMA CHECK passed: 8/10-bit, 420/422, padded rows, channel order and resampling")
     exit(0)
 }
+if envInt("MV_LONG_PAIR_CHECK",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkLongPair(); exit(0) }
+    catch { print("LONG PAIR CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_STARTUP_CHECK",0)==1 {
     setbuf(stdout,nil)
     do { try checkCompensatorStartup(); exit(0) }

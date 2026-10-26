@@ -245,7 +245,7 @@ public final class MotionCompensator {
                 try? FileHandle.standardError.write(contentsOf: Data(line.utf8))
             }
         }
-        guard !tValues.isEmpty,tValues.count<=4,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
+        guard !tValues.isEmpty,tValues.count<=DenseMotionPrototype.maxSamplesPerPair,tValues.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               CVPixelBufferGetWidth(I0)==CVPixelBufferGetWidth(I1),CVPixelBufferGetHeight(I0)==CVPixelBufferGetHeight(I1),CVPixelBufferGetPixelFormatType(I0)==CVPixelBufferGetPixelFormatType(I1) else { return InterpolationPairResult(pixelBuffers: [], meMS: 0, warpMS: 0) }
 
         // Both read-only source planes can be resampled independently.

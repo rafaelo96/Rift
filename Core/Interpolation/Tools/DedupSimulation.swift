@@ -47,7 +47,7 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
     for (mode,kept) in [("current",Array(0..<buffers.count)),("dedup",(0..<buffers.count).filter {!dropped.contains($0)})] {
         let engine=try MotionCompensator(config:config)
         let step=1.0/60,epoch=pts[0]
-        var previous: [UInt16]?,motions=[Double](),changes=[Double](),farValues=[Double](),costMS=0.0,pairs=0,synthesized=0
+        var previous: [UInt16]?,motions=[Double](),changes=[Double](),pairCosts=[Double](),incomplete=0,farValues=[Double](),costMS=0.0,pairs=0,synthesized=0
         for p in 1..<kept.count-2 {
             let ia=kept[p],ib=kept[p+1],pa=pts[ia],pb=pts[ib]
             var times=[Double]();var k=ceil((pa-epoch)/step-1e-6)
@@ -58,8 +58,10 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
             var generated=[CVPixelBuffer]()
             if !tValues.isEmpty {
                 let start=DispatchTime.now().uptimeNanoseconds
-                generated=engine.interpolatePair(I0:buffers[ia],I1:buffers[ib],tValues:Array(tValues.prefix(4)),context:context).pixelBuffers
-                costMS+=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6;pairs+=1;synthesized+=generated.count
+                generated=engine.interpolatePair(I0:buffers[ia],I1:buffers[ib],tValues:tValues,context:context).pixelBuffers
+                let pairMS=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
+                costMS+=pairMS;pairs+=1;synthesized+=generated.count;pairCosts.append(pairMS)
+                if generated.count != tValues.count {incomplete+=1}
             }
             let a=plane(buffers[ia],mw,mh),b=plane(buffers[ib],mw,mh)
             var g=0
@@ -99,8 +101,8 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         let stall=moving==0 ? 0:Double(stalls)/Double(moving),stepVariation=variationN==0 ? 0:variation/Double(variationN)
         let meanFar=farValues.isEmpty ? 0:farValues.reduce(0,+)/Double(farValues.count)
         report[mode]=["outputs":motions.count+1,"pairs":pairs,"synthesized":synthesized,"costMS":costMS,
-                      "stallFraction":stall,"frozenFraction":frozenFraction,"activeSteps":active,"changes":changes,"stepVariation":stepVariation,"meanFar":meanFar,"motions":motions]
-        print("DEDUP \(mode): frozen \(String(format:"%.3f",frozenFraction)) of \(active) pairs \(pairs) synth \(synthesized) stall \(String(format:"%.3f",stall)) variation \(String(format:"%.3f",stepVariation)) far \(String(format:"%.4f",meanFar)) cost \(String(format:"%.0f",costMS)) ms")
+                      "stallFraction":stall,"pairCostMax":pairCosts.max() ?? 0,"pairCostP95":pairCosts.isEmpty ? 0:pairCosts.sorted()[Int(Double(pairCosts.count-1)*0.95)],"incompletePairs":incomplete,"frozenFraction":frozenFraction,"activeSteps":active,"changes":changes,"stepVariation":stepVariation,"meanFar":meanFar,"motions":motions]
+        print("DEDUP \(mode): frozen \(String(format:"%.3f",frozenFraction)) of \(active) pairs \(pairs) synth \(synthesized) stall \(String(format:"%.3f",stall)) variation \(String(format:"%.3f",stepVariation)) far \(String(format:"%.4f",meanFar)) cost \(String(format:"%.0f",costMS)) ms p95 \(String(format:"%.1f",pairCosts.isEmpty ? 0:pairCosts.sorted()[Int(Double(pairCosts.count-1)*0.95)])) max \(String(format:"%.1f",pairCosts.max() ?? 0)) incomplete \(incomplete)")
     }
     report["dropped"]=dropped.sorted();report["threshold"]=threshold;report["sourceFrames"]=buffers.count
     try confidenceJSON(report,output+"/dedup.json")

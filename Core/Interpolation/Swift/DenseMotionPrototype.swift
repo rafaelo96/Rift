@@ -142,13 +142,17 @@ public final class DenseMotionPrototype {
         try interpolate(first: first,last: last,forward: forward,backward: backward,times: [time],context: context)[0]
     }
 
-    /// One bounded pair analysis shared by up to four temporal samples.
+    /// Instantes por par: un par de dos periodos fuente (frame repetido descartado
+    /// por FramePool) contiene hasta 5 puntos de la rejilla de 60 fps; 1 de margen.
+    public static let maxSamplesPerPair = 6
+
+    /// One bounded pair analysis shared by up to `maxSamplesPerPair` temporal samples.
     /// Milliseconds are incremental elapsed costs; their sum covers analysis and all syntheses.
     /// With batched native output, only the final increment waits for GPU completion.
     /// nativeRenderer may encode into the supplied command, but must not submit it.
     public func interpolate(first: Data,last: Data,forward: [SIMD2<Int32>],backward: [SIMD2<Int32>],times: [Float],context: TemporalContext?=nil,nativeRenderer: ((Float,MTLTexture,MTLTexture,MTLCommandBuffer)->Void)?=nil,downloadResults: Bool=true) throws -> [Result] {
         let gw=(width+blockSize-1)/blockSize,gh=(height+blockSize-1)/blockSize
-        guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=4,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
+        guard first.count==width*height*2,last.count==first.count,forward.count==gw*gh,backward.count==forward.count,!times.isEmpty,times.count<=Self.maxSamplesPerPair,times.allSatisfy({ $0.isFinite && $0>=0 && $0<=1 }),
               forward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }),backward.allSatisfy({ abs(Int($0.x))<=width*2 && abs(Int($0.y))<=height*2 }) else {
             throw MotionSearchEngine.EngineError.pipeline("Invalid dense input")
         }
