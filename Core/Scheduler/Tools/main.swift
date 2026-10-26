@@ -165,3 +165,68 @@ for window in 1...11 {
 }
 precondition(presentation.record(totalFrames: 1300, droppedFrames: 10) == .recover)
 print("PASS: 15 rational cadence cases, 10 minutes each; overload, spike, recovery, discontinuity and presentation drops")
+
+// Repeated source frames dropped by FramePool: pairs span one or two source
+// periods (never more), alternating 10 s of animation on twos with 10 s on ones.
+// The 60 fps grid must stay continuous and uniform across both pair lengths.
+do {
+    let sourceFPS = 24_000.0 / 1001, targetFPS = 60.0
+    var grid = UniformCadence(framesPerSecond: targetFPS)
+    let frameCount = Int(sourceFPS * 600)
+    let kept = (0..<frameCount).filter { index in
+        let onTwos = Int(Double(index) / sourceFPS / 10) % 2 == 0
+        return !(onTwos && index % 2 == 1)
+    }
+    var previous: CMTime?
+    var count = 0, longPairs = 0
+    for (start, end) in zip(kept, kept.dropFirst()) {
+        precondition(end - start <= 2)
+        let a = (Double(start) / sourceFPS * 1000).rounded() / 1000
+        let b = (Double(end) / sourceFPS * 1000).rounded() / 1000
+        let samples = grid.samples(from: a, to: b)
+        // 2 × 41.71 ms slightly exceeds 5 × 16.67 ms: a long pair can hold six grid
+        // points, but then the first lies within the player's 1 ms source tolerance,
+        // so at most five need synthesis (DenseMotionPrototype.maxSamplesPerPair = 6).
+        precondition(samples.count <= (end - start == 2 ? 6 : 3))
+        let synthetic = samples.filter { $0.pts.seconds - a > 0.001 && b - $0.pts.seconds > 0.001 }
+        precondition(synthetic.count <= (end - start == 2 ? 5 : 3))
+        precondition(zip(samples, samples.dropFirst()).allSatisfy { $0.t < $1.t })
+        if end - start == 2 { longPairs += 1 }
+        for sample in samples {
+            precondition(sample.t >= 0 && sample.t < 1)
+            if let previous { precondition(CMTimeCompare(CMTimeSubtract(sample.pts, previous), grid.step) == 0) }
+            precondition(abs(sample.pts.seconds - Double(count) * grid.step.seconds) < 0.000_001)
+            previous = sample.pts
+            count += 1
+        }
+    }
+    let duration = (Double(kept.last!) / sourceFPS * 1000).rounded() / 1000
+    precondition(abs(Double(count) - duration * targetFPS) < 2)
+    precondition(longPairs > 3000)
+
+    // The monitor sees cost relative to each pair's own budget, so long pairs at
+    // a healthy ratio never reduce and an overloaded ratio reduces as for short pairs.
+    let longBudget = 2 * 1000 / sourceFPS
+    var monitor = AdaptiveLoadMonitor()
+    for index in 0..<360 {
+        precondition(monitor.record(costMS: 38, pairBudgetMS: longBudget, now: Double(index) * 2 / sourceFPS) == nil)
+    }
+    monitor.reset()
+    var longReductions = 0
+    for index in 0..<80 {
+        if monitor.record(costMS: longBudget * 0.96, pairBudgetMS: longBudget, now: Double(index) * 2 / sourceFPS) == .reduce {
+            longReductions += 1
+        }
+    }
+    precondition(longReductions == 1)
+    monitor.reset()
+    var mixedReductions = 0, now = 0.0
+    for index in 0..<120 {
+        let periods = index % 3 == 0 ? 1.0 : 2.0
+        let budget = periods * 1000 / sourceFPS
+        if monitor.record(costMS: budget * 0.96, pairBudgetMS: budget, now: now) == .reduce { mixedReductions += 1 }
+        now += periods / sourceFPS
+    }
+    precondition(mixedReductions == 1)
+    print("PASS: mixed one/two-period pairs (\(longPairs) long) keep a continuous 60 fps grid; load monitor uses each pair's own budget")
+}
