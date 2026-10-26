@@ -170,6 +170,16 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   pool tenía 2 frames al reservar); con el default actual de 0.35 s los cubre
   todos (109/109 y 105/105 en dos tramos de 40 s). `RIFT_DEDUP=0` lo desactiva. Confirmado por el usuario en
   pantalla (19:40, con frente a sin dedup): más fluido.
+- **Modo "Fluidez máxima" (Ajustes → Frame+, apagado por defecto)**: desactiva
+  el sostén del dibujo (`InterpolationConfig.usesDrawingHold = false`) y deja
+  que FramePool descarte hasta 2 repetidos seguidos (`maxConsecutive: 2`), con
+  pares de hasta 3 periodos y hasta 8 muestras sintéticas
+  (`maxSamplesPerPair` = 8). Decodifica con ≥ 0.5 s de antelación para tener
+  ~6 frames al reservar. Simulación: zona congelada en acción 22 % → 12 %,
+  "lejos de ambos" 0.9 % → 2.9 % (vuelven los parches de cambio de pose).
+  Sonda (M4, 4K): 60 fps, 0 frames atrasados, repetidos descartados 109 → 130
+  y 105 → 141; frames perdidos en pantalla +3–5 sobre ~2330, casi todos al
+  arrancar. `RIFT_AUTO_MAX_FLUIDITY=1/0` lo fuerza para pruebas.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

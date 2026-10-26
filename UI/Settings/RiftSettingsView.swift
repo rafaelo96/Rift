@@ -151,6 +151,15 @@ struct RiftSettingsView: View {
                 Text("Aumenta la fluidez durante la reproducción. Rift adapta el trabajo a la capacidad medida de tu Mac; pueden aparecer artefactos en movimientos rápidos.")
             }
             Section {
+                Toggle("Fluidez máxima", isOn: Binding(
+                    get: { state.maximumFluidity },
+                    set: { state.setMaximumFluidity($0) }
+                ))
+                .disabled(state.requestedInterpolationMode == .disabled)
+            } footer: {
+                Text("Interpola también los cambios de pose y los dibujos repetidos tres veces. Más fluido, con más artefactos en escenas de acción.")
+            }
+            Section {
                 Toggle("Superresolución", isOn: Binding(
                     get: { state.superResolutionMode != .off },
                     set: { state.setSuperResolutionMode($0 ? .strong : .off) }
@@ -160,6 +169,7 @@ struct RiftSettingsView: View {
             }
             Button("Restablecer Frame+ y superresolución") {
                 state.setInterpolationMode(.disabled)
+                state.setMaximumFluidity(false)
                 state.setSuperResolutionMode(.off)
             }
         }

@@ -110,6 +110,7 @@ private struct PlaybackPreferences: Codable {
     let audioSyncOffset: Double?
     let superResolutionMode: String?
     let playbackRate: Float?
+    let maximumFluidity: Bool?
 }
 
 @MainActor
@@ -212,6 +213,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var visualContrast: Double = 1
     @Published var visualSaturation: Double = 1
     @Published var superResolutionMode: SuperResolutionPreference = .off
+    /// Frame+ "fluidez máxima": sin sostén del dibujo (los cambios de pose se
+    /// interpolan siempre) y deduplicación de hasta dos repetidos seguidos
+    /// (anime "en tres"). Más fluido, con más artefactos en escenas de acción.
+    @Published private(set) var maximumFluidity = false
     @Published var currentSubtitleText: String?
     @Published var conversionProgress: Double = 0
     @Published var statusMessage: String?
@@ -742,6 +747,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         trackPreferencesByPath = decode([String: PlaybackTrackPreferences].self, forKey: Self.trackPreferencesKey) ?? [:]
 
         let env = ProcessInfo.processInfo.environment
+        if let fluidity = env["RIFT_AUTO_MAX_FLUIDITY"] { maximumFluidity = fluidity == "1" }
         if let requestedSuperResolution = env["RIFT_AUTO_SUPERRES"].flatMap(SuperResolutionPreference.init(rawValue:)) {
             superResolutionMode = requestedSuperResolution == .off ? .off : .strong
             updateVisualEnhancements()
@@ -817,10 +823,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                     }
                     let line = String(format:
-                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ dedupDropped=%d staleDrops=%d playing=%d pip=%d caption=%d compositionFailures=%d\n",
+                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ maxFluidity=%d dedupDropped=%d staleDrops=%d playing=%d pip=%d caption=%d compositionFailures=%d\n",
                         second, self.currentTime, self.displayRenderingFPS, self.targetRenderingFPS,
                         self.interpolationQuality, self.interpolationMode.rawValue,
-                        self.dedupDroppedFrames, self.interpolationStaleDrops,
+                        self.maximumFluidity ? 1 : 0, self.dedupDroppedFrames, self.interpolationStaleDrops,
                         self.isPlaying ? 1 : 0, self.isPictureInPictureActive ? 1 : 0,
                         self.currentSubtitleText == nil ? 0 : 1,
                         self.renderer?.subtitleCompositionFailures ?? 0)
@@ -897,6 +903,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if let rate = preferences.playbackRate, [Float(0.5), 1, 1.5, 2].contains(rate) {
             playbackRate = rate
         }
+        maximumFluidity = preferences.maximumFluidity ?? false
     }
 
     private func restoreRecentVideos() {
@@ -922,7 +929,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 interpolationMode: requestedInterpolationMode.rawValue,
                 audioSyncOffset: audioSyncOffset,
                 superResolutionMode: superResolutionMode.rawValue,
-                playbackRate: playbackRate
+                playbackRate: playbackRate,
+                maximumFluidity: maximumFluidity
             ),
             forKey: Self.preferencesKey
         )
@@ -1493,9 +1501,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let profile: InterpolationConfig = interpolationQuality == 2 ? .fluidHighQuality
             : interpolationQuality == 1 ? .fluid : .fluidEconomy
         if interpolationMode == .motionAdaptive {
-            return InterpolationConfig(workWidth: profile.workWidth, workHeight: profile.workHeight)
+            return InterpolationConfig(workWidth: profile.workWidth, workHeight: profile.workHeight,
+                                       usesDrawingHold: !maximumFluidity)
         }
-        return profile
+        return InterpolationConfig(workWidth: profile.workWidth, workHeight: profile.workHeight,
+            blockSize: profile.blockSize, lambdaPx: profile.lambdaPx, subpel: profile.subpel,
+            temporalGatePx: profile.temporalGatePx,
+            usesBidirectionalSafetyCheck: profile.usesBidirectionalSafetyCheck,
+            usesCatastrophicSafetyCheck: profile.usesCatastrophicSafetyCheck,
+            usesAttenuatedCatastrophicSafetyBlend: profile.usesAttenuatedCatastrophicSafetyBlend,
+            usesUnmatchableEffectSafetyCheck: profile.usesUnmatchableEffectSafetyCheck,
+            usesDrawingHold: !maximumFluidity)
     }
 
     private func changeInterpolationQuality(to quality: Int) {
@@ -1846,6 +1862,25 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func setVisualSaturation(_ value: Double) {
         visualSaturation = min(max(value, 0), 2)
         updateVisualEnhancements()
+    }
+
+    func setMaximumFluidity(_ enabled: Bool) {
+        guard maximumFluidity != enabled else { return }
+        maximumFluidity = enabled
+        // El compensador se recrea con la nueva configuración; la calidad calibrada
+        // del video se conserva (mismo coste por par en ambos modos).
+        compensator = nil
+        lastShownFrames.removeAll()
+        persistPlaybackPreferences()
+    }
+
+    /// Repetidos seguidos que FramePool puede descartar antes de un par.
+    private var maxConsecutiveRepeatDrops: Int { maximumFluidity ? 2 : 1 }
+
+    /// Descartar dos repetidos seguidos necesita ~6 frames decodificados al
+    /// reservar el par: el modo fluidez máxima decodifica con más antelación.
+    private var effectiveDecodeAheadBudget: Double {
+        maximumFluidity ? max(decodeAheadBudget, 0.5) : decodeAheadBudget
     }
 
     func setSuperResolutionMode(_ mode: SuperResolutionPreference) {
@@ -2287,13 +2322,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 // frames) y nunca bloquea al pipeline que va al límite (si el
                 // decode es lento, pts < clk+budget y no hay espera → sin
                 // starvation nueva para ME/interpolación).
-                if decodeAheadBudget > 0 {
+                let aheadBudget = await self.effectiveDecodeAheadBudget
+                if aheadBudget > 0 {
                     let sched = await self.scheduler
                     let rate = sched?.synchronizer.rate ?? 0
                     if rate > 0 && pool.count >= 2 {
                         while !Task.isCancelled {
                             let clk = sched?.synchronizer.currentTime().seconds ?? 0
-                            if pkt.pts - clk <= decodeAheadBudget { break }
+                            if pkt.pts - clk <= aheadBudget { break }
                             try? await Task.sleep(nanoseconds: 50_000_000)
                         }
                         if Task.isCancelled {
@@ -2917,6 +2953,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let generation = playbackGeneration
         let initialMode = interpolationMode
         let initialQuality = interpolationQuality
+        let initialFluidity = maximumFluidity
         if compensator == nil {
             // Bonus: construir los pipelines Metal en background. El init de
             // MotionCompensator compila el shader fuente / crea PSOs (cientos de
@@ -2930,7 +2967,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     try MotionCompensator(config: config)
                 }.value
                 guard !Task.isCancelled, playbackGeneration == generation,
-                      interpolationMode == initialMode, interpolationQuality == initialQuality else {
+                      interpolationMode == initialMode, interpolationQuality == initialQuality,
+                      maximumFluidity == initialFluidity else {
                     return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
                 }
                 compensator = initialized
@@ -2946,10 +2984,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let span=i1.pts-i0.pts
         if let before,let after,span>0,
            i0.pts-before.pts>0,after.pts-i1.pts>0,
-           // Uno o dos periodos (par o vecino con un repetido descartado).
-           span>sourcePeriod*0.5,span<sourcePeriod*2.5,
-           i0.pts-before.pts>sourcePeriod*0.5,i0.pts-before.pts<sourcePeriod*2.5,
-           after.pts-i1.pts>sourcePeriod*0.5,after.pts-i1.pts<sourcePeriod*2.5 {
+           // Uno a tres periodos (par o vecino con repetidos descartados).
+           span>sourcePeriod*0.5,span<sourcePeriod*3.5,
+           i0.pts-before.pts>sourcePeriod*0.5,i0.pts-before.pts<sourcePeriod*3.5,
+           after.pts-i1.pts>sourcePeriod*0.5,after.pts-i1.pts<sourcePeriod*3.5 {
             temporal=InterpolationTemporalContext(before: before.pixelBuffer,after: after.pixelBuffer,
                 beforeInterval: Float((i0.pts-before.pts)/span),afterInterval: Float((after.pts-i1.pts)/span))
         } else { temporal=nil }
@@ -2972,7 +3010,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             interpolationJobID = nil
         }
         guard !Task.isCancelled, playbackGeneration == generation,
-              interpolationMode == initialMode, interpolationQuality == initialQuality else {
+              interpolationMode == initialMode, interpolationQuality == initialQuality,
+                      maximumFluidity == initialFluidity else {
             return (buffers: InterpolatedBuffersBox(buffers: []), totalMS: 0, meMS: 0, warpMS: 0)
         }
         interpolationPairCount += 1
@@ -3198,16 +3237,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                 } else {
                     let tStageStart = DispatchTime.now().uptimeNanoseconds
-                    guard let reservation = pool.reservePair(droppingRepeats: self.uniformCadence && self.repeatedFrameDedup) else {
+                    guard let reservation = pool.reservePair(droppingRepeats: self.uniformCadence && self.repeatedFrameDedup,
+                                                             maxConsecutive: self.maxConsecutiveRepeatDrops) else {
                         try? await Task.sleep(nanoseconds: 10_000_000)
                         continue
                     }
                     let pair = reservation.pair
-                    if reservation.dropped != nil {
-                        // El repetido salió del pool sin presentarse: devolver su permiso.
-                        self.dedupDroppedFrames += 1
+                    if !reservation.dropped.isEmpty {
+                        // Los repetidos salieron del pool sin presentarse: devolver sus permisos.
+                        self.dedupDroppedFrames += reservation.dropped.count
                         dedupPairFirstPTS = pair.0.pts
-                        await self.coordinator.signal()
+                        for _ in reservation.dropped { await self.coordinator.signal() }
                     }
                     let isDedupPair = dedupPairFirstPTS == pair.0.pts
                     let tAfterReserve = DispatchTime.now().uptimeNanoseconds
@@ -3312,9 +3352,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // el second anterior → grilla no-monótona, brincos). En su
                     // lugar se presenta `first` nativo y se avanza; el siguiente
                     // par contiguo retoma la interpolación sin duplicar contenido.
-                    // Un par deduplicado abarca dos periodos a propósito; solo más allá
-                    // hay además un hueco real de decode.
-                    if second.pts - first.pts > (isDedupPair ? 2.5 : 1.5) * sourcePeriod {
+                    // Un par deduplicado abarca dos o tres periodos a propósito; solo más
+                    // allá hay además un hueco real de decode.
+                    if second.pts - first.pts > (isDedupPair ? Double(self.maxConsecutiveRepeatDrops) + 1.5 : 1.5) * sourcePeriod {
                         // HEVC puede entregar primero los frames de referencia
                         // futuros y después sus B-frames. Mientras el pool tenga
                         // cupo, esperar su pequeña ventana de reordenamiento evita
