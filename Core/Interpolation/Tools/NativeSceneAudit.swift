@@ -15,6 +15,9 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
         return pixels
     }
     let w=CVPixelBufferGetWidth(buffers[0]),h=CVPixelBufferGetHeight(buffers[0])
+    if ProcessInfo.processInfo.environment["MV_DEDUP_SIM"]=="1" {
+        try simulateDedup(buffers:buffers,pts:pts,output:output);return
+    }
     if ProcessInfo.processInfo.environment["MV_HOLD_AB"]=="1" {
         try abDrawingHold(buffers:buffers,pts:pts,output:output);return
     }
@@ -188,7 +191,14 @@ func auditCutFeatures(lumas: [[UInt16]], w: Int, h: Int, pts: [Double], output: 
             cells.append(l1(histogram(a,x0,x1,y0,y1),histogram(b,x0,x1,y0,y1)))
         }}
         cells.sort()
-        rows.append(["pair":i,"PTS":[pts[i],pts[i+1]],"residual":residuals[i],"histL1":l1(histogram(a,0,dw,0,dh),histogram(b,0,dw,0,dh)),
+        // Duplicate-frame evidence: mean |a-b| per 16x16 block of the decimated plane.
+        var blocks=[Double]()
+        for by in stride(from:0,to:dh-15,by:16) {for bx in stride(from:0,to:dw-15,by:16) {
+            var sum=0;for y in by..<by+16 {for x in bx..<bx+16 {sum+=abs(Int(a[y*dw+x])-Int(b[y*dw+x]))}}
+            blocks.append(Double(sum)/256)
+        }}
+        blocks.sort()
+        rows.append(["pair":i,"PTS":[pts[i],pts[i+1]],"blockMax":blocks.last ?? 0,"blockP99":blocks[Int(Double(blocks.count-1)*0.99)],"residual":residuals[i],"histL1":l1(histogram(a,0,dw,0,dh),histogram(b,0,dw,0,dh)),
                      "cellL1Median":(cells[7]+cells[8])/2,"cellL1Min":cells[0],"mad":mad/Double(a.count)])
     }
     let tw=w/8,th=h/8
