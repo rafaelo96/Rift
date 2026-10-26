@@ -449,10 +449,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// (segundos). El decode no produce frames cuyo pts supere `reloj + budget`;
     /// sin esto el pool (ventana acotada con eviction) corre por delante de la
     /// presentación sin límite y los toggles de modo provocan ráfagas/saltos.
-    /// El default es ~0.25s (unos pocos frames): lead suficiente para no
+    /// El default es 0.35s (unos pocos frames): lead suficiente para no
     /// starvation del pool pero sin saturar la cola del AVSampleBufferDisplayLayer
     /// (un lead de 1s acumulaba ~50 frames futuros → la capa descartaba frames
-    /// interpolados en silencio → tirones). Tunable vía RIFT_DECODE_AHEAD_BUDGET.
+    /// interpolados en silencio → tirones). Con 0.25s el pool solía tener solo
+    /// 2 frames al reservar y la deduplicación de repetidos (necesita el tercero)
+    /// se perdía ~30% de los casos; con 0.35s los cubre todos sin pérdida de
+    /// presentación (M4, 4K). Tunable vía RIFT_DECODE_AHEAD_BUDGET.
     private let decodeAheadBudget: Double
     /// Pacing de la rama interpolada: no interpolar/encolar un par cuyo
     /// `first.pts` esté a más de `interpLeadMargin` (pocos frames) del reloj de
@@ -727,7 +730,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     // Permite verificar el pipeline de reproducción/interpolación sin interacción
     // GUI (NSOpenPanel no funciona en corridas headless — ver AGENTS.md).
     init() {
-        decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 0.25
+        decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 0.35
         interpLeadMargin = ProcessInfo.processInfo.environment["RIFT_INTERP_LEAD"].flatMap(Double.init) ?? 0.12
         uniformCadence = ProcessInfo.processInfo.environment["RIFT_CADENCE"] != "telecine"
         repeatedFrameDedup = ProcessInfo.processInfo.environment["RIFT_DEDUP"] != "0"

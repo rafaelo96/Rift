@@ -166,8 +166,9 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   esos pares, acepta contexto temporal de 1–2 periodos y usa la duración real
   del par como presupuesto. Simulación: frames congelados 24–43 % → 6–31 % en
   tramos con repetidos. En la app (M4, 4K) se mantienen 60 fps sin frames
-  atrasados, pero solo se descarta ~70 % de los repetidos: con 2 frames en el
-  pool no deduplica. `RIFT_DEDUP=0` lo desactiva. Confirmado por el usuario en
+  atrasados. Con decode-ahead de 0.25 s solo cubría ~70 % de los repetidos (el
+  pool tenía 2 frames al reservar); con el default actual de 0.35 s los cubre
+  todos (109/109 y 105/105 en dos tramos de 40 s). `RIFT_DEDUP=0` lo desactiva. Confirmado por el usuario en
   pantalla (19:40, con frente a sin dedup): más fluido.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
