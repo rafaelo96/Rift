@@ -155,6 +155,20 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   interpolar, como la lluvia nocturna, que queda nítida a 24 fps en vez de una
   mezcla borrosa. Coste ~0.4–0.7 ms/par. `RIFT_DRAWING_HOLD=0` lo desactiva.
   Vista previa offline: MVProbe `MV_HOLD_NATIVE_PREVIEW=1`, A/B `MV_HOLD_AB=1`.
+- **Deduplicación de frames repetidos (anime en 2s)**: con Frame+ y cadencia
+  uniforme, `SlidingFramePool.reservePair(droppingRepeats:)` descarta el frame
+  fuente idéntico al anterior (`RepeatedFrameDetector`: máximo por bloques de la
+  diferencia media de luma < 4/1023, con un hueco medido entre ruido < 4 y
+  movimiento ≥ 8). Así el par abarca 2 periodos y los 60 fps reparten el
+  movimiento en vez de "quieto + salto doble". Descarta como máximo un repetido
+  seguido (5 muestras sintéticas por par; `maxSamplesPerPair` = 6). La UI
+  devuelve el permiso del frame descartado, no aplica el guardia de huecos a
+  esos pares, acepta contexto temporal de 1–2 periodos y usa la duración real
+  del par como presupuesto. Simulación: frames congelados 24–43 % → 6–31 % en
+  tramos con repetidos. En la app (M4, 4K) se mantienen 60 fps sin frames
+  atrasados, pero solo se descarta ~70 % de los repetidos: con 2 frames en el
+  pool no deduplica. `RIFT_DEDUP=0` lo desactiva. Pendiente: verlo en pantalla
+  real.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

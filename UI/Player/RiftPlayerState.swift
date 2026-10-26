@@ -472,6 +472,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// deriv hacia el par siguiente, como un FRC real). Revertir a 3:2 para
     /// A/B visual: RIFT_CADENCE=telecine.
     private let uniformCadence: Bool
+    /// Animación en "dos": FramePool descarta el frame fuente repetido al reservar
+    /// el par y la interpolación reparte el siguiente dibujo sobre dos periodos en
+    /// vez de "quieto + salto doble". Solo con cadencia uniforme (la 3:2 asume
+    /// pares de un periodo). A/B: RIFT_DEDUP=0.
+    private let repeatedFrameDedup: Bool
+    private var dedupDroppedFrames = 0
     private var interpBurstDropped = 0
     // MARK: - Delivery diagnostics (soap-opera root-cause investigation)
     /// Frames enqueued when isReadyForMoreMediaData was true.
@@ -724,6 +730,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         decodeAheadBudget = ProcessInfo.processInfo.environment["RIFT_DECODE_AHEAD_BUDGET"].flatMap(Double.init) ?? 0.25
         interpLeadMargin = ProcessInfo.processInfo.environment["RIFT_INTERP_LEAD"].flatMap(Double.init) ?? 0.12
         uniformCadence = ProcessInfo.processInfo.environment["RIFT_CADENCE"] != "telecine"
+        repeatedFrameDedup = ProcessInfo.processInfo.environment["RIFT_DEDUP"] != "0"
         restorePlaybackPreferences()
         restoreRecentVideos()
         restorePlaylist()
@@ -807,9 +814,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                     }
                     let line = String(format:
-                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ playing=%d pip=%d caption=%d compositionFailures=%d\n",
+                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ dedupDropped=%d staleDrops=%d playing=%d pip=%d caption=%d compositionFailures=%d\n",
                         second, self.currentTime, self.displayRenderingFPS, self.targetRenderingFPS,
                         self.interpolationQuality, self.interpolationMode.rawValue,
+                        self.dedupDroppedFrames, self.interpolationStaleDrops,
                         self.isPlaying ? 1 : 0, self.isPictureInPictureActive ? 1 : 0,
                         self.currentSubtitleText == nil ? 0 : 1,
                         self.renderer?.subtitleCompositionFailures ?? 0)
@@ -2935,9 +2943,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let span=i1.pts-i0.pts
         if let before,let after,span>0,
            i0.pts-before.pts>0,after.pts-i1.pts>0,
-           abs(span-sourcePeriod)<sourcePeriod*0.5,
-           abs(i0.pts-before.pts-sourcePeriod)<sourcePeriod*0.5,
-           abs(after.pts-i1.pts-sourcePeriod)<sourcePeriod*0.5 {
+           // Uno o dos periodos (par o vecino con un repetido descartado).
+           span>sourcePeriod*0.5,span<sourcePeriod*2.5,
+           i0.pts-before.pts>sourcePeriod*0.5,i0.pts-before.pts<sourcePeriod*2.5,
+           after.pts-i1.pts>sourcePeriod*0.5,after.pts-i1.pts<sourcePeriod*2.5 {
             temporal=InterpolationTemporalContext(before: before.pixelBuffer,after: after.pixelBuffer,
                 beforeInterval: Float((i0.pts-before.pts)/span),afterInterval: Float((after.pts-i1.pts)/span))
         } else { temporal=nil }
@@ -2979,7 +2988,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
            !measured.buffers.buffers.isEmpty {
             pendingLoadAction = interpolationCostMonitor.record(
                 costMS: measured.totalMS,
-                pairBudgetMS: sourcePeriod * 1000 / Double(rate),
+                // El presupuesto del par es su duración: dos periodos si se descartó un repetido.
+                pairBudgetMS: max(span, sourcePeriod) * 1000 / Double(rate),
                 now: ProcessInfo.processInfo.systemUptime
             )
         }
@@ -3092,6 +3102,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // so gapFallback can skip the redundant emission.
             var prevPairEmittedSecondSource = false
             var previousInterpolationSource: Frame?
+            // Primer frame del último par cuyo repetido ya salió del pool: si el par se
+            // vuelve a reservar sin consumir, sigue siendo un par de dos periodos.
+            var dedupPairFirstPTS: Double?
             var previousEnqueuedPTS: Double = -1
             var lastEnqueuedInvocationID: UInt64 = 0
             var interpInvocationID: UInt64 = 0
@@ -3182,10 +3195,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     }
                 } else {
                     let tStageStart = DispatchTime.now().uptimeNanoseconds
-                    guard let pair = pool.reservePair() else {
+                    guard let reservation = pool.reservePair(droppingRepeats: self.uniformCadence && self.repeatedFrameDedup) else {
                         try? await Task.sleep(nanoseconds: 10_000_000)
                         continue
                     }
+                    let pair = reservation.pair
+                    if reservation.dropped != nil {
+                        // El repetido salió del pool sin presentarse: devolver su permiso.
+                        self.dedupDroppedFrames += 1
+                        dedupPairFirstPTS = pair.0.pts
+                        await self.coordinator.signal()
+                    }
+                    let isDedupPair = dedupPairFirstPTS == pair.0.pts
                     let tAfterReserve = DispatchTime.now().uptimeNanoseconds
                     let stageReserveMS = Double(tAfterReserve - tStageStart) / 1_000_000.0
                     let first = pair.0
@@ -3288,7 +3309,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     // el second anterior → grilla no-monótona, brincos). En su
                     // lugar se presenta `first` nativo y se avanza; el siguiente
                     // par contiguo retoma la interpolación sin duplicar contenido.
-                    if second.pts - first.pts > 1.5 * sourcePeriod {
+                    // Un par deduplicado abarca dos periodos a propósito; solo más allá
+                    // hay además un hueco real de decode.
+                    if second.pts - first.pts > (isDedupPair ? 2.5 : 1.5) * sourcePeriod {
                         // HEVC puede entregar primero los frames de referencia
                         // futuros y después sus B-frames. Mientras el pool tenga
                         // cupo, esperar su pequeña ventana de reordenamiento evita
