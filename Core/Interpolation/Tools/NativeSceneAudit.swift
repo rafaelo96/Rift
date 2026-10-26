@@ -29,7 +29,19 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
         let single=engine.interpolatePair(I0:buffers[i],I1:buffers[i+1],tValues:[0.5],context:context).pixelBuffers
         precondition(single.count==1)
         let singlePixels=luma(single[0]);let changed=zip(pixels,singlePixels).filter{$0 != $1}.count
-        rows.append(["first":i,"PTS":[pts[i],pts[i+1]],"batchSingleChanged":changed,"midpointIsSource":batch[1] === buffers[i],"quarterIsSource":batch[0] === buffers[i]])
+        // Far-from-both: generated luma differs from BOTH sources by more than 40/1023
+        // where the sources themselves differ (moving content). Mask: white = far.
+        let a=luma(buffers[i]),b=luma(buffers[i+1]),limit=40
+        var far=0,moving=0,mask=[UInt16](repeating:0,count:w*h)
+        for k in pixels.indices where abs(Int(a[k])-Int(b[k]))>limit {
+            moving+=1
+            let g=Int(pixels[k])
+            if min(abs(g-Int(a[k])),abs(g-Int(b[k])))>limit {far+=1;mask[k]=1023}
+        }
+        rows.append(["first":i,"PTS":[pts[i],pts[i+1]],"batchSingleChanged":changed,"midpointIsSource":batch[1] === buffers[i],"quarterIsSource":batch[0] === buffers[i],
+                     "farFraction":Double(far)/Double(w*h),"farOfMoving":moving==0 ? 0:Double(far)/Double(moving),"movingFraction":Double(moving)/Double(w*h)])
+        confidencePNG(mask,w,h,output+"/pair\(i)-far.png")
+        print("NATIVE SCENE \(i): far \(String(format:"%.3f",100*Double(far)/Double(w*h)))% of frame, \(String(format:"%.1f",moving==0 ? 0:100*Double(far)/Double(moving)))% of moving")
         confidencePNG(pixels,w,h,output+"/pair\(i)-batch.png")
         confidencePNG(singlePixels,w,h,output+"/pair\(i)-single.png")
         confidencePNG(luma(buffers[i]),w,h,output+"/pair\(i)-A.png")
