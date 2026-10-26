@@ -29,9 +29,10 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
         let batch=engine.interpolatePair(I0:buffers[i],I1:buffers[i+1],tValues:[0.25,0.5,0.75],context:context).pixelBuffers
         precondition(batch.count==3)
         let pixels=luma(batch[1])
-        let single=engine.interpolatePair(I0:buffers[i],I1:buffers[i+1],tValues:[0.5],context:context).pixelBuffers
-        precondition(single.count==1)
-        let singlePixels=luma(single[0]);let changed=zip(pixels,singlePixels).filter{$0 != $1}.count
+        let fast=ProcessInfo.processInfo.environment["MV_NATIVE_SCENE_FAST"]=="1"
+        let midHash=pixels.withUnsafeBytes {SHA256.hash(data:$0).map {String(format:"%02x",$0)}.joined()}
+        let single=fast ? batch : engine.interpolatePair(I0:buffers[i],I1:buffers[i+1],tValues:[0.5],context:context).pixelBuffers
+        let singlePixels=fast ? pixels : luma(single[0]);let changed=zip(pixels,singlePixels).filter{$0 != $1}.count
         // Far-from-both: generated luma differs from BOTH sources by more than 40/1023
         // where the sources themselves differ (moving content). Mask: white = far.
         let a=luma(buffers[i]),b=luma(buffers[i+1]),limit=40
@@ -42,7 +43,8 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
             if min(abs(g-Int(a[k])),abs(g-Int(b[k])))>limit {far+=1;mask[k]=1023}
         }
         rows.append(["first":i,"PTS":[pts[i],pts[i+1]],"batchSingleChanged":changed,"midpointIsSource":batch[1] === buffers[i],"quarterIsSource":batch[0] === buffers[i],
-                     "farFraction":Double(far)/Double(w*h),"farOfMoving":moving==0 ? 0:Double(far)/Double(moving),"movingFraction":Double(moving)/Double(w*h)])
+                     "farFraction":Double(far)/Double(w*h),"farOfMoving":moving==0 ? 0:Double(far)/Double(moving),"movingFraction":Double(moving)/Double(w*h),"midHash":midHash])
+        if fast {continue}
         confidencePNG(mask,w,h,output+"/pair\(i)-far.png")
         print("NATIVE SCENE \(i): far \(String(format:"%.3f",100*Double(far)/Double(w*h)))% of frame, \(String(format:"%.1f",moving==0 ? 0:100*Double(far)/Double(moving)))% of moving")
         confidencePNG(pixels,w,h,output+"/pair\(i)-batch.png")

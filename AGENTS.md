@@ -134,6 +134,15 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   orden de decode = saltos locales ("tirones") con audio intacto. Diagnóstico del
   parser: env var `RIFT_DEMUX_DEBUG=1`. Trade-off aceptado: CFR (VFR en AVI
   legacy es prácticamente inexistente).
+- **Corte de escena en Frame+**: la ruta Frame+ de `interpolatePair` retorna
+  antes de los gates de la ruta clásica, así que tiene su propio gate
+  (`SceneCutDetector`): si > 0.61 de los bloques de nivel 1 conservan residuo
+  medio > 24/1023 tras compensar movimiento, repite el frame fuente más cercano,
+  resetea el estado temporal y el par siguiente no usa contexto de 4 frames.
+  Calibrado a mano sobre 2878 pares (anime 4K HDR, M4): 29/41 cortes, 0
+  falsos positivos; los cortes que escapan tienen contenido similar a ambos
+  lados. Coste ~0.17 ms/par. `RIFT_SCENE_CUT=0` lo desactiva (A/B). NO corrige
+  los cambios de dibujo dentro de un plano (anime en 2s) — es otro problema.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

@@ -103,6 +103,11 @@ public final class MotionCompensator {
     private let warp: WarpEngine
     private let patchEstimator: DenseMotionPrototype?
     private var loggedTemporalContext=false
+    /// I1 del último par tratado como corte de escena: el par siguiente empieza en
+    /// él y su frame `before` pertenece al plano anterior, así que no usa contexto.
+    private var cutBoundary: CVPixelBuffer?
+    /// RIFT_SCENE_CUT=0 desactiva el gate de corte de Frame+ (comparación A/B offline).
+    private let sceneCutGateEnabled=ProcessInfo.processInfo.environment["RIFT_SCENE_CUT"] != "0"
     private let patchReverseME: MotionSearchEngine?
     private let confidenceTemporal: ConfidenceTemporalEvidence?
     private let validationWidth: Int
@@ -206,6 +211,7 @@ public final class MotionCompensator {
         patchReverseME?.resetTemporalState()
         confidenceTemporal?.reset()
         patchEstimator?.resetLocalConfidenceState()
+        cutBoundary=nil
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).
@@ -270,7 +276,9 @@ public final class MotionCompensator {
                 }
             }
             let a=normalized(luma0),b=normalized(luma1)
-            let temporal=context.flatMap { neighbor -> DenseMotionPrototype.TemporalContext? in
+            let afterCut=cutBoundary.map { $0 === I0 } ?? false
+            cutBoundary=nil
+            let temporal=afterCut ? nil : context.flatMap { neighbor -> DenseMotionPrototype.TemporalContext? in
                 guard let before=lumas[2],let after=lumas[3] else { return nil }
                 return DenseMotionPrototype.TemporalContext(before: normalized(before),after: normalized(after),beforeInterval: neighbor.beforeInterval,afterInterval: neighbor.afterInterval)
             }
@@ -282,6 +290,19 @@ public final class MotionCompensator {
             do {
                 _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
                 _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
+                // Corte de escena: no hay correspondencia que interpolar. Se repite el
+                // frame fuente más cercano y se descarta la historia del plano anterior.
+                let cutGrid=me.grids[1]
+                let unmatched=SceneCutDetector.unmatchedFraction(cur: me.readLevel(1),ref: reverse.readLevel(1),width: config.workWidth/2,height: config.workHeight/2,vectors: me.downloadMV(level: 1),gridW: cutGrid.w,gridH: cutGrid.h,blockSize: 16)
+                if sceneCutGateEnabled && SceneCutDetector.isCut(unmatchedFraction: unmatched) {
+                    resetTemporalState()
+                    cutBoundary=I1
+                    if ProcessInfo.processInfo.environment["RIFT_DIAGNOSTICS"] == "1" {
+                        print("[Frame+] Scene cut: \(String(format: "%.2f",unmatched)) unmatched; repeating source frames")
+                    }
+                    return InterpolationPairResult(pixelBuffers: sourceFallbackBuffers(I0: I0,I1: I1,tValues: tValues),
+                                                   meMS: Double(DispatchTime.now().uptimeNanoseconds-start)/1e6,warpMS: 0,upscaleMS: 0)
+                }
                 if let confidenceTemporal {
                     if !confidenceTemporal.isContinuous(a: a,before: temporal?.before) {dense.resetLocalConfidenceState()}
                     dense.diagnosticTemporalVectors=try confidenceTemporal.acquire(a: a,b: b,context: temporal,backward: backward)
