@@ -230,3 +230,75 @@ do {
     precondition(mixedReductions == 1)
     print("PASS: mixed one/two-period pairs (\(longPairs) long) keep a continuous 60 fps grid; load monitor uses each pair's own budget")
 }
+
+// Maximum-fluidity mode: FramePool may drop two repeats in a row, so pairs span
+// one, two or three source periods (animation on ones, twos and threes). A
+// three-period pair lasts up to 125.1 ms: at most eight grid points, exactly
+// UniformCadence's per-call bound, and up to eight may need synthesis.
+do {
+    var cases = 0, threePeriodPairs = 0, maxSynthetic = 0
+    for sourceFPS in [24_000.0 / 1001, 24, 25, 30_000.0 / 1001] {
+        for targetFPS in [50.0, 60_000.0 / 1001, 60] {
+            var grid = UniformCadence(framesPerSecond: targetFPS)
+            let frameCount = Int(sourceFPS * 600)
+            // 10 s segments cycling ones → twos → threes; keep every Nth frame.
+            var kept = [0]
+            while true {
+                let hold = Int(Double(kept.last!) / sourceFPS / 10) % 3 + 1
+                guard kept.last! + hold < frameCount else { break }
+                kept.append(kept.last! + hold)
+            }
+            var previous: CMTime?
+            var count = 0
+            for (start, end) in zip(kept, kept.dropFirst()) {
+                let periods = end - start
+                precondition(periods >= 1 && periods <= 3)
+                let a = (Double(start) / sourceFPS * 1000).rounded() / 1000
+                let b = (Double(end) / sourceFPS * 1000).rounded() / 1000
+                let samples = grid.samples(from: a, to: b)
+                // The per-call bound (8) must never truncate a pair: the next grid point
+                // after the last sample has to fall at or beyond the pair's end.
+                if let last = samples.last { precondition(last.pts.seconds + grid.step.seconds >= b - 0.000_001) }
+                // 23.976→59.94 or 25→60: a three-period pair can hold eight points with
+                // none within the 1 ms source tolerance — maxSamplesPerPair = 8 covers it.
+                let synthetic = samples.filter { $0.pts.seconds - a > 0.001 && b - $0.pts.seconds > 0.001 }
+                precondition(synthetic.count <= 8)
+                maxSynthetic = max(maxSynthetic, synthetic.count)
+                precondition(zip(samples, samples.dropFirst()).allSatisfy { $0.t < $1.t })
+                if periods == 3 { threePeriodPairs += 1 }
+                for sample in samples {
+                    precondition(sample.t >= 0 && sample.t < 1)
+                    if let previous { precondition(CMTimeCompare(CMTimeSubtract(sample.pts, previous), grid.step) == 0) }
+                    precondition(abs(sample.pts.seconds - Double(count) * grid.step.seconds) < 0.000_001)
+                    previous = sample.pts
+                    count += 1
+                }
+            }
+            let duration = (Double(kept.last!) / sourceFPS * 1000).rounded() / 1000
+            precondition(abs(Double(count) - duration * targetFPS) < 2)
+            cases += 1
+        }
+    }
+
+    // Three-period pairs use their own 125 ms budget.
+    let period = 1000 / (24_000.0 / 1001)
+    var monitor = AdaptiveLoadMonitor()
+    for index in 0..<240 {
+        precondition(monitor.record(costMS: 56, pairBudgetMS: 3 * period, now: Double(index) * 3 * period / 1000) == nil)
+    }
+    monitor.reset()
+    var reductions = 0
+    for index in 0..<60 {
+        if monitor.record(costMS: 3 * period * 0.96, pairBudgetMS: 3 * period, now: Double(index) * 3 * period / 1000) == .reduce { reductions += 1 }
+    }
+    precondition(reductions == 1)
+    monitor.reset()
+    var mixedReductions = 0, now = 0.0
+    for index in 0..<120 {
+        let periods = Double(index % 3 + 1)
+        if monitor.record(costMS: periods * period * 0.96, pairBudgetMS: periods * period, now: now) == .reduce { mixedReductions += 1 }
+        now += periods * period / 1000
+    }
+    precondition(mixedReductions == 1)
+    print("PASS: one/two/three-period pairs, \(cases) rate combinations (\(threePeriodPairs) three-period pairs): continuous grid, max \(maxSynthetic) synthetic per pair; load monitor per-pair budgets")
+}
