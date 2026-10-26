@@ -15,6 +15,9 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
         return pixels
     }
     let w=CVPixelBufferGetWidth(buffers[0]),h=CVPixelBufferGetHeight(buffers[0])
+    if ProcessInfo.processInfo.environment["MV_CUT_FEATURES"]=="1" {
+        try auditCutFeatures(lumas:buffers.map(luma),w:w,h:h,pts:pts,output:output);return
+    }
     let profile=ProcessInfo.processInfo.environment["MV_NATIVE_SCENE_PROFILE"] ?? "economy"
     let fitted=(profile=="fluid" ? InterpolationConfig.fluid : InterpolationConfig.fluidEconomy).fittingAspect(width:w,height:h)
     let unsafe = ProcessInfo.processInfo.environment["MV_NATIVE_SCENE_UNSAFE"] == "1"
@@ -104,4 +107,85 @@ func checkNativePatchSafety() throws {
         }
     }
     print("PATCH SAFETY: configured rejection and opt-out passed; 12 static controls exactly unchanged")
+}
+
+// Scene-cut calibration only: per consecutive pair, luma statistics on a ~1/3
+// decimated plane (close to the 1152x480 work plane). No interpolation runs.
+func auditCutFeatures(lumas: [[UInt16]], w: Int, h: Int, pts: [Double], output: String) throws {
+    let step=3,dw=w/step,dh=h/step,bins=64,grid=4
+    let small=lumas.map { l -> [UInt16] in
+        var s=[UInt16](repeating:0,count:dw*dh)
+        for y in 0..<dh {for x in 0..<dw {s[y*dw+x]=l[y*step*w+x*step]}}
+        return s
+    }
+    func histogram(_ s: [UInt16],_ x0: Int,_ x1: Int,_ y0: Int,_ y1: Int) -> [Double] {
+        var hist=[Double](repeating:0,count:bins)
+        for y in y0..<y1 {for x in x0..<x1 {hist[min(Int(s[y*dw+x])*bins/1024,bins-1)]+=1}}
+        let n=Double((x1-x0)*(y1-y0));return hist.map {$0/n}
+    }
+    func l1(_ a: [Double],_ b: [Double]) -> Double {zip(a,b).reduce(0) {$0+abs($1.0-$1.1)}}
+    // Motion-compensated residual on ME level 1, as Frame+ production would see it:
+    // work-plane luma (area downscale, 0...1023), production pyramid, forward L1 vectors.
+    let config=InterpolationConfig.fluid.fittingAspect(width:w,height:h),ww=config.workWidth,wh=config.workHeight
+    let spec=[LevelSpec(width:ww,height:wh,blockSize:config.blockSize,searchHalfPel:8,halfPelRefine:config.subpel,inheritFactor:4),
+              LevelSpec(width:ww/2,height:wh/2,blockSize:16,searchHalfPel:16,halfPelRefine:false,inheritFactor:2),
+              LevelSpec(width:ww/4,height:wh/4,blockSize:16,searchHalfPel:32,halfPelRefine:false,inheritFactor:2),
+              LevelSpec(width:ww/8,height:wh/8,blockSize:16,searchHalfPel:32,halfPelRefine:false,inheritFactor:1)]
+    let forward=try MotionSearchEngine(msl:motionShadersMSL,spec:spec,lambdaPx:config.lambdaPx,smoothL0:true,gateL0:true,temporalGatePx:0)
+    let reverse=try MotionSearchEngine(msl:motionShadersMSL,spec:spec,lambdaPx:config.lambdaPx,smoothL0:true,gateL0:true,temporalGatePx:0)
+    func work(_ l: [UInt16]) -> Data {
+        var out=[UInt16](repeating:0,count:ww*wh)
+        for y in 0..<wh {for x in 0..<ww {
+            let x0=x*w/ww,x1=max(x0+1,(x+1)*w/ww),y0=y*h/wh,y1=max(y0+1,(y+1)*h/wh)
+            var sum=0;for yy in y0..<y1 {for xx in x0..<x1 {sum+=Int(l[yy*w+xx])}}
+            out[y*ww+x]=UInt16(sum/((x1-x0)*(y1-y0)))
+        }}
+        return out.withUnsafeBytes {Data($0)}
+    }
+    let works=lumas.map(work)
+    var residuals=[[String:Any]]()
+    for i in 0..<works.count-1 {
+        _=try forward.runPairBatched(cur:works[i],ref:works[i+1]);_=try reverse.runPairBatched(cur:works[i+1],ref:works[i])
+        let a=forward.readLevel(1),b=reverse.readLevel(1),mv=forward.downloadMV(level:1),g=forward.grids[1],lw=ww/2,lh=wh/2
+        var signed=[[Double]](repeating:[],count:3)
+        for by in 0..<g.h {for bx in 0..<g.w {
+            let v=mv[by*g.w+bx]
+            for (s,sign) in [0,1,-1].enumerated() {
+                let dx=Int(v.x)*sign/2,dy=Int(v.y)*sign/2;var sum=0,n=0
+                for y in by*16..<min(by*16+16,lh) {for x in bx*16..<min(bx*16+16,lw) {
+                    let rx=min(max(x+dx,0),lw-1),ry=min(max(y+dy,0),lh-1)
+                    sum+=abs(Int(a[y*lw+x])-Int(b[ry*lw+rx]));n+=1
+                }}
+                signed[s].append(Double(sum)/Double(max(n,1)))
+            }
+        }}
+        func summary(_ r: [Double]) -> [String:Any] {
+            let sorted=r.sorted()
+            return ["median":sorted[sorted.count/2],"p25":sorted[sorted.count/4],
+                    "over":[16,24,32,48,64,96].map {t in Double(r.filter {$0>Double(t)}.count)/Double(r.count)}]
+        }
+        residuals.append(["zero":summary(signed[0]),"plus":summary(signed[1]),"minus":summary(signed[2]),"blocks":signed[0].count])
+    }
+    var rows=[[String:Any]]()
+    for i in 0..<small.count-1 {
+        let a=small[i],b=small[i+1]
+        var mad=0.0
+        for k in a.indices {mad+=Double(abs(Int(a[k])-Int(b[k])))}
+        var cells=[Double]()
+        for gy in 0..<grid {for gx in 0..<grid {
+            let x0=gx*dw/grid,x1=(gx+1)*dw/grid,y0=gy*dh/grid,y1=(gy+1)*dh/grid
+            cells.append(l1(histogram(a,x0,x1,y0,y1),histogram(b,x0,x1,y0,y1)))
+        }}
+        cells.sort()
+        rows.append(["pair":i,"PTS":[pts[i],pts[i+1]],"residual":residuals[i],"histL1":l1(histogram(a,0,dw,0,dh),histogram(b,0,dw,0,dh)),
+                     "cellL1Median":(cells[7]+cells[8])/2,"cellL1Min":cells[0],"mad":mad/Double(a.count)])
+    }
+    let tw=w/8,th=h/8
+    for (i,l) in lumas.enumerated() {
+        var t=[UInt16](repeating:0,count:tw*th)
+        for y in 0..<th {for x in 0..<tw {t[y*tw+x]=l[y*8*w+x*8]}}
+        confidencePNG(t,tw,th,output+"/thumb\(String(format:"%03d",i)).png")
+    }
+    try confidenceJSON(["width":w,"height":h,"decimation":step,"bins":bins,"grid":grid,"records":rows],output+"/cut-features.json")
+    print("CUT FEATURES: \(rows.count) pairs")
 }
