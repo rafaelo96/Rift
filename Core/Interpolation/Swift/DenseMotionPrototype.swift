@@ -54,6 +54,7 @@ public final class DenseMotionPrototype {
     public var diagnosticTemporalVectors: [SIMD4<Float>]?
     private let pairConfidence: PairConfidenceDiagnostics?
     private let localConfidence: LocalConfidenceDegradation?
+    private let drawingHold: DrawingHold?
     private let edgeRegularizer: FramePlusEdgeRegularizer?
     public var localConfidenceHistoryStep: Float=1
     public var localDegradationMap: MTLTexture? {localConfidence?.map}
@@ -91,6 +92,7 @@ public final class DenseMotionPrototype {
         }
         pairConfidence=(ProcessInfo.processInfo.environment["RIFT_PAIR_CONFIDENCE"] == "1" || ProcessInfo.processInfo.environment["RIFT_E2"] == "1") ? try PairConfidenceDiagnostics(device: device,width: width,height: height) : nil
         localConfidence=ProcessInfo.processInfo.environment["RIFT_E2"]=="1" ? try LocalConfidenceDegradation(device: device,width: width,height: height) : nil
+        drawingHold=ProcessInfo.processInfo.environment["RIFT_DRAWING_HOLD"] != "0" ? try DrawingHold(device: device,width: width,height: height) : nil
         let candidateMode=ProcessInfo.processInfo.environment["RIFT_DENSE_CANDIDATES"] == "1"
         if candidateMode {
             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
@@ -401,6 +403,7 @@ public final class DenseMotionPrototype {
                 $0.setBuffer(ownership[1],offset: 0,index: 3)
                 $0.setBytes(&offset,length: 4,index: 4)
             }
+            try drawingHold?.encode(command: command,reliability: reliability,images: original,coordinates: nativeCoordinates,blend: nativeBlend,output: output,time: time)
             localConfidence?.apply(command: command,images: original,output: output,time: time)
             nativeRenderer?(time,nativeCoordinates,nativeBlend,command)
             // The native consumer encodes before shared maps are reused by the next sample.

@@ -15,6 +15,12 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
         return pixels
     }
     let w=CVPixelBufferGetWidth(buffers[0]),h=CVPixelBufferGetHeight(buffers[0])
+    if ProcessInfo.processInfo.environment["MV_HOLD_AB"]=="1" {
+        try abDrawingHold(buffers:buffers,pts:pts,output:output);return
+    }
+    if ProcessInfo.processInfo.environment["MV_HOLD_NATIVE_PREVIEW"]=="1" {
+        try previewDrawingHoldNative(buffers:buffers,pts:pts,output:output);return
+    }
     if ProcessInfo.processInfo.environment["MV_HOLD_CALIBRATION"]=="1" {
         try calibrateDrawingHold(lumas:buffers.map(luma),w:w,h:h,pts:pts,output:output);return
     }

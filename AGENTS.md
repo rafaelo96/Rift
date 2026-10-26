@@ -143,6 +143,18 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   falsos positivos; los cortes que escapan tienen contenido similar a ambos
   lados. Coste ~0.17 ms/par. `RIFT_SCENE_CUT=0` lo desactiva (A/B). NO corrige
   los cambios de dibujo dentro de un plano (anime en 2s) — es otro problema.
+- **Sostén del dibujo en Frame+ (anime en 2s)**: `DrawingHold` toma los píxeles
+  del work-plane sin correspondencia en `denseSynthesize` (reliability < 0.02,
+  fuera de una banda de 16 px en el borde del frame), calcula su densidad en una
+  caja de 33×33 y aplica h = smoothstep(0.05, 0.15). Con ese peso lleva vectores
+  y mezcla hacia el frame fuente más cercano: el personaje cambia de pose a mitad
+  de intervalo, como en el original, en vez de despedazarse. Con h = 0 la salida
+  es idéntica byte a byte. A/B (Avatar 4K HDR, M4, 2809 pares del mismo plano):
+  en los pares dañados, "lejos de ambos" baja de 11.4 % a 1.9 %; en la mediana se
+  sostiene el 1.7 % del frame. También sostiene contenido que no se puede
+  interpolar, como la lluvia nocturna, que queda nítida a 24 fps en vez de una
+  mezcla borrosa. Coste ~0.4–0.7 ms/par. `RIFT_DRAWING_HOLD=0` lo desactiva.
+  Vista previa offline: MVProbe `MV_HOLD_NATIVE_PREVIEW=1`, A/B `MV_HOLD_AB=1`.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

@@ -149,6 +149,11 @@ if envInt("MV_DIAGNOSTIC_CHROMA_CHECK",0)==1 {
     print("DIAGNOSTIC CHROMA CHECK passed: 8/10-bit, 420/422, padded rows, channel order and resampling")
     exit(0)
 }
+if envInt("MV_DRAWING_HOLD_CHECK",0)==1 {
+    setbuf(stdout,nil)
+    do { try checkDrawingHold(); exit(0) }
+    catch { print("DRAWING HOLD CHECK FAILED: \(error)"); exit(3) }
+}
 if envInt("MV_SCENE_CUT_CHECK",0)==1 {
     do { try checkSceneCutGate(); exit(0) }
     catch { print("SCENE CUT CHECK FAILED: \(error)"); exit(3) }
