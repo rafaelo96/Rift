@@ -167,8 +167,8 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   del par como presupuesto. Simulación: frames congelados 24–43 % → 6–31 % en
   tramos con repetidos. En la app (M4, 4K) se mantienen 60 fps sin frames
   atrasados, pero solo se descarta ~70 % de los repetidos: con 2 frames en el
-  pool no deduplica. `RIFT_DEDUP=0` lo desactiva. Pendiente: verlo en pantalla
-  real.
+  pool no deduplica. `RIFT_DEDUP=0` lo desactiva. Confirmado por el usuario en
+  pantalla (19:40, con frente a sin dedup): más fluido.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).
