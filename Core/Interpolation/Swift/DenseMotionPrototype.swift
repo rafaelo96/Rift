@@ -70,7 +70,7 @@ public final class DenseMotionPrototype {
     private let dual: [[MTLTexture]]
     private let linear: [MTLTexture]
 
-    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8,projectedOwnership: Bool=true,inverseSearch: Bool=false) throws {
+    public init(width: Int,height: Int,blockSize: Int=8,variational: Bool=false,finestIterations: Int=8,projectedOwnership: Bool=true,inverseSearch: Bool=false,drawingHold: Bool=true) throws {
         guard width>=8,height>=8,width<=8192,height<=8192,blockSize>0,blockSize<=64 else { throw MotionSearchEngine.EngineError.pipeline("Invalid dense geometry") }
         guard let device=MTLCreateSystemDefaultDevice(),let queue=device.makeCommandQueue() else { throw MotionSearchEngine.EngineError.deviceUnavailable }
         self.device=device; self.queue=queue
@@ -92,7 +92,7 @@ public final class DenseMotionPrototype {
         }
         pairConfidence=(ProcessInfo.processInfo.environment["RIFT_PAIR_CONFIDENCE"] == "1" || ProcessInfo.processInfo.environment["RIFT_E2"] == "1") ? try PairConfidenceDiagnostics(device: device,width: width,height: height) : nil
         localConfidence=ProcessInfo.processInfo.environment["RIFT_E2"]=="1" ? try LocalConfidenceDegradation(device: device,width: width,height: height) : nil
-        drawingHold=ProcessInfo.processInfo.environment["RIFT_DRAWING_HOLD"] != "0" ? try DrawingHold(device: device,width: width,height: height) : nil
+        self.drawingHold=drawingHold && ProcessInfo.processInfo.environment["RIFT_DRAWING_HOLD"] != "0" ? try DrawingHold(device: device,width: width,height: height) : nil
         let candidateMode=ProcessInfo.processInfo.environment["RIFT_DENSE_CANDIDATES"] == "1"
         if candidateMode {
             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }
@@ -142,9 +142,10 @@ public final class DenseMotionPrototype {
         try interpolate(first: first,last: last,forward: forward,backward: backward,times: [time],context: context)[0]
     }
 
-    /// Instantes por par: un par de dos periodos fuente (frame repetido descartado
-    /// por FramePool) contiene hasta 5 puntos de la rejilla de 60 fps; 1 de margen.
-    public static let maxSamplesPerPair = 6
+    /// Instantes por par: un par de tres periodos fuente (hasta dos frames repetidos
+    /// descartados por FramePool) contiene hasta 8 puntos de la rejilla de 60 fps,
+    /// de los que como mucho 7 se sintetizan.
+    public static let maxSamplesPerPair = 8
 
     /// One bounded pair analysis shared by up to `maxSamplesPerPair` temporal samples.
     /// Milliseconds are incremental elapsed costs; their sum covers analysis and all syntheses.

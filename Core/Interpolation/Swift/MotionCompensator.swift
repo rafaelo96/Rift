@@ -187,7 +187,7 @@ public final class MotionCompensator {
             )
             confidenceTemporal=patchEnabled && ProcessInfo.processInfo.environment["RIFT_E2"]=="1" ? try ConfidenceTemporalEvidence(spec: spec,lambda: config.lambdaPx,width: config.workWidth,height: config.workHeight,blockSize: config.blockSize) : nil
             if patchEnabled {
-                self.patchEstimator=try DenseMotionPrototype(width: config.workWidth,height: config.workHeight,blockSize: config.blockSize,inverseSearch: true)
+                self.patchEstimator=try DenseMotionPrototype(width: config.workWidth,height: config.workHeight,blockSize: config.blockSize,inverseSearch: true,drawingHold: config.usesDrawingHold)
                 self.patchReverseME=try MotionSearchEngine(msl: motionShadersMSL,spec: spec,lambdaPx: config.lambdaPx,smoothL0: true,gateL0: true,temporalGatePx: 0)
                 print("[Frame+] Native patch interpolation enabled (RIFT_FRAMEPLUS_PATCH=0 restores legacy)")
             } else { self.patchEstimator=nil; self.patchReverseME=nil }

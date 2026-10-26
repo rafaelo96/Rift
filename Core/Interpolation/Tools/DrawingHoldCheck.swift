@@ -39,9 +39,10 @@ func checkDrawingHold() throws {
         return (0..<h).flatMap {y in (0..<w).map {base.advanced(by:y*stride).assumingMemoryBound(to:UInt16.self)[$0]}}
     }
     let config=InterpolationConfig.fluid.fittingAspect(width:w,height:h)
-    setenv("RIFT_DRAWING_HOLD","0",1);let off=try MotionCompensator(config:config)
-    setenv("RIFT_DRAWING_HOLD","1",1);let on=try MotionCompensator(config:config)
-    unsetenv("RIFT_DRAWING_HOLD")
+    // Default configuration holds; the maximum-fluidity mode turns it off by config.
+    guard config.usesDrawingHold else {print("DRAWING HOLD CHECK FAILED: default config does not hold");exit(3)}
+    let off=try MotionCompensator(config:InterpolationConfig(workWidth:config.workWidth,workHeight:config.workHeight,usesDrawingHold:false))
+    let on=try MotionCompensator(config:config)
     let a=image(0,nil),pan=image(12,nil)
     let panOnResult=on.interpolatePair(I0:a,I1:pan,tValues:[0.5]).pixelBuffers,panOffResult=off.interpolatePair(I0:a,I1:pan,tValues:[0.5]).pixelBuffers
     let panOn=luma(panOnResult[0]),panOff=luma(panOffResult[0])
@@ -71,9 +72,8 @@ func checkDrawingHold() throws {
 func abDrawingHold(buffers: [CVPixelBuffer], pts: [Double], output: String) throws {
     let w=CVPixelBufferGetWidth(buffers[0]),h=CVPixelBufferGetHeight(buffers[0])
     let config=InterpolationConfig.fluid.fittingAspect(width:w,height:h)
-    setenv("RIFT_DRAWING_HOLD","0",1);let off=try MotionCompensator(config:config)
-    setenv("RIFT_DRAWING_HOLD","1",1);let on=try MotionCompensator(config:config)
-    unsetenv("RIFT_DRAWING_HOLD")
+    let off=try MotionCompensator(config:InterpolationConfig(workWidth:config.workWidth,workHeight:config.workHeight,usesDrawingHold:false))
+    let on=try MotionCompensator(config:config)
     func luma(_ buffer: CVPixelBuffer) -> [UInt16] {
         CVPixelBufferLockBaseAddress(buffer,.readOnly);defer {CVPixelBufferUnlockBaseAddress(buffer,.readOnly)}
         let stride=CVPixelBufferGetBytesPerRowOfPlane(buffer,0),base=CVPixelBufferGetBaseAddressOfPlane(buffer,0)!

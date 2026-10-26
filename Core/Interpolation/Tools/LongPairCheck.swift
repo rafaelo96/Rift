@@ -31,9 +31,9 @@ func checkLongPair() throws {
     }
     let reference=luma(image(0))
     // Sub-pixel shift of an output against I0 over the central region (SAD minimum, parabolic fit).
-    func shift(_ frame: [Int]) -> Double {
+    func shift(_ frame: [Int],limit: Int) -> Double {
         var costs=[Double]()
-        for s in 0...total+4 {
+        for s in 0...limit {
             var sad=0
             for y in stride(from:100,to:h-100,by:2) {for x in stride(from:200,to:w-260,by:2) {sad+=abs(frame[y*w+x]-reference[y*w+x+s])}}
             costs.append(Double(sad))
@@ -44,12 +44,16 @@ func checkLongPair() throws {
         return Double(best)+0.5*(a-c)/max(a-2*b+c,1e-9)
     }
     let engine=try MotionCompensator(config:InterpolationConfig.fluid.fittingAspect(width:w,height:h))
-    let times: [Float]=[0.1,0.3,0.5,0.7,0.9]
-    let outputs=engine.interpolatePair(I0:image(0),I1:image(total),tValues:times).pixelBuffers
-    guard outputs.count==times.count else {print("LONG PAIR CHECK FAILED: \(outputs.count) outputs for \(times.count) samples");exit(3)}
-    let shifts=outputs.map {shift(luma($0))}
-    let errors=zip(times,shifts).map {abs($1-Double($0)*Double(total))}
-    print("LONG PAIR: shifts \(shifts.map {String(format:"%.2f",$0)}.joined(separator:" ")) expected \(times.map {String(format:"%.1f",Double($0)*Double(total))}.joined(separator:" "))")
-    guard errors.allSatisfy({$0<1}),zip(shifts,shifts.dropFirst()).allSatisfy({$0<$1}) else {print("LONG PAIR CHECK FAILED: uneven motion");exit(3)}
-    print("LONG PAIR: five samples over two periods advance evenly (max error \(String(format:"%.2f",errors.max()!)) px)")
+    // Two periods (one repeat dropped): five samples; three periods (two dropped): seven.
+    for (periods,times) in [(2,[Float(0.1),0.3,0.5,0.7,0.9]),(3,(1...7).map {Float($0)/7.5})] {
+        let span=total*periods/2
+        engine.resetTemporalState()
+        let outputs=engine.interpolatePair(I0:image(0),I1:image(span),tValues:times).pixelBuffers
+        guard outputs.count==times.count else {print("LONG PAIR CHECK FAILED: \(outputs.count) outputs for \(times.count) samples");exit(3)}
+        let shifts=outputs.map {shift(luma($0),limit:span+4)}
+        let errors=zip(times,shifts).map {abs($1-Double($0)*Double(span))}
+        print("LONG PAIR \(periods) periods: shifts \(shifts.map {String(format:"%.2f",$0)}.joined(separator:" ")) expected \(times.map {String(format:"%.1f",Double($0)*Double(span))}.joined(separator:" "))")
+        guard errors.allSatisfy({$0<1}),zip(shifts,shifts.dropFirst()).allSatisfy({$0<$1}) else {print("LONG PAIR CHECK FAILED: uneven motion");exit(3)}
+        print("LONG PAIR: \(times.count) samples over \(periods) periods advance evenly (max error \(String(format:"%.2f",errors.max()!)) px)")
+    }
 }
