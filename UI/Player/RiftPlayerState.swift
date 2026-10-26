@@ -346,6 +346,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var presentationDropMonitor = PresentationDropMonitor()
     /// Start at balanced quality; sustained measured headroom permits HQ.
     private var interpolationQuality = 1
+    /// Calidad a la que la admisión o el monitor de coste llevaron este video.
+    /// Reactivar Frame+ a mano parte de ella: volver a 1 sin admisión dejaba la
+    /// reproducción ~10 s por debajo del presupuesto hasta que el monitor bajaba.
+    private var calibratedInterpolationQuality: Int?
     private var pendingLoadAction: AdaptiveLoadMonitor.Action?
     private var pendingPresentationAction: PresentationDropMonitor.Action?
     private var presentationRecoverEligible = true
@@ -637,6 +641,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// distintos. Se empieza de nuevo desde la preferencia solicitada y las
     /// mediciones de esta sesión deciden si se queda en 60, baja a 48 o a 24.
     private func startFramePlusCalibrationForNewVideo() {
+        calibratedInterpolationQuality = nil
         guard requestedInterpolationMode != .disabled else { return }
         interpolationQuality = 1
         os_log("Nueva calibración Frame+ para video nuevo: modo solicitado %{public}@",
@@ -756,6 +761,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
            let probeDuration = Int(rawDuration), (10...1800).contains(probeDuration) {
             let exerciseControls = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "1"
             let exercisePausedSeek = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "pause-seek"
+            // Frame+ off→on por el mismo camino que el menú (setInterpolationMode).
+            let exerciseFramePlusToggle = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "frameplus-toggle"
+            var toggledMode: InterpolationMode?
             Task { @MainActor [weak self] in
                 var pausedSeekTarget: Double?
                 for second in 1...probeDuration {
@@ -774,6 +782,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         case 20:
                             precondition(self.isPlaying && self.currentTime > pausedSeekTarget! + 3 && self.displayRenderingFPS > 0,
                                          "Playback did not recover after a paused seek")
+                        default: break
+                        }
+                    }
+                    if exerciseFramePlusToggle {
+                        switch second {
+                        case 20, 40:
+                            toggledMode = self.interpolationMode
+                            self.setInterpolationMode(.disabled)
+                        case 23, 43:
+                            if let mode = toggledMode, mode != .disabled { self.setInterpolationMode(mode) }
                         default: break
                         }
                     }
@@ -1431,7 +1449,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             requestedInterpolationMode = m
             persistPlaybackPreferences()
         }
-        if persistRequest { interpolationQuality = 1 }
+        if persistRequest { interpolationQuality = calibratedInterpolationQuality ?? 1 }
         automaticRetryAt = nil
         compensator = nil
         lastShownFrames.removeAll()
@@ -1471,6 +1489,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     private func changeInterpolationQuality(to quality: Int) {
         interpolationQuality = min(max(quality, 0), 2)
+        calibratedInterpolationQuality = interpolationQuality
         compensator = nil
         interpolationPairCount = 0
         resetThroughputWindow()
