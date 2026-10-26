@@ -34,8 +34,20 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         }}
         return best
     }
-    var dropped=Set<Int>()
-    for j in 1..<buffers.count-1 where !dropped.contains(j-1) && blockMax(small[j-1],small[j])<threshold {dropped.insert(j)}
+    // Same rule as SlidingFramePool: compare with the last kept frame, at most
+    // `cap` repeats dropped in a row (a pair then spans up to cap+1 periods).
+    func dropped(cap: Int) -> Set<Int> {
+        var result=Set<Int>(),lastKept=0,run=0
+        for j in 1..<buffers.count-1 {
+            if run<cap && blockMax(small[lastKept],small[j])<threshold {result.insert(j);run+=1}
+            else {lastKept=j;run=0}
+        }
+        return result
+    }
+    // MV_DEDUP_MODES="name:cap:hold|nohold,…" (default: today vs maximum fluidity).
+    let modes=(ProcessInfo.processInfo.environment["MV_DEDUP_MODES"] ?? "current:0:hold,dedup:1:hold,max:2:nohold").split(separator:",").map {item -> (String,Int,Bool) in
+        let parts=item.split(separator:":").map(String.init);return (parts[0],Int(parts[1])!,parts[2]=="hold")
+    }
     let spec=[LevelSpec(width:mw,height:mh,blockSize:16,searchHalfPel:16,halfPelRefine:false,inheritFactor:1)]
     let probe=try MotionSearchEngine(msl:motionShadersMSL,spec:spec,lambdaPx:1,smoothL0:true,gateL0:true,temporalGatePx:0)
     func globalMotion(_ a: [UInt16],_ b: [UInt16]) -> Double {
@@ -44,10 +56,16 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         return mv.sorted()[mv.count/2]
     }
     var report=[String:Any]()
-    for (mode,kept) in [("current",Array(0..<buffers.count)),("dedup",(0..<buffers.count).filter {!dropped.contains($0)})] {
+    var droppedByMode=[String:[Int]]()
+    for (mode,cap,hold) in modes {
+        let removed=cap==0 ? Set<Int>():dropped(cap:cap)
+        droppedByMode[mode]=removed.sorted()
+        let kept=(0..<buffers.count).filter {!removed.contains($0)}
+        setenv("RIFT_DRAWING_HOLD",hold ? "1":"0",1)
         let engine=try MotionCompensator(config:config)
+        unsetenv("RIFT_DRAWING_HOLD")
         let step=1.0/60,epoch=pts[0]
-        var previous: [UInt16]?,motions=[Double](),changes=[Double](),pairCosts=[Double](),incomplete=0,farValues=[Double](),costMS=0.0,pairs=0,synthesized=0
+        var previous: [UInt16]?,regionalFrozen=[Double](),motions=[Double](),changes=[Double](),pairCosts=[Double](),incomplete=0,farValues=[Double](),costMS=0.0,pairs=0,synthesized=0
         for p in 1..<kept.count-2 {
             let ia=kept[p],ib=kept[p+1],pa=pts[ia],pb=pts[ib]
             var times=[Double]();var k=ceil((pa-epoch)/step-1e-6)
@@ -58,7 +76,11 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
             var generated=[CVPixelBuffer]()
             if !tValues.isEmpty {
                 let start=DispatchTime.now().uptimeNanoseconds
-                generated=engine.interpolatePair(I0:buffers[ia],I1:buffers[ib],tValues:tValues,context:context).pixelBuffers
+                // Production accepts maxSamplesPerPair per call; longer pairs are split
+                // here (re-runs motion search, so their cost is overstated).
+                for chunk in stride(from:0,to:tValues.count,by:DenseMotionPrototype.maxSamplesPerPair) {
+                    generated+=engine.interpolatePair(I0:buffers[ia],I1:buffers[ib],tValues:Array(tValues[chunk..<min(tValues.count,chunk+DenseMotionPrototype.maxSamplesPerPair)]),context:context).pixelBuffers
+                }
                 let pairMS=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
                 costMS+=pairMS;pairs+=1;synthesized+=generated.count;pairCosts.append(pairMS)
                 if generated.count != tValues.count {incomplete+=1}
@@ -74,6 +96,13 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
                     var far=0
                     for i in frame.indices where abs(Int(a[i])-Int(b[i]))>40 {if min(abs(Int(frame[i])-Int(a[i])),abs(Int(frame[i])-Int(b[i])))>40 {far+=1}}
                     farValues.append(Double(far)/Double(frame.count))
+                    // Inside the moving region of the pair, share of pixels identical to the
+                    // previous output: held drawings freeze there even when the frame moves.
+                    if let previous {
+                        var region=0,still=0
+                        for i in frame.indices where abs(Int(a[i])-Int(b[i]))>40 {region+=1;if abs(Int(frame[i])-Int(previous[i]))<=2 {still+=1}}
+                        if region>frame.count/200 {regionalFrozen.append(Double(still)/Double(region))}
+                    }
                 } else {frame=a}
                 if let previous {
                     motions.append(globalMotion(previous,frame))
@@ -101,9 +130,9 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         let stall=moving==0 ? 0:Double(stalls)/Double(moving),stepVariation=variationN==0 ? 0:variation/Double(variationN)
         let meanFar=farValues.isEmpty ? 0:farValues.reduce(0,+)/Double(farValues.count)
         report[mode]=["outputs":motions.count+1,"pairs":pairs,"synthesized":synthesized,"costMS":costMS,
-                      "stallFraction":stall,"pairCostMax":pairCosts.max() ?? 0,"pairCostP95":pairCosts.isEmpty ? 0:pairCosts.sorted()[Int(Double(pairCosts.count-1)*0.95)],"incompletePairs":incomplete,"frozenFraction":frozenFraction,"activeSteps":active,"changes":changes,"stepVariation":stepVariation,"meanFar":meanFar,"motions":motions]
-        print("DEDUP \(mode): frozen \(String(format:"%.3f",frozenFraction)) of \(active) pairs \(pairs) synth \(synthesized) stall \(String(format:"%.3f",stall)) variation \(String(format:"%.3f",stepVariation)) far \(String(format:"%.4f",meanFar)) cost \(String(format:"%.0f",costMS)) ms p95 \(String(format:"%.1f",pairCosts.isEmpty ? 0:pairCosts.sorted()[Int(Double(pairCosts.count-1)*0.95)])) max \(String(format:"%.1f",pairCosts.max() ?? 0)) incomplete \(incomplete)")
+                      "stallFraction":stall,"regionalFrozen":regionalFrozen.isEmpty ? 0:regionalFrozen.reduce(0,+)/Double(regionalFrozen.count),"pairCostMax":pairCosts.max() ?? 0,"pairCostP95":pairCosts.isEmpty ? 0:pairCosts.sorted()[Int(Double(pairCosts.count-1)*0.95)],"incompletePairs":incomplete,"frozenFraction":frozenFraction,"activeSteps":active,"changes":changes,"stepVariation":stepVariation,"meanFar":meanFar,"motions":motions]
+        print("DEDUP \(mode): regionalFrozen \(String(format:"%.3f",regionalFrozen.isEmpty ? 0:regionalFrozen.reduce(0,+)/Double(regionalFrozen.count))) frozen \(String(format:"%.3f",frozenFraction)) of \(active) pairs \(pairs) synth \(synthesized) stall \(String(format:"%.3f",stall)) variation \(String(format:"%.3f",stepVariation)) far \(String(format:"%.4f",meanFar)) cost \(String(format:"%.0f",costMS)) ms p95 \(String(format:"%.1f",pairCosts.isEmpty ? 0:pairCosts.sorted()[Int(Double(pairCosts.count-1)*0.95)])) max \(String(format:"%.1f",pairCosts.max() ?? 0)) incomplete \(incomplete)")
     }
-    report["dropped"]=dropped.sorted();report["threshold"]=threshold;report["sourceFrames"]=buffers.count
+    report["dropped"]=droppedByMode;report["threshold"]=threshold;report["sourceFrames"]=buffers.count
     try confidenceJSON(report,output+"/dedup.json")
 }
