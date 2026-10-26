@@ -143,8 +143,8 @@ public final class DenseMotionPrototype {
     }
 
     /// Instantes por par: un par de tres periodos fuente (hasta dos frames repetidos
-    /// descartados por FramePool) contiene hasta 8 puntos de la rejilla de 60 fps,
-    /// de los que como mucho 7 se sintetizan.
+    /// descartados por FramePool) contiene hasta 8 puntos de la rejilla; con
+    /// 23.976→59.94 o 25→60 los 8 pueden necesitar síntesis (SchedulerProbe).
     public static let maxSamplesPerPair = 8
 
     /// One bounded pair analysis shared by up to `maxSamplesPerPair` temporal samples.
