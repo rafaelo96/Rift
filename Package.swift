@@ -74,7 +74,10 @@ let package = Package(
             name: "Rift",
             dependencies: ["Contracts", "Demux", "Decode", "DecodeAudio", "FramePool", "Scheduler", "Rendering", "Interpolation"],
             path: "UI",
-            resources: [.process("Assets")]
+            resources: [.process("Assets")],
+            // Display loop and per-frame work run on the real-time path: keep `swift run`
+            // (Debug) within the frame budget, as Interpolation already does.
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
         // Core/Demux — split into a pure C target (shim over libavformat) and
         // a Swift target that wraps it. Container access only; never decodes.
@@ -98,7 +101,8 @@ let package = Package(
             name: "Demux",
             dependencies: ["CDemuxShim"],
             path: "Core/Demux",
-            sources: ["Swift"]
+            sources: ["Swift"],
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
         // Standalone probe/demo tool for Core/Demux (no UI/, no Contracts/).
         .executableTarget(
@@ -112,7 +116,8 @@ let package = Package(
             name: "Decode",
             dependencies: ["Demux"],
             path: "Core/Decode",
-            sources: ["Swift"]
+            sources: ["Swift"],
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
         // Standalone validation tool for Core/Decode (uses Core/Demux as-is).
         .executableTarget(
@@ -156,7 +161,8 @@ let package = Package(
             name: "FramePool",
             dependencies: ["Demux", "Decode"],
             path: "Core/FramePool",
-            sources: ["Swift"]
+            sources: ["Swift"],
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
         // Standalone validation tool for Core/FramePool (chains Demux+Decode).
         .executableTarget(
@@ -191,7 +197,8 @@ let package = Package(
         .target(
             name: "Scheduler",
             path: "Core/Scheduler",
-            sources: ["Swift"]
+            sources: ["Swift"],
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
         .executableTarget(
             name: "SchedulerProbe",
@@ -202,7 +209,8 @@ let package = Package(
         .target(
             name: "Rendering",
             path: "Rendering",
-            sources: ["Swift"]
+            sources: ["Swift"],
+            swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
     ],
     swiftLanguageVersions: [.v5]
