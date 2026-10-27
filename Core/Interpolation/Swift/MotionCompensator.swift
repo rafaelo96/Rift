@@ -66,6 +66,41 @@ public struct InterpolationTemporalContext {
 
 public final class MotionCompensator {
 
+    /// Luma del work-plane por frame fuente. Cada par usa hasta 4 frames (I0, I1 y
+    /// el contexto antes/después) y 3 ya se redujeron en el par anterior: reducir
+    /// un frame 4K cuesta ~3.8 ms de CPU (M4), ~15 ms por par sin caché. La clave
+    /// es la identidad del CVPixelBuffer; la entrada lo retiene, así el decoder no
+    /// recicla esa dirección para otro frame mientras exista. Thread-safe: la
+    /// precarga puede llegar desde el hilo de decode.
+    private final class LumaCache {
+        private let lock = NSLock()
+        private var entries: [(buffer: CVPixelBuffer, luma: Data)] = []
+        private let capacity: Int
+        private(set) var hits = 0, misses = 0
+        init(capacity: Int) { self.capacity = capacity }
+        func luma(for buffer: CVPixelBuffer) -> Data? {
+            lock.lock(); defer { lock.unlock() }
+            guard let index = entries.firstIndex(where: { $0.buffer === buffer }) else { misses += 1; return nil }
+            hits += 1
+            let entry = entries.remove(at: index)
+            entries.append(entry)
+            return entry.luma
+        }
+        func store(_ luma: Data, for buffer: CVPixelBuffer) {
+            lock.lock(); defer { lock.unlock() }
+            entries.removeAll { $0.buffer === buffer }
+            entries.append((buffer, luma))
+            if entries.count > capacity { entries.removeFirst(entries.count - capacity) }
+        }
+        func removeAll() { lock.lock(); entries.removeAll(); lock.unlock() }
+        var stats: (hits: Int, misses: Int) { lock.lock(); defer { lock.unlock() }; return (hits, misses) }
+    }
+    private let lumaCache = LumaCache(capacity: 6)
+    /// RIFT_LUMA_CACHE=0 desactiva la caché (comparación A/B).
+    private let lumaCacheEnabled = ProcessInfo.processInfo.environment["RIFT_LUMA_CACHE"] != "0"
+    /// Aciertos/fallos acumulados de la caché de luma (diagnóstico).
+    public var lumaCacheStats: (hits: Int, misses: Int) { lumaCache.stats }
+
     private struct RenderMotionField {
         let vectors: [SIMD2<Int32>]
         let gridW: Int
@@ -212,6 +247,15 @@ public final class MotionCompensator {
         confidenceTemporal?.reset()
         patchEstimator?.resetLocalConfidenceState()
         cutBoundary=nil
+        lumaCache.removeAll()
+    }
+
+    private func cachedScaledLuma(_ buffer: CVPixelBuffer) -> Data? {
+        guard lumaCacheEnabled else { return scaledLuma(buffer) }
+        if let cached = lumaCache.luma(for: buffer) { return cached }
+        guard let scaled = scaledLuma(buffer) else { return nil }
+        lumaCache.store(scaled, for: buffer)
+        return scaled
     }
 
     /// Genera un frame interpolado entre I0 (t=0) e I1 (t=1) al instante t∈(0,1).
@@ -260,7 +304,7 @@ public final class MotionCompensator {
         var lumas=[Data?](repeating: nil,count: sources.count)
         let lumaLock=NSLock()
         DispatchQueue.concurrentPerform(iterations: sources.count) { index in
-            let scaled=self.scaledLuma(sources[index])
+            let scaled=self.cachedScaledLuma(sources[index])
             lumaLock.lock(); lumas[index]=scaled; lumaLock.unlock()
         }
         guard let luma0 = lumas[0], let luma1 = lumas[1] else {

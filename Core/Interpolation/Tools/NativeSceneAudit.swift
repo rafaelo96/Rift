@@ -65,7 +65,9 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
         confidencePNG(luma(buffers[i+1]),w,h,output+"/pair\(i)-B.png")
         print("NATIVE SCENE \(i): batch/single changed \(changed)")
     }
-    try confidenceJSON(["width":w,"height":h,"workWidth":config.workWidth,"workHeight":config.workHeight,"records":rows],output+"/metrics.json")
+    let cache=engine.lumaCacheStats
+    print("NATIVE SCENE luma cache: hits \(cache.hits) misses \(cache.misses)")
+    try confidenceJSON(["width":w,"height":h,"workWidth":config.workWidth,"workHeight":config.workHeight,"lumaCacheHits":cache.hits,"lumaCacheMisses":cache.misses,"records":rows],output+"/metrics.json")
 }
 
 // Fails on the old patch path, which ignored both configured safety checks.
