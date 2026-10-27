@@ -180,6 +180,12 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   Sonda (M4, 4K): 60 fps, 0 frames atrasados, repetidos descartados 109 → 130
   y 105 → 141; frames perdidos en pantalla +3–5 sobre ~2330, casi todos al
   arrancar. `RIFT_AUTO_MAX_FLUIDITY=1/0` lo fuerza para pruebas.
+- **Superresolución con Frame+**: sin ampliación (p. ej. video 4K en pantalla
+  4K), `SuperResolutionProcessor` solo afila a tamaño nativo (intencional,
+  commit 07db342), pero en cada frame presentado. Con Frame+ son 60 pasadas por
+  segundo compitiendo por la GPU: a 4K en M4 la reproducción caía a ~4 fps.
+  Mientras Frame+ está activo, la UI pasa `.off` al renderer en ese caso (la
+  preferencia guardada no cambia; con ampliación real sigue aplicándose).
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

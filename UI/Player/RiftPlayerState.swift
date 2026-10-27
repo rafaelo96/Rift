@@ -609,6 +609,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         automaticRetryAt = retryAutomatically ? ProcessInfo.processInfo.systemUptime + 60 : nil
         interpolationMode = .disabled
         scheduler?.setMode(.native24)
+        updateVisualEnhancements()
         // Al degradar a nativo hay que salir de "60fps ready": framePlusStateTitle
         // evalúa isFramePlusPreRendered ANTES que interpolationMode == .disabled,
         // así que sin esta limpieza el texto quedaría pegado pese a estar desactivado.
@@ -1480,6 +1481,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         isFramePlusPreparing = m != .disabled
         resetInterpolationCounters()
         syncSchedulerMode()
+        updateVisualEnhancements()
     }
 
     /// Aplica el modo del scheduler según el `interpolationMode` actual. Se llama
@@ -1905,7 +1907,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         visualEnhancementsEnabled = abs(visualBrightness) > 0.0001
             || abs(visualContrast - 1) > 0.0001
             || abs(visualSaturation - 1) > 0.0001
-            || superResolutionMode != .off
+            || renderingSuperResolutionMode != .off
         applyVisualAdjustments()
     }
 
@@ -1921,8 +1923,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         renderer?.setSuperResolutionMode(renderingSuperResolutionMode)
     }
 
+    /// Sin ampliación (p. ej. 4K en pantalla 4K) la superresolución solo afila a
+    /// tamaño nativo, un pase completo en cada frame presentado. Con Frame+ son
+    /// 60 por segundo compitiendo con la interpolación por la GPU: a 4K en M4 cada
+    /// par pasaba de ~41 a 55–62 ms y la reproducción caía a ~4 fps. Mientras
+    /// Frame+ está activo esa nitidez se pausa; la preferencia guardada no cambia
+    /// y con ampliación real (1080p o menos) sigue aplicándose.
     private var renderingSuperResolutionMode: Rendering.SuperResolutionMode {
-        superResolutionMode == .off ? .off : .strong
+        guard superResolutionMode != .off else { return .off }
+        if interpolationMode != .disabled, let width = videoTrack?.width, let height = videoTrack?.height,
+           width > 0, height > 0 {
+            let output = SuperResolutionProcessor.outputDimensions(width: width, height: height)
+            if output.width == width && output.height == height { return .off }
+        }
+        return .strong
     }
 
     func requestTimelineThumbnail(at time: Double) {
@@ -2163,7 +2177,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // reproducirse en sync (el displayLayer y el audioRenderer
         // viven en el reloj del scheduler).
         self.renderer = HDRDisplayRenderer(synchronizer: self.scheduler?.synchronizer)
-        applyVisualAdjustments()
+        updateVisualEnhancements()
         self.configurePictureInPicture()
         // Resolve the saved choice against this file's current stream indices.
         let trackPreferences = rememberTrackSelections
