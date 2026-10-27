@@ -63,7 +63,7 @@ if scheduler.mode == .interpolated60 {
 }
 // Sustained fallback (30 consecutive)
 let sched2 = FrameScheduler(mode: .interpolated60)
-for i in 0..<35 { sched2.noteFallback(dropped: true) }
+for _ in 0..<35 { sched2.noteFallback(dropped: true) }
 print("After 35 consecutive drops, mode=\(sched2.mode.rawValue) (expected off after 30)")
 if sched2.mode != .off { print("FAIL: sustained fallback should downgrade"); exit(1) }
 

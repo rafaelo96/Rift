@@ -124,7 +124,6 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
 
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
         let duration = state?.duration ?? 0
-        let current = state?.currentTime ?? 0
         let range: CMTimeRange = duration > 0
             ? CMTimeRange(start: .zero, duration: CMTime(seconds: duration, preferredTimescale: 600))
             : .invalid
@@ -1079,7 +1078,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     // Mapa de códigos de idioma comunes → nombre legible. Cubre los más
     // frecuentes; si no está, se usa streamTitle o índice como fallback.
-    private static let languageNames: [String: String] = [
+    private nonisolated static let languageNames: [String: String] = [
         "spa": "Español", "eng": "Inglés", "fre": "Francés", "fra": "Francés",
         "deu": "Alemán", "ger": "Alemán", "ita": "Italiano", "por": "Portugués",
         "jpn": "Japonés", "kor": "Coreano", "chi": "Chino", "zho": "Chino",
@@ -1271,7 +1270,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         invalidatePictureInPicturePlaybackState()
     }
     private func performSeek(to time: Double) async {
-        let seekStart = Date()
         let target = min(max(time, 0), duration)
         let shouldResume = isPlaying
         playbackGeneration &+= 1
@@ -2079,7 +2077,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 guard let v = info.tracks.first(where: { $0.kind == .video }) else {
                     d.close()
-                    await MainActor.run {
+                    await MainActor.run { [weak self] in
                         guard let self, self.videoOpenRequestID == requestID else { return }
                         self.statusMessage = "No video track"
                     }
@@ -2112,7 +2110,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     )
                 }
             } catch {
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     guard let self, self.videoOpenRequestID == requestID else { return }
                     self.statusMessage = "Open failed: \(error.localizedDescription)"
                     self.conversionProgress = 0
@@ -2359,6 +2357,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let tDecodeEndNS = DispatchTime.now().uptimeNanoseconds
                 decoded += 1
+                let decodedSoFar = decoded
                 let admitted = await MainActor.run { () -> Bool in
                     guard self.playbackGeneration == generation else { return false }
                     // av_seek_frame(...BACKWARD) devuelve paquetes desde el
@@ -2367,7 +2366,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     if let minimumVideoPTS, decodedFrame.pts + 0.001 < minimumVideoPTS {
                         return false
                     }
-                    self.totalDecoded = decoded
+                    self.totalDecoded = decodedSoFar
                     pool.add(buffer: decodedFrame.pixelBuffer, pts: decodedFrame.pts)
                     self.logDecodedFormatOnce(decodedFrame.pixelBuffer)
                     if Self.detailedDiagnostics {
@@ -2521,7 +2520,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         Task.detached(priority: .utility) { [weak self] in
             let cues = Self.readSubtitleCues(url: url, trackStreamIndex: streamIndex)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard let self,
                       self.subtitleSessionID == sessionID,
                       self.sourceURL == url else { return }

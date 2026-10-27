@@ -47,7 +47,7 @@ final class PairConfidenceDiagnostics {
         let n=width*height
         if let vectors {guard vectors.count==n,vectors.allSatisfy({[$0.x,$0.y,$0.z,$0.w].allSatisfy {$0.isFinite || $0.isNaN}}) else {throw MotionSearchEngine.EngineError.pipeline("Invalid diagnostic temporal vectors")}}
         let values=vectors ?? Array(repeating: SIMD4<Float>(repeating: .nan),count: n)
-        values.withUnsafeBytes {memcpy(temporal.contents(),$0.baseAddress!,$0.count)}
+        _=values.withUnsafeBytes {memcpy(temporal.contents(),$0.baseAddress!,$0.count)}
         guard let e=command.makeComputeCommandEncoder() else {throw MotionSearchEngine.EngineError.pipeline("Pair diagnostic encoder")}
         e.setComputePipelineState(pipeline)
         for (i,t) in (Array(images.prefix(2))+fields).enumerated() {e.setTexture(t,index: i)}

@@ -541,7 +541,7 @@ public final class MotionCompensator {
                                                        width: vImagePixelCount(w),
                                                        rowBytes: w)
                             for b in 0..<256 { vdspHist[b] = 0 }
-                            vdspHist.withUnsafeMutableBufferPointer { histBuf in
+                            _ = vdspHist.withUnsafeMutableBufferPointer { histBuf in
                                 vImageHistogramCalculation_Planar8(&srcBuf, histBuf.baseAddress!, vImage_Flags(kvImageNoFlags))
                             }
                             var lo: vImagePixelCount = 0

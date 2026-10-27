@@ -58,7 +58,7 @@ func checkNativePatchIntegration() throws {
         precondition(result.pixelBuffers[0] === first && result.pixelBuffers[2] === last,"Native patch endpoints changed source buffers")
         let mid=result.pixelBuffers[1]
         precondition(mid !== first && mid !== last && CVPixelBufferGetPixelFormatType(mid)==format && CVPixelBufferGetWidth(mid)==64 && CVPixelBufferGetHeight(mid)==48)
-        precondition(CVBufferGetAttachment(mid,kCVImageBufferColorPrimariesKey,nil) != nil,"Native patch output lost color metadata")
+        precondition(CVBufferCopyAttachment(mid,kCVImageBufferColorPrimariesKey,nil) != nil,"Native patch output lost color metadata")
         CVPixelBufferLockBaseAddress(mid,.readOnly)
         let base=CVPixelBufferGetBaseAddressOfPlane(mid,1)!,stride=CVPixelBufferGetBytesPerRowOfPlane(mid,1)
         for y in 0..<24 { for x in 0..<32 { for channel in 0..<2 {
@@ -88,7 +88,7 @@ func checkNativePatchIntegration() throws {
         precondition(contextual.pixelBuffers.count==3 && payload(contextual.pixelBuffers[1])==reference,"Held temporal neighbors changed native output")
         let moving=InterpolationTemporalContext(before: buffer(-4,false),after: buffer(8,true),beforeInterval: 1,afterInterval: 1)
         let temporalResult=engine.interpolatePair(I0: first,I1: last,tValues: [0.25,0.5,0.75],context: moving)
-        precondition(temporalResult.pixelBuffers.count==3 && temporalResult.pixelBuffers.allSatisfy { CVPixelBufferGetPixelFormatType($0)==format && CVBufferGetAttachment($0,kCVImageBufferColorPrimariesKey,nil) != nil },"Moving context lost native outputs or metadata")
+        precondition(temporalResult.pixelBuffers.count==3 && temporalResult.pixelBuffers.allSatisfy { CVPixelBufferGetPixelFormatType($0)==format && CVBufferCopyAttachment($0,kCVImageBufferColorPrimariesKey,nil) != nil },"Moving context lost native outputs or metadata")
         let invalid=InterpolationTemporalContext(before: first,after: last,beforeInterval: .nan,afterInterval: 1)
         let recovered=engine.interpolatePair(I0: first,I1: last,tValues: [0.5],context: invalid)
         precondition(recovered.pixelBuffers.count==1 && payload(recovered.pixelBuffers[0])==reference,"Invalid context did not fall back to two-frame interpolation")

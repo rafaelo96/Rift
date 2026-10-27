@@ -201,7 +201,7 @@ public final class MotionSearchEngine {
                 centeredPrevious = device.makeBuffer(length: count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)
             }
             guard let buffer = centeredPrevious else { throw EngineError.pipeline("Temporal predictor allocation failed") }
-            previous.withUnsafeBytes { bytes in memcpy(buffer.contents(), bytes.baseAddress!, bytes.count) }
+            _ = previous.withUnsafeBytes { bytes in memcpy(buffer.contents(), bytes.baseAddress!, bytes.count) }
         }
         if centeredOutput == nil {
             centeredOutput = device.makeBuffer(length: count * MemoryLayout<SIMD2<Int32>>.stride, options: .storageModeShared)
@@ -394,7 +394,7 @@ public final class MotionSearchEngine {
             enc.setComputePipelineState(medianPSO)
             enc.setBuffer(mvBuffer[0]!, offset: 0, index: 0)
             enc.setBuffer(smooth, offset: 0, index: 1)
-            var g0 = grids[0]
+            let g0 = grids[0]
             var uni = MEUniforms(
                 level: 0, width: 0, height: 0, blockSize: 0,
                 gridW: UInt32(g0.w), gridH: UInt32(g0.h),
@@ -423,7 +423,7 @@ public final class MotionSearchEngine {
                   let enc = makeEncoder(cmd) else { return PairTimes(stages: times, uploadMS: uploadMS) }
             enc.setComputePipelineState(deadZonePSO)
             enc.setBuffer(target, offset: 0, index: 0)
-            var g0 = grids[0]
+            let g0 = grids[0]
             var uni = MEUniforms(
                 level: 0, width: 0, height: 0, blockSize: 0,
                 gridW: UInt32(g0.w), gridH: UInt32(g0.h),
@@ -455,7 +455,7 @@ public final class MotionSearchEngine {
             enc.setBuffer(smoothedBuf, offset: 0, index: 0)
             enc.setBuffer(tPrev, offset: 0, index: 1)
             enc.setBuffer(tOut, offset: 0, index: 2)
-            var g0 = grids[0]
+            let g0 = grids[0]
             var uni = MEUniforms(
                 level: 0, width: 0, height: 0, blockSize: 0,
                 gridW: UInt32(g0.w), gridH: UInt32(g0.h),

@@ -421,9 +421,9 @@ private func scaleSADFine(_ ref: [UInt16], _ img: [UInt16], w: Int, h: Int, labe
     let minIdx = samples.enumerated().min { $0.element.sad < $1.element.sad }!.offset
     var best = samples[minIdx].s
     if minIdx >= 1 && minIdx < samples.count - 1 {
-        let (s0, y0v) = (samples[minIdx - 1].s, samples[minIdx - 1].sad)
+        let y0v = samples[minIdx - 1].sad
         let (s1, y1v) = (samples[minIdx].s, samples[minIdx].sad)
-        let (s2, y2v) = (samples[minIdx + 1].s, samples[minIdx + 1].sad)
+        let y2v = samples[minIdx + 1].sad
         let denom = y0v - 2 * y1v + y2v
         if abs(denom) > 1e-12 {
             best = s1 + 0.5 * step * (y0v - y2v) / denom
@@ -1993,7 +1993,7 @@ if envInt("MV_HIER_DIAG", 0) == 1 {
     }
     let mg = engine.grids.count
     for lvl in 0..<mg {
-        let g = engine.grids[lvl]
+        _ = engine.grids[lvl]
         let f = engine.downloadMV(level: lvl, smoothed: false)
         let mags = f.map(magpx)
         let mx = mags.max() ?? 0
@@ -2105,7 +2105,7 @@ for i in 0..<pairCount {
     uploadTotal.append(t.uploadMS)
 
     for lvl in 0..<engine.grids.count {
-        let g = engine.grids[lvl]
+        _ = engine.grids[lvl]
         let mvs = engine.downloadMV(level: lvl)
         for b in mvs {
             levelHist[lvl][magBinPx(b)] += 1
@@ -2561,7 +2561,7 @@ if tjitOn && tjFields.count >= 2 {
     var consecDeltaMax: [Double] = []
     var flicker = 0
     var flickerTot = 0
-    var emaA: [Double] = []
+    let emaA: [Double] = []
     for bx in 0..<g {
         let series = tjFields.map { $0[bx] }
         let raw = seriesStats(series, skipFirst: 0)

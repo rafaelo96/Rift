@@ -101,6 +101,7 @@ let package = Package(
             name: "Demux",
             dependencies: ["CDemuxShim"],
             path: "Core/Demux",
+            exclude: ["CSource", "Tools"],
             sources: ["Swift"],
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
@@ -116,6 +117,7 @@ let package = Package(
             name: "Decode",
             dependencies: ["Demux"],
             path: "Core/Decode",
+            exclude: ["Tools"],
             sources: ["Swift"],
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
@@ -146,6 +148,7 @@ let package = Package(
             name: "DecodeAudio",
             dependencies: ["CDecodeAudioShim", "Demux"],
             path: "Core/DecodeAudio",
+            exclude: ["CSource", "Tools"],
             sources: ["Swift"]
         ),
         .executableTarget(
@@ -161,6 +164,7 @@ let package = Package(
             name: "FramePool",
             dependencies: ["Demux", "Decode"],
             path: "Core/FramePool",
+            exclude: ["Tools"],
             sources: ["Swift"],
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
@@ -178,6 +182,7 @@ let package = Package(
         .target(
             name: "Interpolation",
             path: "Core/Interpolation",
+            exclude: ["Checks", "Tools"],
             sources: ["Swift"],
             // The real-time CPU preparation must meet the frame budget in Debug too.
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
@@ -190,13 +195,46 @@ let package = Package(
             name: "MVProbe",
             dependencies: ["Demux", "Decode", "Interpolation"],
             path: "Core/Interpolation/Tools",
-            exclude: ["NativeSamplingCheck.swift"]
+            // Analysis scripts and archived experiments live next to the probe sources.
+            exclude: ["NativeSamplingCheck.swift",
+                     ".gitkeep",
+                     "ConfidenceMaskAudit.py",
+                     "ConfidenceReport.py",
+                     "DenseOracleReport.py",
+                     "E2Calibration.py",
+                     "E2ExportWindows.py",
+                     "E2PlaybackReport.py",
+                     "E2Report.py",
+                     "E2ValidationRun.py",
+                     "EdgeFieldReport.py",
+                     "EdgeFieldRuns.py",
+                     "FramePlusScreenshotReport.py",
+                     "RealtimeBudgetBatching.swift.txt",
+                     "RealtimeBudgetCandidate.patch",
+                     "RealtimeBudgetRun.sh",
+                     "RegionSurfaceProbe.py",
+                     "RegionSurfaceRegularized.py",
+                     "SelectF2Masks.py",
+                     "StaticCandidateReport.py",
+                     "StaticCandidateRun.py",
+                     "StructuralMaskCandidates.py",
+                     "SurfaceCorrespondenceGraph.py",
+                     "SurfaceSynthesisCheck.swift.txt",
+                     "SurfaceSynthesisRender.sh",
+                     "SurfaceSynthesisRender.swift.txt",
+                     "SurfaceSynthesisRun.sh",
+                     "TemporalVisibilityReport.py",
+                     "TrajectoryDiagnosticRun.py",
+                     "TrajectorySurvivalReport.py",
+                     "chroma_correspondence_probe.py",
+                     "feature_correspondence_probe.py"]
         ),
         // Core/Scheduler — presentation timing for real + interpolated frames
         // (SDR only, no HDR yet). Consumes FramePool pts, Interpolation MVs.
         .target(
             name: "Scheduler",
             path: "Core/Scheduler",
+            exclude: ["Tools"],
             sources: ["Swift"],
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),
@@ -209,6 +247,7 @@ let package = Package(
         .target(
             name: "Rendering",
             path: "Rendering",
+            exclude: ["Tools"],
             sources: ["Swift"],
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]
         ),

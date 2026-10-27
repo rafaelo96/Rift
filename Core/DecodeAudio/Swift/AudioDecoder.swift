@@ -42,7 +42,7 @@ public final class AudioDecoder {
     deinit { if let c = ctx { rift_audio_decode_close(c) } }
 
     private func drain(withFrames body: (UnsafeMutablePointer<RiftAudioFrameC>, Int32) -> Int32) -> [DecodedAudioFrame] {
-        guard let ctx else { return [] }
+        guard ctx != nil else { return [] }
         var result: [DecodedAudioFrame] = []
         var buffer = [RiftAudioFrameC](repeating: RiftAudioFrameC(), count: capacity)
         let count = buffer.withUnsafeMutableBufferPointer { bufPtr -> Int32 in
