@@ -104,6 +104,19 @@ struct PlaybackTechnicalInfo: Equatable {
     let duration: String
 }
 
+/// Compensador activo, legible desde el hilo de decode para precargar la luma de
+/// cada frame (`MotionCompensator.prepareLuma` es thread-safe) sin cruzar al
+/// MainActor por frame.
+private final class LumaPrefetchTarget: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var compensator: MotionCompensator?
+    func set(_ value: MotionCompensator?) { lock.lock(); compensator = value; lock.unlock() }
+    func prepare(_ buffer: CVPixelBuffer) {
+        lock.lock(); let target = compensator; lock.unlock()
+        target?.prepareLuma(buffer)
+    }
+}
+
 private struct PlaybackPreferences: Codable {
     let volume: Double
     let interpolationMode: String
@@ -330,7 +343,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Motor MCFI. Se inicializa lazy la primera vez que se necesita (cuando
     /// `interpolationMode != .disabled`) y se libera en closeVideo(). Es stateful
     /// solo en buffers Metal internos; cada `interpolate()` es autocontenida.
-    private var compensator: MotionCompensator?
+    private var compensator: MotionCompensator? {
+        didSet { lumaPrefetch.set(compensator) }
+    }
+    private nonisolated let lumaPrefetch = LumaPrefetchTarget()
     /// Almacena los últimos 2 frames mostrados (SIN remover del pool).
     /// Usado por el interpolador en background para evitar dependencia
     /// directa con reservePair/consumePair.
@@ -823,10 +839,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                     }
                     let line = String(format:
-                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ maxFluidity=%d dedupDropped=%d staleDrops=%d playing=%d pip=%d caption=%d compositionFailures=%d\n",
+                        "FLUENCY second=%d time=%.3f admittedFPS=%.1f target=%.2f quality=%d mode=%@ maxFluidity=%d dedupDropped=%d staleDrops=%d lumaHits=%d lumaMisses=%d playing=%d pip=%d caption=%d compositionFailures=%d\n",
                         second, self.currentTime, self.displayRenderingFPS, self.targetRenderingFPS,
                         self.interpolationQuality, self.interpolationMode.rawValue,
                         self.maximumFluidity ? 1 : 0, self.dedupDroppedFrames, self.interpolationStaleDrops,
+                        self.compensator?.lumaCacheStats.hits ?? 0, self.compensator?.lumaCacheStats.misses ?? 0,
                         self.isPlaying ? 1 : 0, self.isPictureInPictureActive ? 1 : 0,
                         self.currentSubtitleText == nil ? 0 : 1,
                         self.renderer?.subtitleCompositionFailures ?? 0)
@@ -2357,6 +2374,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 let tDecodeEndNS = DispatchTime.now().uptimeNanoseconds
                 decoded += 1
+                // Fuera del camino crítico del par: la luma del work-plane queda en la
+                // caché del compensador antes de que el frame entre al pool.
+                self.lumaPrefetch.prepare(decodedFrame.pixelBuffer)
                 let decodedSoFar = decoded
                 let admitted = await MainActor.run { () -> Bool in
                     guard self.playbackGeneration == generation else { return false }

@@ -93,9 +93,15 @@ public final class MotionCompensator {
             if entries.count > capacity { entries.removeFirst(entries.count - capacity) }
         }
         func removeAll() { lock.lock(); entries.removeAll(); lock.unlock() }
+        func contains(_ buffer: CVPixelBuffer) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return entries.contains { $0.buffer === buffer }
+        }
         var stats: (hits: Int, misses: Int) { lock.lock(); defer { lock.unlock() }; return (hits, misses) }
     }
-    private let lumaCache = LumaCache(capacity: 6)
+    /// 12 entradas: la UI precarga cada frame decodificado y decodifica 0.35–0.5 s
+    /// por delante (8–12 frames); con menos, las precargas se expulsarían antes de usarse.
+    private let lumaCache = LumaCache(capacity: 12)
     /// RIFT_LUMA_CACHE=0 desactiva la caché (comparación A/B).
     private let lumaCacheEnabled = ProcessInfo.processInfo.environment["RIFT_LUMA_CACHE"] != "0"
     /// Aciertos/fallos acumulados de la caché de luma (diagnóstico).
@@ -248,6 +254,14 @@ public final class MotionCompensator {
         patchEstimator?.resetLocalConfidenceState()
         cutBoundary=nil
         lumaCache.removeAll()
+    }
+
+    /// Precarga la luma del work-plane de un frame recién decodificado, para que el
+    /// par que lo use no la calcule en su camino crítico (~3.8 ms a 4K en M4). Seguro
+    /// desde cualquier hilo; no hace nada si ya está en caché o la caché está apagada.
+    public func prepareLuma(_ buffer: CVPixelBuffer) {
+        guard lumaCacheEnabled, !lumaCache.contains(buffer), let scaled = scaledLuma(buffer) else { return }
+        lumaCache.store(scaled, for: buffer)
     }
 
     private func cachedScaledLuma(_ buffer: CVPixelBuffer) -> Data? {
