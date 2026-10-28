@@ -55,7 +55,16 @@ public final class SuperResolutionProcessor {
                 max(2, Int(Double(height) * scale) & ~1))
     }
 
-    public func process(_ input: CVPixelBuffer, mode: SuperResolutionMode) -> CVPixelBuffer? {
+    /// Recursos de un frame ya preparados: el buffer de salida y las texturas
+    /// envueltas (se mantienen vivas hasta que la GPU termine).
+    private struct Job {
+        let input: CVPixelBuffer
+        let output: CVPixelBuffer
+        let wrappers: [CVMetalTexture?]
+        let textures: (inY: MTLTexture, outY: MTLTexture, inC: MTLTexture, outC: MTLTexture)
+    }
+
+    private func prepare(_ input: CVPixelBuffer, mode: SuperResolutionMode) -> Job? {
         guard mode != .off, CVPixelBufferGetPlaneCount(input) >= 2,
               let cache = textureCache else { return nil }
         if bypassFramesRemaining > 0 {
@@ -88,23 +97,52 @@ public final class SuperResolutionProcessor {
         let dstChroma = texture(output, plane: 1, format: chromaFormat, width: dstCW, height: dstCH, cache: cache)
         guard let inY = srcLuma.1, let outY = dstLuma.1,
               let inC = srcChroma.1, let outC = dstChroma.1 else { return nil }
-
-        let started = DispatchTime.now().uptimeNanoseconds
-        guard encode(lumaInput: inY, lumaOutput: outY,
-                     chromaInput: inC, chromaOutput: outC,
-                     detail: mode.detail) else { return nil }
-        lastProcessingMS = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
-        updateRealtimeSafety(measuredMS: lastProcessingMS)
-        propagateAttachments(from: input, to: output)
-        withExtendedLifetime((srcLuma, dstLuma, srcChroma, dstChroma)) {}
-        return output
+        return Job(input: input, output: output,
+                   wrappers: [srcLuma.0, dstLuma.0, srcChroma.0, dstChroma.0],
+                   textures: (inY, outY, inC, outC))
     }
 
-    private func encode(lumaInput: MTLTexture, lumaOutput: MTLTexture,
-                        chromaInput: MTLTexture, chromaOutput: MTLTexture,
-                        detail: Float) -> Bool {
+    private func finish(_ job: Job, processingMS: Double) -> CVPixelBuffer {
+        lastProcessingMS = processingMS
+        updateRealtimeSafety(measuredMS: processingMS)
+        propagateAttachments(from: job.input, to: job.output)
+        return job.output
+    }
+
+    public func process(_ input: CVPixelBuffer, mode: SuperResolutionMode) -> CVPixelBuffer? {
+        guard let job = prepare(input, mode: mode),
+              let command = encode(job, detail: mode.detail) else { return nil }
+        let started = DispatchTime.now().uptimeNanoseconds
+        command.commit()
+        command.waitUntilCompleted()
+        guard command.status == .completed else { return nil }
+        let result = finish(job, processingMS: Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+        withExtendedLifetime(job.wrappers) {}
+        return result
+    }
+
+    /// Igual que `process`, pero espera a la GPU sin bloquear el hilo que llama: la
+    /// reproducción no detiene el hilo principal ~3–8 ms por frame (1080p→4K, M4).
+    /// El presupuesto se mide con el tiempo real de GPU, no con la espera en cola.
+    @MainActor
+    public func processAsync(_ input: CVPixelBuffer, mode: SuperResolutionMode) async -> CVPixelBuffer? {
+        guard let job = prepare(input, mode: mode),
+              let command = encode(job, detail: mode.detail) else { return nil }
+        let completed: Bool = await withCheckedContinuation { continuation in
+            command.addCompletedHandler { buffer in continuation.resume(returning: buffer.status == .completed) }
+            command.commit()
+        }
+        guard completed else { return nil }
+        let result = finish(job, processingMS: max(0, command.gpuEndTime - command.gpuStartTime) * 1000)
+        withExtendedLifetime(job.wrappers) {}
+        return result
+    }
+
+    /// Codifica el pase completo sin enviarlo; quien llama decide cómo esperar.
+    private func encode(_ job: Job, detail: Float) -> MTLCommandBuffer? {
+        let (lumaInput, lumaOutput, chromaInput, chromaOutput) = job.textures
         guard let command = queue.makeCommandBuffer(),
-              let encoder = command.makeComputeCommandEncoder() else { return false }
+              let encoder = command.makeComputeCommandEncoder() else { return nil }
         encoder.setComputePipelineState(lumaPipeline)
         encoder.setTexture(lumaInput, index: 0)
         encoder.setTexture(lumaOutput, index: 1)
@@ -130,9 +168,7 @@ public final class SuperResolutionProcessor {
             threadsPerThreadgroup: threads
         )
         encoder.endEncoding()
-        command.commit()
-        command.waitUntilCompleted()
-        return command.status == .completed
+        return command
     }
 
     private func updateRealtimeSafety(measuredMS: Double) {

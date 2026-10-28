@@ -122,17 +122,49 @@ public final class HDRDisplayRenderer {
             if let enhanced = superResolutionProcessor?.process(sourceBuffer, mode: superResolutionMode) {
                 pixelBuffer = enhanced
             }
-            if detailedDiagnostics, superResolutionDiagnosticCount < 5 {
-                superResolutionDiagnosticCount += 1
-                let line = "SUPERRES mode=\(superResolutionMode.rawValue) input=\(CVPixelBufferGetWidth(sourceBuffer))x\(CVPixelBufferGetHeight(sourceBuffer)) format=\(CVPixelBufferGetPixelFormatType(sourceBuffer)) output=\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer)) processed=\(pixelBuffer !== sourceBuffer) bypass=\(superResolutionProcessor?.isAdaptivelyBypassed ?? false)\n"
-                FileHandle.standardOutput.write(Data(line.utf8))
-            }
-            captureSuperResolutionComparisonIfRequested(
-                source: sourceBuffer,
-                processed: pixelBuffer,
-                pts: pts.seconds
-            )
+            noteSuperResolution(source: sourceBuffer, processed: pixelBuffer, pts: pts)
         }
+        return wrap(pixelBuffer, pts: pts, duration: duration)
+    }
+
+    /// Igual que `sampleBuffer(from:pts:duration:)`, pero la superresolución espera a
+    /// la GPU sin bloquear el hilo principal (la reproducción la llama hasta 60 veces
+    /// por segundo). Quien llama debe comprobar tras el `await` que el frame sigue
+    /// siendo vigente (seek, cambio de video).
+    @MainActor
+    public func sampleBufferAsync(from sourceBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime) async -> CMSampleBuffer? {
+        lastSourceFrame = (sourceBuffer, duration)
+        var pixelBuffer = sourceBuffer
+        if superResolutionMode != .off {
+            if superResolutionProcessor == nil { superResolutionProcessor = SuperResolutionProcessor() }
+            if let processor = superResolutionProcessor,
+               let enhanced = await processor.processAsync(sourceBuffer, mode: superResolutionMode),
+               superResolutionMode != .off {
+                pixelBuffer = enhanced
+            }
+            noteSuperResolution(source: sourceBuffer, processed: pixelBuffer, pts: pts)
+        }
+        return wrap(pixelBuffer, pts: pts, duration: duration)
+    }
+
+    @MainActor
+    private func noteSuperResolution(source sourceBuffer: CVPixelBuffer, processed pixelBuffer: CVPixelBuffer, pts: CMTime) {
+        if detailedDiagnostics, superResolutionDiagnosticCount < 5 {
+            superResolutionDiagnosticCount += 1
+            let line = "SUPERRES mode=\(superResolutionMode.rawValue) input=\(CVPixelBufferGetWidth(sourceBuffer))x\(CVPixelBufferGetHeight(sourceBuffer)) format=\(CVPixelBufferGetPixelFormatType(sourceBuffer)) output=\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer)) processed=\(pixelBuffer !== sourceBuffer) bypass=\(superResolutionProcessor?.isAdaptivelyBypassed ?? false)\n"
+            FileHandle.standardOutput.write(Data(line.utf8))
+        }
+        captureSuperResolutionComparisonIfRequested(
+            source: sourceBuffer,
+            processed: pixelBuffer,
+            pts: pts.seconds
+        )
+    }
+
+    /// Subtítulos de PiP y empaquetado CVPixelBuffer → CMSampleBuffer.
+    @MainActor
+    private func wrap(_ processed: CVPixelBuffer, pts: CMTime, duration: CMTime) -> CMSampleBuffer? {
+        var pixelBuffer = processed
         if let text = pictureInPictureSubtitle?(pts.seconds), !text.isEmpty {
             if subtitleCompositor == nil { subtitleCompositor = SubtitleCompositor() }
             // A transient compositor allocation failure must not drop the video

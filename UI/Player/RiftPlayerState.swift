@@ -3270,7 +3270,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         let pts = CMTime(seconds: f.pts, preferredTimescale: 60_000_000)
                         let dur = CMTime(seconds: sourcePeriod, preferredTimescale: 60_000_000)
                         rend.pendingOrigin = "native"; rend.pendingType = "SOURCE"
-                        if let sbuf = rend.sampleBuffer(from: f.pixelBuffer, pts: pts, duration: dur) {
+                        if let sbuf = await rend.sampleBufferAsync(from: f.pixelBuffer, pts: pts, duration: dur) {
+                            // La superresolución espera a la GPU sin bloquear el hilo
+                            // principal; un seek pudo invalidar el frame mientras tanto.
+                            if Task.isCancelled || self.playbackGeneration != generation { break }
                             if f.pts - clkN <= aheadMargin {
                                 self.markDisplayImmediately(sbuf)
                             }
@@ -3455,7 +3458,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         let gridStep = uniformCadence ? cadence.step.seconds : delta
                         let dur = CMTime(seconds: gridStep, preferredTimescale: 60_000_000)
                         rend.pendingOrigin = "gapFallback"; rend.pendingType = "SOURCE"
-                        if let sbuf = rend.sampleBuffer(from: first.pixelBuffer, pts: pts, duration: dur) {
+                        if let sbuf = await rend.sampleBufferAsync(from: first.pixelBuffer, pts: pts, duration: dur) {
+                            // La superresolución espera a la GPU sin bloquear el hilo
+                            // principal; un seek pudo invalidar el frame mientras tanto.
+                            if Task.isCancelled || self.playbackGeneration != generation { break }
                             let admitted = await self.enqueuePaced(rend, sbuf)
                             if Task.isCancelled || self.playbackGeneration != generation { break }
                             guard admitted else {
@@ -3597,7 +3603,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         }
                         let dur = CMTime(seconds: endPTS - o.pts, preferredTimescale: 60_000_000)
                         rend.pendingOrigin = "interpOutputs"; rend.pendingType = o.isInterp ? "INTERP" : "SOURCE"
-                        if let sbuf = rend.sampleBuffer(from: o.pb, pts: pts, duration: dur) {
+                        if let sbuf = await rend.sampleBufferAsync(from: o.pb, pts: pts, duration: dur) {
+                            // La superresolución espera a la GPU sin bloquear el hilo
+                            // principal; un seek pudo invalidar el frame mientras tanto.
+                            if Task.isCancelled || self.playbackGeneration != generation { break }
                             let clockAtEnqueue = sched.synchronizer.currentTime().seconds
                             if Self.forceDisplayImmediateOnInterpolated || o.pts <= clockAtEnqueue {
                                 self.markDisplayImmediately(sbuf)
