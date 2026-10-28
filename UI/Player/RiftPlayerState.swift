@@ -393,6 +393,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Metal shader JIT, initial pool fill), so early windows read artificially
     /// low and must not trip the gate (measured: false-positive at ~6s on 1080p).
     private let throughputSkipStartupSeconds = 8.0
+    /// Fase temprana tras admitir: la admisión mide solo la interpolación, no la
+    /// presentación (superresolución, composición). Un perfil admitido al límite
+    /// (p. ej. 1080p calidad 1 + superresolución, M4) iba < 50 fps ~12 s hasta que
+    /// la regla de dos ventanas bajaba la calidad. Entre `earlyThroughputFromSeconds`
+    /// y `earlyThroughputUntilSeconds` una sola ventana débil basta, con umbral de
+    /// 4 pares atrasados en vez de 6.
+    private let earlyThroughputFromSeconds = 3.0
+    private let earlyThroughputUntilSeconds = 15.0
     /// Wall-clock of the first completed pair (arms the startup skip).
     private var firstPairCompletedAt: UInt64 = 0
     // ── Timeline instrumentation (diagnostic only, no behavior change) ──────
@@ -711,14 +719,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         // No armar el gate durante la rampa de arranque del pipeline (decoder/
         // shaders/fill): ahí la latencia inicial es ruido, no un déficit real.
         let elapsedSinceFirst = Double(now - firstPairCompletedAt) / 1e9
-        guard elapsedSinceFirst >= throughputSkipStartupSeconds else { return }
+        let early = elapsedSinceFirst >= earlyThroughputFromSeconds
+            && elapsedSinceFirst < earlyThroughputUntilSeconds && interpolationQuality > 0
+        guard early || elapsedSinceFirst >= throughputSkipStartupSeconds else { return }
 
         let clk = scheduler?.synchronizer.currentTime().seconds ?? 0
         let lead = (framePool?.oldest().map { $0.pts - clk }) ?? 0
         let staleDelta = interpolationStaleDrops - lastStaleDropSnapshot
         lastStaleDropSnapshot = interpolationStaleDrops
         let minLead = -1.5 * sourcePeriod
-        let weak = (staleDelta >= 6) || (lead < minLead)
+        // En la fase temprana un arranque sano da 0–2 pares atrasados por ventana;
+        // uno admitido al límite se queda en 4–6 con el pool detrás del reloj.
+        let weak = (staleDelta >= (early ? 4 : 6)) || (lead < minLead)
 
         os_log("Throughput(latencia): staleΔ=%d lead=%.3fs (mín %.3f) → %@",
                log: benchLog, type: .info, staleDelta, lead, minLead, weak ? "weak" : "ok")
@@ -728,7 +740,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         } else {
             weakThroughputWindows = 0
         }
-        if weakThroughputWindows >= throughputRequiredWeakWindows {
+        if weakThroughputWindows >= (early ? 1 : throughputRequiredWeakWindows) {
             weakThroughputWindows = 0
             reduceInterpolationWorkPlane(reason: String(
                 format: "bajo pacing: %d pares stale / lead %.3fs (estancado)",
@@ -3130,7 +3142,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 selectedCostMS = stableCosts.sorted()[stableCosts.count / 2]
 
                 // Keep 15% headroom for decode, enqueue and short scene bursts.
-                if self.interpolationQuality > 0, selectedCostMS > pairBudgetMS * 0.85 {
+                // RIFT_AUTO_FORCE_QUALITY=1 (pruebas): la admisión no baja de calidad,
+                // para reproducir un arranque admitido al límite del presupuesto.
+                if self.interpolationQuality > 0, selectedCostMS > pairBudgetMS * 0.85,
+                   ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"] != "1" {
                     self.changeInterpolationQuality(to: self.interpolationQuality - 1)
                     continue
                 }
