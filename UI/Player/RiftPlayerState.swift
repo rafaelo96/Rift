@@ -229,6 +229,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// interpolan siempre) y deduplicación de hasta dos repetidos seguidos
     /// (anime "en tres"). Más fluido, con más artefactos en escenas de acción.
     @Published private(set) var maximumFluidity = false
+    /// La fluidez manda: si la pantalla pierde frames de forma sostenida con Frame+
+    /// y superresolución (p. ej. 1080p→4K en M4), se pausa la superresolución antes
+    /// de bajar de 60 a 48 fps. Dura el resto del video; se reanuda con otro video o
+    /// al volver a activar Frame+ a mano. La preferencia guardada no cambia.
+    /// RIFT_SR_FLUIDITY_PAUSE=0 restaura el orden anterior (A/B).
+    private var superResolutionPausedForFluidity = false
     @Published var currentSubtitleText: String?
     @Published var conversionProgress: Double = 0
     @Published var statusMessage: String?
@@ -680,8 +686,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// mediciones de esta sesión deciden si se queda en 60, baja a 48 o a 24.
     private func startFramePlusCalibrationForNewVideo() {
         calibratedInterpolationQuality = nil
+        superResolutionPausedForFluidity = false
         guard requestedInterpolationMode != .disabled else { return }
-        interpolationQuality = 1
+        interpolationQuality = ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"]
+            .flatMap(Int.init).map { min(max($0, 0), 2) } ?? 1
         os_log("Nueva calibración Frame+ para video nuevo: modo solicitado %{public}@",
                log: benchLog, type: .default, requestedInterpolationMode.rawValue)
         applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
@@ -1496,7 +1504,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             requestedInterpolationMode = m
             persistPlaybackPreferences()
         }
-        if persistRequest { interpolationQuality = calibratedInterpolationQuality ?? 1 }
+        if persistRequest {
+            interpolationQuality = calibratedInterpolationQuality ?? 1
+            superResolutionPausedForFluidity = false
+        }
         automaticRetryAt = nil
         compensator = nil
         lastShownFrames.removeAll()
@@ -1578,6 +1589,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         switch action {
         case .reduce:
             presentationRecoverEligible = false
+            if renderingSuperResolutionMode != .off,
+               ProcessInfo.processInfo.environment["RIFT_SR_FLUIDITY_PAUSE"] != "0" {
+                superResolutionPausedForFluidity = true
+                updateVisualEnhancements()
+                os_log("Frame+ prioriza fluidez: superresolución en pausa por frames perdidos en pantalla",
+                       log: benchLog, type: .default)
+                return
+            }
             // Moderate presentation pressure may lower 60→48, but never turns
             // Frame+ off by itself. The monitor has a separate severe path.
             if scheduler?.mode == .interpolated60 {
@@ -1958,6 +1977,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// y con ampliación real (1080p o menos) sigue aplicándose.
     private var renderingSuperResolutionMode: Rendering.SuperResolutionMode {
         guard superResolutionMode != .off else { return .off }
+        if interpolationMode != .disabled, superResolutionPausedForFluidity { return .off }
         if interpolationMode != .disabled, let width = videoTrack?.width, let height = videoTrack?.height,
            width > 0, height > 0 {
             let output = SuperResolutionProcessor.outputDimensions(width: width, height: height)
@@ -3142,10 +3162,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 selectedCostMS = stableCosts.sorted()[stableCosts.count / 2]
 
                 // Keep 15% headroom for decode, enqueue and short scene bursts.
-                // RIFT_AUTO_FORCE_QUALITY=1 (pruebas): la admisión no baja de calidad,
-                // para reproducir un arranque admitido al límite del presupuesto.
+                // RIFT_AUTO_FORCE_QUALITY=<0…2> (pruebas): arranca en esa calidad y la
+                // admisión no la baja, para reproducir arranques de forma determinista.
                 if self.interpolationQuality > 0, selectedCostMS > pairBudgetMS * 0.85,
-                   ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"] != "1" {
+                   ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"] == nil {
                     self.changeInterpolationQuality(to: self.interpolationQuality - 1)
                     continue
                 }

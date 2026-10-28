@@ -185,7 +185,12 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   commit 07db342), pero en cada frame presentado. Con Frame+ son 60 pasadas por
   segundo compitiendo por la GPU: a 4K en M4 la reproducción caía a ~4 fps.
   Mientras Frame+ está activo, la UI pasa `.off` al renderer en ese caso (la
-  preferencia guardada no cambia; con ampliación real sigue aplicándose).
+  preferencia guardada no cambia; con ampliación real sigue aplicándose). La
+  superresolución ya no espera a la GPU en el hilo principal durante la
+  reproducción (`sampleBufferAsync`). Si aun así la pantalla pierde frames de
+  forma sostenida con Frame+ (p. ej. 1080p→4K), se pausa la superresolución
+  antes de bajar de 60 a 48 fps; dura el resto del video
+  (`RIFT_SR_FLUIDITY_PAUSE=0` restaura el orden anterior).
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).
