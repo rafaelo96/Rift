@@ -1314,6 +1314,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private func performSeek(to time: Double) async {
         let target = min(max(time, 0), duration)
         let shouldResume = isPlaying
+        feedback.coverVideo(.seeking)
         playbackGeneration &+= 1
         let generation = playbackGeneration
         pendingSeekActivation = (generation, target, shouldResume)
@@ -2097,6 +2098,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let requestID = UUID()
         videoOpenRequestID = requestID
         os_log("OPEN begin %{public}@ id=%{public}@", log: benchLog, type: .info, url.lastPathComponent, requestID.uuidString)
+        feedback.coverVideo(.opening)
         cancelResumePlaybackDialog()
         closeFloatingPictureInPicture()
         persistCurrentSession(force: true)
@@ -2987,6 +2989,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 return false
             }
             if rend.displayLayer.isReadyForMoreMediaData, rend.enqueue(sbuf) {
+                feedback.revealVideo()
                 enqueuedFramesInWindow += 1
                 framesEnqueuedReady += 1
                 logDiagIfDue()
@@ -3011,6 +3014,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         guard let sbuf = rend.sampleBuffer(from: pixelBuffer, pts: pts, duration: duration) else { return }
         self.markDisplayImmediately(sbuf)
         rend.displayLayer.enqueue(sbuf)
+        feedback.revealVideo()
     }
 
     /// Marca el CMSampleBuffer para presentación inmediata (sin esperar más).

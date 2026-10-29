@@ -167,6 +167,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                     .foregroundStyle(.white)
                     .frame(width: 50, height: 50)
                     .background {
@@ -506,10 +507,13 @@ private struct GlassPill: View {
         HStack(spacing: 6) {
             Image(systemName: systemName)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .modifier(BusySymbolEffect(isActive: systemName == "hourglass" && !reduceMotion))
                 .frame(width: 13)
 
             Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .contentTransition(reduceMotion ? .identity : .numericText())
                 .lineLimit(1)
                 .fixedSize()
         }
@@ -791,6 +795,21 @@ struct TimelineTrack: View {
     }
 }
 
+// MARK: - Busy symbol
+
+/// Gira el ícono solo mientras dura la preparación de Frame+ (unos segundos).
+private struct BusySymbolEffect: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.symbolEffect(.rotate, options: .speed(0.6), isActive: isActive)
+        } else {
+            content.symbolEffect(.pulse, isActive: isActive)
+        }
+    }
+}
+
 // MARK: - GlassIconButton
 
 struct GlassIconButton: View {
@@ -802,9 +821,11 @@ struct GlassIconButton: View {
 
     @State private var isPressed = false
     @State private var isHovered = false
+    @State private var tapCount = 0
 
     var body: some View {
         Button(action: {
+            tapCount += 1
             withAnimation(pressAnimation) {
                 isPressed = true
             }
@@ -817,6 +838,8 @@ struct GlassIconButton: View {
         }) {
             Image(systemName: systemName)
                 .font(.system(size: size, weight: .semibold))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? 0 : tapCount)
                 .foregroundStyle(.white.opacity(isHovered ? 0.96 : 0.70))
                 .frame(width: 38, height: 38)
                 .background {

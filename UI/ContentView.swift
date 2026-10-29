@@ -252,6 +252,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .transition(.opacity.combined(with: .scale(scale: 1.01)))
             }
 
+            if state.hasVideo, let rift = state as? RiftPlayerState, !rift.isPictureInPictureActive {
+                VideoCurtainOverlay(model: rift.feedback)
+                    .ignoresSafeArea()
+            }
+
             if state.hasVideo,
                !((state as? RiftPlayerState)?.isPictureInPictureActive ?? false),
                let subtitleText = state.currentSubtitleText,

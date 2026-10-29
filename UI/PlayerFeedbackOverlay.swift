@@ -60,6 +60,22 @@ struct FramePlusNotice: Equatable {
                                               title: "Frame+ en pausa: este Mac no alcanza", emphasized: false)
 }
 
+/// Capa negra sobre el video: cubre la apertura y atenúa los saltos hasta que
+/// llega el primer frame del destino. No toca el video ni la interpolación.
+enum VideoCurtain: Equatable {
+    case clear
+    case opening
+    case seeking
+
+    var opacity: Double {
+        switch self {
+        case .clear: return 0
+        case .opening: return 1
+        case .seeking: return 0.5
+        }
+    }
+}
+
 @MainActor
 final class PlayerFeedbackModel: ObservableObject {
     struct Event<Value: Equatable>: Equatable {
@@ -69,10 +85,12 @@ final class PlayerFeedbackModel: ObservableObject {
 
     @Published private(set) var action: Event<PlayerActionFeedback>?
     @Published private(set) var notice: Event<FramePlusNotice>?
+    @Published private(set) var curtain: VideoCurtain = .clear
 
     private var nextID = 0
     private var actionDismissal: Task<Void, Never>?
     private var noticeDismissal: Task<Void, Never>?
+    private var curtainTimeout: Task<Void, Never>?
 
     func show(_ feedback: PlayerActionFeedback) {
         nextID += 1
@@ -86,6 +104,22 @@ final class PlayerFeedbackModel: ObservableObject {
         notice = Event(id: nextID, value: value)
         noticeDismissal?.cancel()
         noticeDismissal = dismiss(after: 1.5) { $0.notice = nil }
+    }
+
+    func coverVideo(_ curtain: VideoCurtain) {
+        // Un salto durante la apertura no aclara la cortina de apertura.
+        guard self.curtain != .opening || curtain == .opening else { return }
+        self.curtain = curtain
+        curtainTimeout?.cancel()
+        // Nunca queda pegada si el primer frame no llega.
+        curtainTimeout = dismiss(after: 1.5) { $0.curtain = .clear }
+    }
+
+    /// Se llama por cada frame encolado; solo publica cuando hay cortina.
+    func revealVideo() {
+        guard curtain != .clear else { return }
+        curtain = .clear
+        curtainTimeout?.cancel()
     }
 
     private func dismiss(after seconds: Double, _ clear: @escaping (PlayerFeedbackModel) -> Void) -> Task<Void, Never> {
@@ -105,6 +139,27 @@ extension PlaybackControlling {
 }
 
 // MARK: - Overlay
+
+struct VideoCurtainOverlay: View {
+    @ObservedObject var model: PlayerFeedbackModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Color.black
+            .opacity(model.curtain.opacity)
+            .animation(animation, value: model.curtain)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var animation: Animation? {
+        switch model.curtain {
+        case .opening: return nil
+        case .seeking: return .easeOut(duration: 0.12)
+        case .clear: return .easeOut(duration: reduceMotion ? 0.15 : 0.25)
+        }
+    }
+}
 
 struct PlayerFeedbackOverlay: View {
     @ObservedObject var model: PlayerFeedbackModel
