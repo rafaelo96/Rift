@@ -49,6 +49,11 @@ struct FramePlusNotice: Equatable {
     static let maxFluidityOff = FramePlusNotice(symbol: "wind", title: "Fluidez máxima desactivada", emphasized: false)
     static let reducedTo48 = FramePlusNotice(symbol: "gauge.with.dots.needle.33percent",
                                              title: "Frame+ · 48 fps para mantener fluidez", emphasized: false)
+    static let superResolutionOn = FramePlusNotice(symbol: "wand.and.stars", title: "Superresolución activada", emphasized: true)
+    static let superResolutionOff = FramePlusNotice(symbol: "wand.and.stars", title: "Superresolución desactivada", emphasized: false)
+    static let superResolutionHeld = FramePlusNotice(symbol: "wand.and.stars",
+                                                     title: "Superresolución activada · en pausa mientras Frame+ prioriza fluidez",
+                                                     emphasized: false)
     static let superResolutionPaused = FramePlusNotice(symbol: "wand.and.stars",
                                                        title: "Superresolución en pausa para mantener fluidez", emphasized: false)
     static let pausedByLoad = FramePlusNotice(symbol: "exclamationmark.triangle",

@@ -1949,6 +1949,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         superResolutionMode = normalizedMode
         updateVisualEnhancements()
         persistPlaybackPreferences()
+        if hasVideo {
+            feedback.show(normalizedMode == .off ? .superResolutionOff
+                          : renderingSuperResolutionMode == .off ? .superResolutionHeld : .superResolutionOn)
+        }
     }
 
     func resetVisualEnhancements() {
