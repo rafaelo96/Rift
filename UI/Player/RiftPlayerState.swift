@@ -235,6 +235,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// al volver a activar Frame+ a mano. La preferencia guardada no cambia.
     /// RIFT_SR_FLUIDITY_PAUSE=0 restaura el orden anterior (A/B).
     private var superResolutionPausedForFluidity = false
+    /// Avisos breves en pantalla (acciones y cambios de Frame+); objeto aparte
+    /// para no invalidar todo el árbol de vistas en cada aviso.
+    let feedback = PlayerFeedbackModel()
     @Published var currentSubtitleText: String?
     @Published var conversionProgress: Double = 0
     @Published var statusMessage: String?
@@ -648,6 +651,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         if requestedInterpolationMode != .disabled {
             os_log("Frame+ baja a 24 fps: %{public}@ (preferencia %{public}@ se conserva)",
                    log: benchLog, type: .default, reason, requestedInterpolationMode.rawValue)
+            feedback.show(.pausedByLoad)
         } else {
             os_log("Interpolation fallback: %{public}@", log: benchLog, type: .default, reason)
         }
@@ -667,6 +671,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         os_log("Frame+ baja de 60 a 48 fps: %{public}@", log: benchLog, type: .info, reason)
         applyInterpolationMode(.motion2x, persistRequest: false)
+        feedback.show(.reducedTo48)
     }
 
     /// Compute pressure changes the bounded work plane only. Cadence decisions
@@ -1492,7 +1497,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
     func setInterpolationMode(_ m: InterpolationMode) {
+        let wasEnabled = requestedInterpolationMode != .disabled
         applyInterpolationMode(m, persistRequest: true)
+        if hasVideo, wasEnabled != (m != .disabled) {
+            feedback.show(m == .disabled ? .disabled : .enabled)
+        }
     }
 
     /// Cambia el tier activo. Los fallbacks automáticos usan
@@ -1595,12 +1604,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 updateVisualEnhancements()
                 os_log("Frame+ prioriza fluidez: superresolución en pausa por frames perdidos en pantalla",
                        log: benchLog, type: .default)
+                feedback.show(.superResolutionPaused)
                 return
             }
             // Moderate presentation pressure may lower 60→48, but never turns
             // Frame+ off by itself. The monitor has a separate severe path.
             if scheduler?.mode == .interpolated60 {
                 applyInterpolationMode(.motion2x, persistRequest: false)
+                feedback.show(.reducedTo48)
             }
         case .recover:
             presentationRecoverEligible = true
@@ -1915,6 +1926,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func setMaximumFluidity(_ enabled: Bool) {
         guard maximumFluidity != enabled else { return }
         maximumFluidity = enabled
+        if hasVideo { feedback.show(enabled ? .maxFluidityOn : .maxFluidityOff) }
         // El compensador se recrea con la nueva configuración; la calidad calibrada
         // del video se conserva (mismo coste por par en ambos modos).
         compensator = nil

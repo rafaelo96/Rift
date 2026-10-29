@@ -103,7 +103,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             GlassIconButton(
                 systemName: volumeIcon,
                 size: 14,
-                action: { state.setVolume(state.volume > 0 ? 0 : 0.68) },
+                action: {
+                    state.setVolume(state.volume > 0 ? 0 : 0.68)
+                    state.showFeedback(.volume(state.volume))
+                },
                 accessibilityLabel: state.volume > 0 ? NSLocalizedString("Mute", comment: "") : NSLocalizedString("Unmute", comment: "")
             )
 
@@ -149,7 +152,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             GlassIconButton(
                 systemName: "gobackward.10",
                 size: 15,
-                action: { state.seek(by: -10) },
+                action: {
+                    state.seek(by: -10)
+                    state.showFeedback(.seek(-10))
+                },
                 accessibilityLabel: NSLocalizedString("Skip Back 10s", comment: "")
             )
 
@@ -157,6 +163,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 withAnimation(surfaceAnimation) {
                     state.togglePlay()
                 }
+                state.showFeedback(state.isPlaying ? .play : .pause)
             } label: {
                 Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
@@ -178,7 +185,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             GlassIconButton(
                 systemName: "goforward.10",
                 size: 15,
-                action: { state.seek(by: 10) },
+                action: {
+                    state.seek(by: 10)
+                    state.showFeedback(.seek(10))
+                },
                 accessibilityLabel: NSLocalizedString("Skip Forward 10s", comment: "")
             )
         }
@@ -230,6 +240,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             withAnimation(surfaceAnimation) {
                 state.cyclePlaybackRate()
             }
+            state.showFeedback(.rate(state.playbackRate))
         } label: {
             glassPill(
                 title: speedTitle,

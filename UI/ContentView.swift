@@ -260,6 +260,10 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .transition(.opacity)
             }
 
+            if state.hasVideo, let rift = state as? RiftPlayerState, !rift.isPictureInPictureActive {
+                PlayerFeedbackOverlay(model: rift.feedback)
+            }
+
             if !state.hasVideo, interactiveReady {
                 openVideoPrompt
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -723,17 +727,15 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             guard let state, state.hasVideo else { return event }
 
             switch event.keyCode {
-            case 123: // Left arrow
-                state.seek(by: event.modifierFlags.contains(.shift) ? -60 : -10)
+            case 123, 124: // Left / right arrow
+                let step: Double = event.modifierFlags.contains(.shift) ? 60 : 10
+                let delta = event.keyCode == 123 ? -step : step
+                state.seek(by: delta)
+                state.showFeedback(.seek(delta))
                 return nil
-            case 124: // Right arrow
-                state.seek(by: event.modifierFlags.contains(.shift) ? 60 : 10)
-                return nil
-            case 125: // Down arrow
-                state.setVolume(state.volume - 0.05)
-                return nil
-            case 126: // Up arrow
-                state.setVolume(state.volume + 0.05)
+            case 125, 126: // Down / up arrow
+                state.setVolume(state.volume + (event.keyCode == 125 ? -0.05 : 0.05))
+                state.showFeedback(.volume(state.volume))
                 return nil
             case 53: // Escape
                 state.closeVideo()
@@ -748,6 +750,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             case 46: // M
                 if !event.modifierFlags.contains(.command) { return event }
                 state.setVolume(state.volume > 0 ? 0 : 0.72)
+                state.showFeedback(.volume(state.volume))
                 return nil
             case 4: // H - toggle controls
                 withAnimation(controlVisibilityAnimation) {
@@ -760,6 +763,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 guard idx < speeds.count else { return event }
                 let rate = speeds[idx]
                 state.playbackRate = rate
+                state.showFeedback(.rate(rate))
                 if state.isPlaying {
                     // TODO(Core): la referencia fijaba `state.player.rate = rate`
                     // en el AVPlayer. Eso es Core/Scheduler + Rendering; no se
