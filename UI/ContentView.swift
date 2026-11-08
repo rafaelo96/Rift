@@ -229,6 +229,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 videoContentView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
+                    .contextMenu { videoContextMenu }
                     .overlay(alignment: .topTrailing) {
                         if interactiveReady {
                             topPlayerControls
@@ -399,6 +400,15 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         .onReceive(NotificationCenter.default.publisher(for: .riftOpenVideo)) { _ in
             (state as? RiftPlayerState)?.openVideo()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .riftTogglePresentation)) { _ in
+            withAnimation(controlDragAnimation) {
+                presentationMode = presentationMode == .fit ? .fill : .fit
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .riftShowTechnicalInfo)) { _ in
+            state.areControlsVisible = true
+            showTechnicalInfo = true
+        }
         // TODO(Core): la referencia exponía `.focusedValue(\.playerState, state)`
         // para que los comandos de menú de RiftApp leyeran el estado de
         // reproducción. Depende del tipo concreto de estado de Core.
@@ -485,6 +495,38 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         reduceMotion
             ? .linear(duration: 0.01)
             : .timingCurve(0.22, 1, 0.36, 1, duration: 0.42)
+    }
+
+    /// Clic derecho sobre el video: los comandos más usados de la barra de menús.
+    @ViewBuilder
+    private var videoContextMenu: some View {
+        if let rift = state as? RiftPlayerState {
+            Button(rift.isPlaying ? "Pause" : "Play") { rift.togglePlay() }
+            Divider()
+            Toggle("Frame+", isOn: Binding(
+                get: { rift.interpolationMode != .disabled },
+                set: { rift.setInterpolationMode($0 ? .motion4x : .disabled) }
+            ))
+            Toggle("Super Resolution", isOn: Binding(
+                get: { rift.superResolutionMode != .off },
+                set: { rift.setSuperResolutionMode($0 ? .strong : .off) }
+            ))
+            Button(presentationMode == .fit ? "Fill Window" : "Fit to Window") {
+                withAnimation(controlDragAnimation) {
+                    presentationMode = presentationMode == .fit ? .fill : .fit
+                }
+            }
+            Divider()
+            if rift.isPictureInPictureAvailable {
+                Button(rift.isPictureInPictureActive ? "Exit Picture in Picture" : "Enter Picture in Picture") {
+                    rift.togglePictureInPicture()
+                }
+            }
+            Button("Technical Info") { showTechnicalInfo = true }
+                .disabled(rift.technicalInfo == nil)
+            Divider()
+            Button("Close Video") { rift.closeVideo() }
+        }
     }
 
     private var topPlayerControls: some View {
@@ -728,52 +770,17 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 return event
             }
         }
-        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak state] event in
-            guard let state, state.hasVideo else { return event }
-
+        // Los atajos del reproductor viven en la barra de menús (RiftCommands).
+        // Aquí solo quedan Esc (salir de pantalla completa) y ⌘F, que no
+        // tienen un comando propio en el menú.
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard let window = event.window, AppDelegate.isPlayerWindow(window) else { return event }
             switch event.keyCode {
-            case 123, 124: // Left / right arrow
-                let step: Double = event.modifierFlags.contains(.shift) ? 60 : 10
-                let delta = event.keyCode == 123 ? -step : step
-                state.seek(by: delta)
-                state.showFeedback(.seek(delta))
+            case 53 where window.styleMask.contains(.fullScreen): // Escape
+                window.toggleFullScreen(nil)
                 return nil
-            case 125, 126: // Down / up arrow
-                state.setVolume(state.volume + (event.keyCode == 125 ? -0.05 : 0.05))
-                state.showFeedback(.volume(state.volume))
-                return nil
-            case 53: // Escape
-                state.closeVideo()
-                NSCursor.unhide()
-                return nil
-            case 3: // F
-                if !event.modifierFlags.contains(.command) { return event }
-                if let window = NSApp.keyWindow {
-                    window.toggleFullScreen(nil)
-                }
-                return nil
-            case 46: // M
-                if !event.modifierFlags.contains(.command) { return event }
-                state.setVolume(state.volume > 0 ? 0 : 0.72)
-                state.showFeedback(.volume(state.volume))
-                return nil
-            case 4: // H - toggle controls
-                withAnimation(controlVisibilityAnimation) {
-                    state.areControlsVisible.toggle()
-                }
-                return nil
-            case 18...21: // Number keys 1-4
-                let speeds: [Float] = [1.0, 1.5, 2.0, 0.5]
-                let idx = Int(event.keyCode - 18)
-                guard idx < speeds.count else { return event }
-                let rate = speeds[idx]
-                state.playbackRate = rate
-                state.showFeedback(.rate(rate))
-                if state.isPlaying {
-                    // TODO(Core): la referencia fijaba `state.player.rate = rate`
-                    // en el AVPlayer. Eso es Core/Scheduler + Rendering; no se
-                    // recrea en la capa UI.
-                }
+            case 3 where event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command: // ⌘F
+                window.toggleFullScreen(nil)
                 return nil
             default:
                 return event

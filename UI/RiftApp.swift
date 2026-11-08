@@ -12,6 +12,7 @@ struct RiftApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @StateObject private var state = RiftPlayerState()
+    @StateObject private var windowFocus = PlayerWindowFocus()
 
     var body: some Scene {
         Window("Rift", id: "player") {
@@ -23,21 +24,7 @@ struct RiftApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .newItem) { }
-            CommandMenu("File") {
-                Button("Open File...") {
-                    NotificationCenter.default.post(name: .riftOpenVideo, object: nil)
-                }
-                .keyboardShortcut("o", modifiers: .command)
-            }
-            CommandMenu("Picture in Picture") {
-                Toggle("Automatically when minimized", isOn: $state.automaticPiPOnMinimize)
-                Toggle("Automatically when switching apps", isOn: $state.automaticPiPOnAppSwitch)
-            }
-            CommandMenu("Language") {
-                Button("English") { AppDelegate.setLanguage("en") }
-                Button("Spanish") { AppDelegate.setLanguage("es") }
-            }
+            RiftCommands(state: state, focus: windowFocus)
             CommandGroup(replacing: .appInfo) {
                 Button("About Rift") {
                     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
@@ -111,23 +98,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.post(name: .riftOpenURLs, object: nil, userInfo: ["urls": urls])
     }
 
-    @MainActor
-    static func setLanguage(_ code: String) {
-        guard ["en", "es"].contains(code) else { return }
-        UserDefaults.standard.set([code], forKey: "AppleLanguages")
-        UserDefaults.standard.synchronize()
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString("Restart required", comment: "")
-        alert.informativeText = NSLocalizedString("The language change will take effect after restarting Rift.", comment: "")
-        alert.addButton(withTitle: NSLocalizedString("Restart Now", comment: ""))
-        alert.addButton(withTitle: NSLocalizedString("Later", comment: ""))
-        if alert.runModal() == .alertFirstButtonReturn {
-            let url = Bundle.main.bundleURL
-            let config = NSWorkspace.OpenConfiguration()
-            config.createsNewApplicationInstance = true
-            NSWorkspace.shared.open(url, configuration: config)
-            NSApplication.shared.terminate(nil)
+    /// Videos recientes en el menú del Dock.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        guard let recent = Self.playerState?.recentVideos, !recent.isEmpty else { return nil }
+        let menu = NSMenu()
+        for video in recent.prefix(8) {
+            let item = NSMenuItem(title: video.title, action: #selector(openRecentFromDock(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = video.url
+            menu.addItem(item)
         }
+        return menu
+    }
+
+    @objc private func openRecentFromDock(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        Self.enqueueOpenURLs([url])
+        Self.bringPlayerWindowToFront()
+    }
+
+    static func isPlayerWindow(_ window: NSWindow?) -> Bool {
+        guard let window, !(window is NSPanel) else { return false }
+        return window.title == "Rift" || window === playerState?.pictureInPicturePlayerWindow
     }
 
     @MainActor

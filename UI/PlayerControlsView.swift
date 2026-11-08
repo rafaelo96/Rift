@@ -178,7 +178,6 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     .shadow(color: .black.opacity(0.24), radius: 10, y: 5)
             }
             .buttonStyle(.plain)
-            .keyboardShortcut(.space, modifiers: [])
             .scaleEffect(reduceMotion ? 1 : (state.isPlaying ? 1 : 0.96))
             .animation(surfaceAnimation, value: state.isPlaying)
             .accessibilityLabel(state.isPlaying ? NSLocalizedString("Pause", comment: "") : NSLocalizedString("Play", comment: ""))
