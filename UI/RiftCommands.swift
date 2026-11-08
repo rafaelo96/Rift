@@ -76,6 +76,12 @@ struct RiftCommands: Commands {
             seekButton("Skip Forward 10 Seconds", delta: 10, key: .rightArrow, modifiers: [], enabled: enabled)
             seekButton("Skip Back 1 Minute", delta: -60, key: .leftArrow, modifiers: .shift, enabled: enabled)
             seekButton("Skip Forward 1 Minute", delta: 60, key: .rightArrow, modifiers: .shift, enabled: enabled)
+            Button("Previous Video") { state.playPreviousPlaylistItem() }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+                .disabled(state.previousPlaylistItem == nil)
+            Button("Next Video") { state.playNextPlaylistItem() }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+                .disabled(state.nextPlaylistItem == nil)
             Button("Add Marker") { state.addMarker() }
                 .keyboardShortcut("b", modifiers: .command)
                 .disabled(!state.hasVideo)

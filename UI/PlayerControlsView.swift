@@ -47,6 +47,12 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         }
     }
 
+    /// ⏮ ⏭ van en los extremos de la línea de tiempo y solo con lista: en la
+    /// fila de controles le quitarían el texto a las opciones en la ventana normal.
+    private var showsPlaylistSteps: Bool {
+        ((state as? RiftPlayerState)?.playlist.count ?? 0) > 1
+    }
+
     private func controlRow(compactOptions: Bool) -> some View {
         HStack(spacing: 14) {
             playbackInfoCluster
@@ -64,6 +70,16 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var timeline: some View {
         HStack(spacing: 11) {
+            if showsPlaylistSteps, let rift = state as? RiftPlayerState {
+                playlistStepButton(
+                    systemName: "backward.end.fill",
+                    label: NSLocalizedString("Previous Video", comment: ""),
+                    isEnabled: rift.previousPlaylistItem != nil,
+                    action: rift.playPreviousPlaylistItem
+                )
+                .padding(.trailing, -6)
+            }
+
             Text(state.formattedTime(isDraggingSlider ? dragSliderValue : state.currentTime))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .frame(width: 56, alignment: .leading)
@@ -91,6 +107,16 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .frame(width: 56, alignment: .trailing)
                 .foregroundStyle(.secondary)
+
+            if showsPlaylistSteps, let rift = state as? RiftPlayerState {
+                playlistStepButton(
+                    systemName: "forward.end.fill",
+                    label: NSLocalizedString("Next Video", comment: ""),
+                    isEnabled: rift.nextPlaylistItem != nil,
+                    action: rift.playNextPlaylistItem
+                )
+                .padding(.leading, -6)
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -202,6 +228,22 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 accessibilityLabel: NSLocalizedString("Skip Forward 10s", comment: "")
             )
         }
+    }
+
+    /// Anterior / siguiente de la lista, a los lados de los tiempos.
+    private func playlistStepButton(systemName: String, label: String, isEnabled: Bool,
+                                    action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white.opacity(isEnabled ? 0.8 : 0.3))
+        .disabled(!isEnabled)
+        .accessibilityLabel(label)
+        .help(label)
     }
 
     // MARK: - Options Bar

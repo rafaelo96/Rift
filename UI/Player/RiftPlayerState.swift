@@ -1198,8 +1198,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     var windowTitle: String {
         guard hasVideo, let sourceURL else { return "Rift" }
         let name = sourceURL.deletingPathExtension().lastPathComponent
-        guard playlist.count > 1, let activePlaylistItemID,
-              let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }) else { return name }
+        // Por el archivo abierto, no por el elemento activo: este cambia antes,
+        // mientras el diálogo de reanudar espera respuesta.
+        guard playlist.count > 1,
+              let index = playlist.firstIndex(where: { $0.path == sourceURL.path }) else { return name }
         return name + " · " + String(format: NSLocalizedString("%d of %d", comment: "Playlist position"), index + 1, playlist.count)
     }
 
