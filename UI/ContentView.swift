@@ -166,6 +166,21 @@ private struct TopChromeGlyph: View {
     }
 }
 
+/// Círculo de vidrio para el botón de menú "…": `Menu` no acepta el estilo de
+/// botón de vidrio, así que recibe el mismo material de forma explícita.
+private struct GlassCircle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .contentShape(Circle())
+                .glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Circle())
+        }
+    }
+}
+
 private struct TopChromeButton: View {
     let systemName: String
     let accessibilityLabel: String
@@ -215,7 +230,6 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     @State private var isDraggingControls = false
     @State private var presentationMode: VideoPresentationMode = .fit
     @State private var showTechnicalInfo = false
-    @State private var showPlaybackOptions = false
 
     init(state: PlayerStateType) {
         self.state = state
@@ -527,6 +541,105 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         }
     }
 
+    /// Menú "…": comandos del video actual como menú nativo de macOS (se ajusta
+    /// a su contenido, se navega con teclado y usa el material del sistema).
+    @ViewBuilder
+    private var playbackOptionsMenu: some View {
+        if let rift = state as? RiftPlayerState {
+            if let message = rift.statusMessage, message != "Ready" {
+                Text(message)
+                Divider()
+            }
+
+            Section {
+                Button(NSLocalizedString("Open Video…", comment: ""), systemImage: "folder") {
+                    rift.openVideo()
+                }
+                Button(NSLocalizedString("Add to Playlist…", comment: ""), systemImage: "text.badge.plus") {
+                    rift.addVideosToPlaylist()
+                }
+                if !rift.recentVideos.isEmpty {
+                    Menu(NSLocalizedString("Recent", comment: ""), systemImage: "clock") {
+                        ForEach(rift.recentVideos) { video in
+                            Button(video.title) { rift.loadVideo(video.url) }
+                        }
+                        Divider()
+                        Button(NSLocalizedString("Clear Recent Videos", comment: ""), role: .destructive) {
+                            rift.clearRecentVideos()
+                        }
+                    }
+                }
+                if !rift.playlist.isEmpty {
+                    Menu(NSLocalizedString("Playlist", comment: ""), systemImage: "list.bullet") {
+                        ForEach(rift.playlist) { item in
+                            Toggle(item.title, isOn: Binding(
+                                get: { item.id == rift.activePlaylistItemID },
+                                set: { _ in rift.playPlaylistItem(item) }
+                            ))
+                        }
+                        Divider()
+                        Button(NSLocalizedString("Previous Video", comment: "")) { rift.playPreviousPlaylistItem() }
+                            .disabled(rift.playlist.first?.id == rift.activePlaylistItemID)
+                        Button(NSLocalizedString("Next Video", comment: "")) { rift.playNextPlaylistItem() }
+                            .disabled(rift.playlist.last?.id == rift.activePlaylistItemID)
+                    }
+                }
+            }
+
+            Section {
+                Button(NSLocalizedString("Add Marker", comment: ""), systemImage: "bookmark") {
+                    rift.addMarker()
+                }
+                if !rift.markers.isEmpty {
+                    Menu(NSLocalizedString("Markers", comment: ""), systemImage: "bookmark.fill") {
+                        ForEach(rift.markers) { marker in
+                            Button(marker.title) { rift.seek(to: marker.time) }
+                        }
+                    }
+                }
+                if !rift.chapters.isEmpty {
+                    Menu(NSLocalizedString("Chapters", comment: ""), systemImage: "list.number") {
+                        ForEach(Array(rift.chapters.enumerated()), id: \.offset) { index, chapter in
+                            Button("\(index + 1). \(chapter.title)  \(rift.formattedTime(chapter.start))") {
+                                rift.seek(to: chapter.start)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Menu(NSLocalizedString("Audio Sync", comment: ""), systemImage: "waveform") {
+                    ForEach([-0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5], id: \.self) { offset in
+                        Toggle(audioSyncTitle(for: offset), isOn: Binding(
+                            get: { abs(rift.audioSyncOffset - offset) < 0.001 },
+                            set: { _ in rift.setAudioSyncOffset(offset) }
+                        ))
+                    }
+                }
+                Button(NSLocalizedString("Load Subtitle File…", comment: ""), systemImage: "captions.bubble") {
+                    rift.openExternalSubtitles()
+                }
+                if let subtitleName = rift.externalSubtitleName {
+                    Button("\(NSLocalizedString("Remove External Subtitles", comment: "")) (\(subtitleName))",
+                           systemImage: "captions.bubble.fill") {
+                        rift.removeExternalSubtitles()
+                    }
+                }
+            }
+
+            Button(NSLocalizedString("Technical Info", comment: ""), systemImage: "info.circle") {
+                showTechnicalInfo = true
+            }
+            .disabled(rift.technicalInfo == nil)
+
+            Divider()
+            Button(NSLocalizedString("Close Video", comment: ""), systemImage: "xmark", role: .destructive) {
+                rift.closeVideo()
+            }
+        }
+    }
+
     private var topPlayerControls: some View {
         GlassGroup(spacing: 2) {
         HStack(spacing: 2) {
@@ -539,160 +652,18 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 }
             }
 
-            TopChromeButton(
-                systemName: "ellipsis",
-                accessibilityLabel: NSLocalizedString("More playback options", comment: "")
-            ) {
-                showPlaybackOptions.toggle()
+            Menu {
+                playbackOptionsMenu
+            } label: {
+                TopChromeGlyph(systemName: "ellipsis")
             }
-            .popover(isPresented: $showPlaybackOptions, arrowEdge: .top) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                if let message = (state as? RiftPlayerState)?.statusMessage,
-                   message != "Ready" {
-                    Text(message)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 480)
-                        .accessibilityLabel(message)
-                }
-
-                Button {
-                    (state as? RiftPlayerState)?.openVideo()
-                } label: {
-                    Label(NSLocalizedString("Open Video…", comment: ""), systemImage: "folder")
-                }
-
-                Button {
-                    (state as? RiftPlayerState)?.addVideosToPlaylist()
-                } label: {
-                    Label(NSLocalizedString("Add to Playlist…", comment: ""), systemImage: "text.badge.plus")
-                }
-
-                if let rift = state as? RiftPlayerState, !rift.recentVideos.isEmpty {
-                    Menu(NSLocalizedString("Recent", comment: "")) {
-                        ForEach(rift.recentVideos) { video in
-                            Button(video.title) {
-                                rift.loadVideo(video.url)
-                            }
-                        }
-
-                        Divider()
-
-                        Button(NSLocalizedString("Clear Recent Videos", comment: ""), role: .destructive) {
-                            rift.clearRecentVideos()
-                        }
-                    }
-                }
-
-                if let rift = state as? RiftPlayerState, !rift.playlist.isEmpty {
-                    Menu(NSLocalizedString("Playlist", comment: "")) {
-                        ForEach(rift.playlist) { item in
-                            Button {
-                                rift.playPlaylistItem(item)
-                            } label: {
-                                Label(item.title, systemImage: item.id == rift.activePlaylistItemID ? "play.fill" : "play")
-                            }
-                        }
-
-                        Divider()
-
-                        Button(NSLocalizedString("Previous Video", comment: "")) {
-                            rift.playPreviousPlaylistItem()
-                        }
-                        .disabled(rift.playlist.first?.id == rift.activePlaylistItemID)
-
-                        Button(NSLocalizedString("Next Video", comment: "")) {
-                            rift.playNextPlaylistItem()
-                        }
-                        .disabled(rift.playlist.last?.id == rift.activePlaylistItemID)
-                    }
-                }
-
-                Divider()
-
-                if let rift = state as? RiftPlayerState {
-                    Button {
-                        rift.addMarker()
-                    } label: {
-                        Label(NSLocalizedString("Add Marker", comment: ""), systemImage: "bookmark.badge.plus")
-                    }
-
-                    if !rift.markers.isEmpty {
-                        Menu(NSLocalizedString("Markers", comment: "")) {
-                            ForEach(rift.markers) { marker in
-                                Button {
-                                    rift.seek(to: marker.time)
-                                } label: {
-                                    Text(marker.title)
-                                }
-                            }
-                        }
-                    }
-
-                    if !rift.chapters.isEmpty {
-                        Menu(NSLocalizedString("Chapters", comment: "")) {
-                            ForEach(Array(rift.chapters.enumerated()), id: \.offset) { index, chapter in
-                                Button {
-                                    rift.seek(to: chapter.start)
-                                } label: {
-                                    Text("\(index + 1). \(chapter.title)  \(rift.formattedTime(chapter.start))")
-                                }
-                            }
-                        }
-                    }
-
-                    Button {
-                        showTechnicalInfo = true
-                    } label: {
-                        Label(NSLocalizedString("Technical Info", comment: ""), systemImage: "info.circle")
-                    }
-                    .disabled(rift.technicalInfo == nil)
-
-                    Menu(NSLocalizedString("Audio Sync", comment: "")) {
-                        ForEach([-0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5], id: \.self) { offset in
-                            Button {
-                                rift.setAudioSyncOffset(offset)
-                            } label: {
-                                Label(
-                                    audioSyncTitle(for: offset),
-                                    systemImage: abs(rift.audioSyncOffset - offset) < 0.001 ? "checkmark" : "circle"
-                                )
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        rift.openExternalSubtitles()
-                    } label: {
-                        Label(NSLocalizedString("Load Subtitle File…", comment: ""), systemImage: "captions.bubble")
-                    }
-
-                    if let subtitleName = rift.externalSubtitleName {
-                        Button(role: .destructive) {
-                            rift.removeExternalSubtitles()
-                        } label: {
-                            Label("\(NSLocalizedString("Remove External Subtitles", comment: "")) (\(subtitleName))", systemImage: "captions.bubble.fill")
-                        }
-                    }
-                }
-
-                Divider()
-
-                Button(role: .destructive) {
-                    state.closeVideo()
-                } label: {
-                    Label(NSLocalizedString("Close Video", comment: ""), systemImage: "xmark")
-                }
-                    }
-                    .padding(10)
-                }
-                .frame(width: 290, height: 360)
-                .background(VideoOverlayGlass(cornerRadius: 16))
-                }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .frame(width: 28, height: 28)
+            .modifier(GlassCircle())
+            .accessibilityLabel(NSLocalizedString("More playback options", comment: ""))
+            .help(NSLocalizedString("More playback options", comment: ""))
 
             if let rift = state as? RiftPlayerState, rift.isPictureInPictureAvailable {
                 TopChromeButton(
@@ -757,7 +728,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private func audioSyncTitle(for offset: Double) -> String {
         guard offset != 0 else { return NSLocalizedString("In Sync", comment: "") }
-        return String(format: "%@ %.0f ms", offset > 0 ? "+" : "-", abs(offset) * 1_000)
+        return String(format: "%@%.0f ms", offset > 0 ? "+" : "−", abs(offset) * 1_000)
     }
 
     // MARK: - Keyboard & mouse monitoring
