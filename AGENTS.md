@@ -191,6 +191,16 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   forma sostenida con Frame+ (p. ej. 1080p→4K), se pausa la superresolución
   antes de bajar de 60 a 48 fps; dura el resto del video
   (`RIFT_SR_FLUIDITY_PAUSE=0` restaura el orden anterior).
+- **Idiomas (inglés / español)**: las tablas están en
+  `UI/Resources/{en,es}.lproj/Localizable.strings`. La clave es el texto tal como
+  está en el código: los textos en inglés se traducen en `es.lproj` y los que
+  están escritos en español (Ajustes, diálogo de reanudar) en `en.lproj`. Todo
+  texto visible nuevo va como literal de SwiftUI, `String(localized:)` o
+  `NSLocalizedString`, nunca como `String` plano. SwiftUI busca en `Bundle.main`,
+  así que `build-local-app.sh` copia los `.lproj` a `Contents/Resources`; con
+  `swift run` (sin bundle) se ven las claves tal cual. El idioma lo elige macOS
+  (Ajustes del Sistema → General → Idioma y región → Aplicaciones); para probar:
+  `Rift.app/Contents/MacOS/Rift -AppleLanguages '(es)'`.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

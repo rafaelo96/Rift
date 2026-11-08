@@ -141,7 +141,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(String(format: "%.0f fps ↗", state.displayRenderingFPS))
-                    .help("Frames entregados al sistema por segundo; no mide la presentación física de la pantalla.")
+                    .help("Frames delivered to the system per second; this does not measure what the display physically shows.")
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
 
@@ -491,7 +491,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         if state.isFramePlusPreparing { return NSLocalizedString("Preparing HQ", comment: "") }
         if state.isFramePlusPreRendered {
             let target = (state as? RiftPlayerState)?.targetRenderingFPS ?? 60
-            return String(format: "Objetivo %.0f fps", target)
+            return String(format: NSLocalizedString("Target %.0f fps", comment: "Frame+ target frame rate"), target)
         }
         if state.interpolationMode == .disabled { return NSLocalizedString("Disabled", comment: "") }
         return state.isArtificialInterpolationActive ? NSLocalizedString("Interpolating", comment: "") : NSLocalizedString("Waiting", comment: "")

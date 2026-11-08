@@ -95,7 +95,7 @@ struct RiftSettingsView: View {
                 Text("La apariencia se aplica al reproductor, a pantalla completa y a PiP. Los controles visibles reservan espacio para no cubrir los subtítulos. Las elecciones guardadas por archivo tienen prioridad sobre la activación predeterminada.")
             }
             Section("Vista previa") {
-                SubtitleCaption(text: "Así se verán tus subtítulos", fontSize: state.subtitleFontSize,
+                SubtitleCaption(text: String(localized: "Así se verán tus subtítulos"), fontSize: state.subtitleFontSize,
                     textColor: SubtitleColors.color(state.subtitleTextColorHex),
                     backgroundStyle: state.subtitleBackgroundStyle,
                     backgroundColor: SubtitleColors.color(state.subtitleBackgroundColorHex),

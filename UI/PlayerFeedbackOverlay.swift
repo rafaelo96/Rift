@@ -32,7 +32,7 @@ enum PlayerActionFeedback: Equatable {
     var caption: String? {
         switch self {
         case .play, .pause, .seek: return nil
-        case .volume(let level): return level <= 0 ? "Silencio" : "\(Int((level * 100).rounded())) %"
+        case .volume(let level): return level <= 0 ? String(localized: "Muted") : (level).formatted(.percent.precision(.fractionLength(0)))
         case .rate(let rate): return String(format: rate == rate.rounded() ? "%.0f×" : "%g×", rate)
         }
     }
@@ -43,21 +43,21 @@ struct FramePlusNotice: Equatable {
     let title: String
     let emphasized: Bool
 
-    static let enabled = FramePlusNotice(symbol: "sparkles", title: "Frame+ activado", emphasized: true)
-    static let disabled = FramePlusNotice(symbol: "film", title: "Frame+ desactivado", emphasized: false)
-    static let maxFluidityOn = FramePlusNotice(symbol: "wind", title: "Fluidez máxima activada", emphasized: true)
-    static let maxFluidityOff = FramePlusNotice(symbol: "wind", title: "Fluidez máxima desactivada", emphasized: false)
+    static let enabled = FramePlusNotice(symbol: "sparkles", title: String(localized: "Frame+ on"), emphasized: true)
+    static let disabled = FramePlusNotice(symbol: "film", title: String(localized: "Frame+ off"), emphasized: false)
+    static let maxFluidityOn = FramePlusNotice(symbol: "wind", title: String(localized: "Maximum Fluidity on"), emphasized: true)
+    static let maxFluidityOff = FramePlusNotice(symbol: "wind", title: String(localized: "Maximum Fluidity off"), emphasized: false)
     static let reducedTo48 = FramePlusNotice(symbol: "gauge.with.dots.needle.33percent",
-                                             title: "Frame+ · 48 fps para mantener fluidez", emphasized: false)
-    static let superResolutionOn = FramePlusNotice(symbol: "wand.and.stars", title: "Superresolución activada", emphasized: true)
-    static let superResolutionOff = FramePlusNotice(symbol: "wand.and.stars", title: "Superresolución desactivada", emphasized: false)
+                                             title: String(localized: "Frame+ · 48 fps to stay smooth"), emphasized: false)
+    static let superResolutionOn = FramePlusNotice(symbol: "wand.and.stars", title: String(localized: "Super Resolution on"), emphasized: true)
+    static let superResolutionOff = FramePlusNotice(symbol: "wand.and.stars", title: String(localized: "Super Resolution off"), emphasized: false)
     static let superResolutionHeld = FramePlusNotice(symbol: "wand.and.stars",
-                                                     title: "Superresolución activada · en pausa mientras Frame+ prioriza fluidez",
+                                                     title: String(localized: "Super Resolution on · paused while Frame+ keeps playback smooth"),
                                                      emphasized: false)
     static let superResolutionPaused = FramePlusNotice(symbol: "wand.and.stars",
-                                                       title: "Superresolución en pausa para mantener fluidez", emphasized: false)
+                                                       title: String(localized: "Super Resolution paused to stay smooth"), emphasized: false)
     static let pausedByLoad = FramePlusNotice(symbol: "exclamationmark.triangle",
-                                              title: "Frame+ en pausa: este Mac no alcanza", emphasized: false)
+                                              title: String(localized: "Frame+ paused: this Mac can’t keep up"), emphasized: false)
 }
 
 /// Capa negra sobre el video: cubre la apertura y atenúa los saltos hasta que

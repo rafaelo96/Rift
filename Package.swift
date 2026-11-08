@@ -52,6 +52,7 @@ let ffmpegPrefix_ = ffmpegPrefix()
 
 let package = Package(
     name: "Rift",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],
@@ -74,7 +75,7 @@ let package = Package(
             name: "Rift",
             dependencies: ["Contracts", "Demux", "Decode", "DecodeAudio", "FramePool", "Scheduler", "Rendering", "Interpolation"],
             path: "UI",
-            resources: [.process("Assets")],
+            resources: [.process("Assets"), .process("Resources")],
             // Display loop and per-frame work run on the real-time path: keep `swift run`
             // (Debug) within the frame budget, as Interpolation already does.
             swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]

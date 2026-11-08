@@ -60,10 +60,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var playerState: RiftPlayerState?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let lang = UserDefaults.standard.stringArray(forKey: "AppleLanguages")?.first,
-           ["en", "es"].contains(lang) {
-            UserDefaults.standard.set([lang], forKey: "AppleLanguages")
-        }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         Self.bringPlayerWindowToFront()

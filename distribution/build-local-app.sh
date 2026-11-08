@@ -12,6 +12,9 @@ cp "$bin_path/Rift" "$app_path/Contents/MacOS/Rift"
 cp distribution/Info.plist "$app_path/Contents/Info.plist"
 # SwiftPM assets use the local build fallback; this package is for this Mac.
 cp -R "$bin_path/Rift_Rift.bundle" "$app_path/Contents/Resources/"
+# SwiftUI and NSLocalizedString look up strings in Bundle.main, so the
+# translations also go next to the app's own resources.
+cp -R "$bin_path/Rift_Rift.bundle/Contents/Resources/"*.lproj "$app_path/Contents/Resources/"
 icon_dir="$(mktemp -d)/Rift.iconset"
 mkdir -p "$icon_dir"
 for size in 16 32 128 256 512; do

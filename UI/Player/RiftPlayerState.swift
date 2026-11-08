@@ -180,7 +180,7 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         state?.restorePictureInPictureSourceLayer()
         state?.endPictureInPictureSubtitlePresentation()
-        state?.statusMessage = "Picture in Picture unavailable: \(error.localizedDescription)"
+        state?.statusMessage = String(localized: "Picture in Picture unavailable: \(error.localizedDescription)")
     }
 }
 
@@ -1707,7 +1707,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let access = mediaBookmarks.access(URL(fileURLWithPath: path))
         let subtitleURL = access.url
         guard FileManager.default.isReadableFile(atPath: subtitleURL.path) else {
-            statusMessage = "No se encuentran los subtítulos externos. Vuelve a seleccionarlos."
+            statusMessage = String(localized: "The external subtitles can’t be found. Select them again.")
             return
         }
         loadExternalSubtitles(from: subtitleURL, persistAssociation: false)
@@ -1719,7 +1719,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let url = access.url
         let cues = Self.readExternalSubtitleCues(url: url)
         guard !cues.isEmpty else {
-            statusMessage = "No readable subtitles in \(url.lastPathComponent)"
+            statusMessage = String(localized: "No readable subtitles in \(url.lastPathComponent)")
             return
         }
         subtitleCues = cues
@@ -1756,7 +1756,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     private func openFloatingPictureInPicture(automatically: Bool) {
         guard let layer = renderer?.displayLayer else {
-            statusMessage = "Picture in Picture is not available for this video"
+            statusMessage = String(localized: "Picture in Picture is not available for this video")
             return
         }
         let width = CGFloat(videoTrack?.width ?? 16)
@@ -2061,7 +2061,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         let access = resolveMediaAccess(requestedURL)
         let url = access.url
         guard FileManager.default.isReadableFile(atPath: url.path) else {
-            statusMessage = "No se puede acceder a \(requestedURL.lastPathComponent). Vuelve a seleccionarlo con Abrir video…"
+            statusMessage = String(localized: "Can’t access \(requestedURL.lastPathComponent). Select it again with Open Video…")
             return
         }
         videoOpenRequestID = UUID()
@@ -2118,7 +2118,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         currentTime = max(rememberedPosition, 0)
         duration = 0
         lastPersistedPlaybackPosition = -1
-        statusMessage = "Opening \(url.lastPathComponent)…"
+        statusMessage = String(localized: "Opening \(url.lastPathComponent)…")
         conversionProgress = 0.1
         hasVideo = false
         // Instrumentación de sesión (RIFT_DIAGNOSTICS=1): reset por apertura.
@@ -2146,7 +2146,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                     d.close()
                     await MainActor.run { [weak self] in
                         guard let self, self.videoOpenRequestID == requestID else { return }
-                        self.statusMessage = "No video track"
+                        self.statusMessage = String(localized: "No video track")
                     }
                     return
                 }
@@ -2179,7 +2179,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self, self.videoOpenRequestID == requestID else { return }
-                    self.statusMessage = "Open failed: \(error.localizedDescription)"
+                    self.statusMessage = String(localized: "Open failed: \(error.localizedDescription)")
                     self.conversionProgress = 0
                 }
             }
@@ -2379,7 +2379,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 if let readError {
                     os_log("decode: read error %{public}@ tras reintentos — loop terminado",
                            log: benchLog, type: .error, String(describing: readError))
-                    await MainActor.run { self.statusMessage = "Decode error: \(readError)" }
+                    await MainActor.run { self.statusMessage = String(localized: "Decode error: \(String(describing: readError))") }
                     await self.coordinator.signal()
                     break
                 }
