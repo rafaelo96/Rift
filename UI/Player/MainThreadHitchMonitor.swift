@@ -15,6 +15,11 @@ final class MainThreadHitchMonitor: @unchecked Sendable {
     private let lock = NSLock()
     private var total = Snapshot()
     private var inFlight = false
+    private static let clockFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter
+    }()
 
     func start() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -43,6 +48,11 @@ final class MainThreadHitchMonitor: @unchecked Sendable {
             if ms > 16 { self.total.over16 += 1 }
             if ms > 33 { self.total.over33 += 1 }
             self.total.maxMS = max(self.total.maxMS, ms)
+            if ms > 33 {
+                // Hora de reloj para alinear con `log show` (OPEN, admisión, seek).
+                let stamp = Self.clockFormatter.string(from: Date())
+                FileHandle.standardOutput.write(Data(String(format: "HITCH at=%@ ms=%.1f\n", stamp, ms).utf8))
+            }
             self.inFlight = false
             self.lock.unlock()
         }

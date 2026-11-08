@@ -402,6 +402,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Reactivar Frame+ a mano parte de ella: volver a 1 sin admisión dejaba la
     /// reproducción ~10 s por debajo del presupuesto hasta que el monitor bajaba.
     private var calibratedInterpolationQuality: Int?
+    /// Calidad de Frame+ ya medida en esta sesión por resolución ("3840x2160").
+    /// El siguiente episodio arranca ahí en vez de volver a la calidad alta y
+    /// pasar ~3 s atrasado hasta que el monitor la baja. Solo vive en memoria:
+    /// cada sesión vuelve a medir en vivo.
+    private var sessionQualityByResolution: [String: Int] = [:]
+    private var calibrationResolutionKey: String? {
+        guard let width = videoTrack?.width, let height = videoTrack?.height else { return nil }
+        return "\(width)x\(height)"
+    }
     private var pendingLoadAction: AdaptiveLoadMonitor.Action?
     private var pendingPresentationAction: PresentationDropMonitor.Action?
     private var presentationRecoverEligible = true
@@ -921,7 +930,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         "MAINTHREAD second=%d hitch8=%d hitch16=%d hitch33=%d maxMS=%.1f lateEnqueues=%d timeoutDrops=%d\n",
                         second, hitches.over8, hitches.over16, hitches.over33, hitches.maxMS,
                         self.probeLateEnqueues, self.framesDroppedTimeout).utf8))
-                    if #available(macOS 14.4, *), second % 5 == 0,
+                    if #available(macOS 14.4, *),
                        let videoRenderer = self.renderer?.displayLayer.sampleBufferRenderer {
                         videoRenderer.loadVideoPerformanceMetrics { metrics in
                             guard let metrics else { return }
@@ -1713,9 +1722,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             usesDrawingHold: !maximumFluidity)
     }
 
+    private func rememberSessionQuality() {
+        if let key = calibrationResolutionKey { sessionQualityByResolution[key] = interpolationQuality }
+    }
+
     private func changeInterpolationQuality(to quality: Int) {
         interpolationQuality = min(max(quality, 0), 2)
         calibratedInterpolationQuality = interpolationQuality
+        rememberSessionQuality()
         compensator = nil
         interpolationPairCount = 0
         resetThroughputWindow()
@@ -2360,6 +2374,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.demuxer = d
         self.decoder = dec
         self.videoTrack = v
+        if ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"] == nil,
+           requestedInterpolationMode != .disabled,
+           let key = calibrationResolutionKey, let remembered = sessionQualityByResolution[key] {
+            interpolationQuality = remembered
+            calibratedInterpolationQuality = remembered
+            os_log("Frame+ empieza en la calidad medida para %{public}@: %d",
+                   log: benchLog, type: .info, key, remembered)
+        }
         self.duration = info.duration
         self.currentTime = min(max(startTime, 0), info.duration)
         invalidatePictureInPicturePlaybackState()
@@ -3310,7 +3332,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             for _ in 0..<2 {
                 guard !Task.isCancelled, self.playbackGeneration == generation,
                       let pool = self.framePool else { return }
-                let pairs = Array(pool.consecutivePairs().prefix(3))
+                // Primer par = calentamiento (no cuenta); los otros tres dan la mediana.
+                let pairs = Array(pool.consecutivePairs().prefix(4))
                 guard pairs.count >= 2 else { return }
                 let tValues: [Float] = self.scheduler?.mode == .interpolated48
                     ? [0.5]
@@ -3333,10 +3356,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 guard !stableCosts.isEmpty else { return }
                 selectedCostMS = stableCosts.sorted()[stableCosts.count / 2]
 
-                // Keep 15% headroom for decode, enqueue and short scene bursts.
+                // 40 % de holgura: con decode, audio y presentación corriendo a la
+                // vez, el par cuesta bastante más que aquí (M4, 1080p HEVC: 28–35 ms
+                // en la admisión y ~48 ms reproduciendo, con presupuesto de 41.7 ms).
+                // Con el 15 % anterior (y aun con 30 %) la calidad alta pasaba a veces
+                // y la reproducción iba atrasada ~3 s hasta que el monitor la bajaba.
                 // RIFT_AUTO_FORCE_QUALITY=<0…2> (pruebas): arranca en esa calidad y la
                 // admisión no la baja, para reproducir arranques de forma determinista.
-                if self.interpolationQuality > 0, selectedCostMS > pairBudgetMS * 0.85,
+                if self.interpolationQuality > 0, selectedCostMS > pairBudgetMS * 0.60,
                    ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"] == nil {
                     self.changeInterpolationQuality(to: self.interpolationQuality - 1)
                     continue
@@ -3348,6 +3375,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             os_log("Frame+ admission: quality=%d median=%.2fms budget=%.2fms",
                    log: self.benchLog, type: .info,
                    self.interpolationQuality, selectedCostMS, pairBudgetMS)
+            self.rememberSessionQuality()
             self.resetInterpolationCounters()
             guard self.isPlaying else { return }
             self.startDisplayLoop(resumeAt: resumeAt ?? self.currentTime)
