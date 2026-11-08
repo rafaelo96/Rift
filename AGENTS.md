@@ -201,6 +201,14 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   `swift run` (sin bundle) se ven las claves tal cual. El idioma lo elige macOS
   (Ajustes del Sistema → General → Idioma y región → Aplicaciones); para probar:
   `Rift.app/Contents/MacOS/Rift -AppleLanguages '(es)'`.
+- **Fin de video y lista de reproducción**: el demuxer no avisa a la UI del
+  EOF, así que el poll de `currentTime` (100 ms) detecta `currentTime ≥ duration
+  − 0.05`, pausa el synchronizer en `duration` y, si hay siguiente en la lista,
+  muestra `UpNextCard` con 5 s de cuenta regresiva (Reproducir ahora / Cancelar,
+  ⏎ / Esc). Reproducir al final vuelve a 0:00. Sin esto el reloj seguía
+  corriendo con la imagen congelada. La ventana del reproductor se reconoce por
+  su `id` de escena (`AppDelegate.playerWindowID`), no por el título: el título
+  muestra el video abierto.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).
