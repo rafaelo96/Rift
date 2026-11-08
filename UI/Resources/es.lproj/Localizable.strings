@@ -1,7 +1,7 @@
 /* Español. Las claves en inglés se traducen aquí; las claves que ya están en español se muestran tal cual. */
 
 "%.2gx" = "%.2g×";
-"%d:%02d of %d:%02d" = "%d:%02d de %d:%02d";
+"%@ of %@" = "%@ de %@";
 "1x" = "1×";
 "About Rift" = "Acerca de Rift";
 "Add Marker" = "Añadir marcador";

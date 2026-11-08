@@ -1593,7 +1593,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             }
         }
     }
-    func formattedTime(_ s: Double) -> String { let i = Int(s); return String(format: "%d:%02d", i/60, i%60) }
+    func formattedTime(_ s: Double) -> String { PlaybackTimeFormat.string(s) }
     func setInterpolationMode(_ m: InterpolationMode) {
         let wasEnabled = requestedInterpolationMode != .disabled
         applyInterpolationMode(m, persistRequest: true)

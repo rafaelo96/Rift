@@ -753,14 +753,11 @@ struct TimelineTrack: View {
         .animation(trackAnimation, value: isHovering)
         .animation(trackAnimation, value: isDragging)
         .accessibilityLabel(NSLocalizedString("Timeline", comment: ""))
-        .accessibilityValue(String(format: NSLocalizedString("%d:%02d of %d:%02d", comment: ""), Int(currentTime / 60), Int(currentTime.truncatingRemainder(dividingBy: 60)), Int(duration / 60), Int(duration.truncatingRemainder(dividingBy: 60))))
+        .accessibilityValue(String(format: NSLocalizedString("%@ of %@", comment: ""), PlaybackTimeFormat.string(currentTime), PlaybackTimeFormat.string(duration)))
     }
 
     private func formatTime(_ seconds: Double) -> String {
-        let s = max(0, Int(seconds))
-        let m = s / 60
-        let sec = s % 60
-        return "\(m):\(String(format: "%02d", sec))"
+        PlaybackTimeFormat.string(seconds)
     }
 
     private var timelinePreview: some View {
