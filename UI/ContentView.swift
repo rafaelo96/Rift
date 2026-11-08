@@ -624,8 +624,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
             Section {
                 Menu(NSLocalizedString("Audio Sync", comment: ""), systemImage: "waveform") {
-                    ForEach([-0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5], id: \.self) { offset in
-                        Toggle(audioSyncTitle(for: offset), isOn: Binding(
+                    ForEach(RiftCommands.audioSyncOffsets, id: \.self) { offset in
+                        Toggle(RiftCommands.audioSyncTitle(for: offset), isOn: Binding(
                             get: { abs(rift.audioSyncOffset - offset) < 0.001 },
                             set: { _ in rift.setAudioSyncOffset(offset) }
                         ))
@@ -738,11 +738,6 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .lineLimit(1)
         }
         .font(.system(size: 12, weight: .medium))
-    }
-
-    private func audioSyncTitle(for offset: Double) -> String {
-        guard offset != 0 else { return NSLocalizedString("In Sync", comment: "") }
-        return String(format: "%@%.0f ms", offset > 0 ? "+" : "−", abs(offset) * 1_000)
     }
 
     // MARK: - Keyboard & mouse monitoring

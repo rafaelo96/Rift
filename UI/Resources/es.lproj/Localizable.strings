@@ -121,3 +121,16 @@
 "Play Now" = "Reproducir ahora";
 "Cancel" = "Cancelar";
 "%d of %d" = "%d de %d";
+
+/* Menús Audio y Subtítulos, Ir a tiempo */
+"No Audio Tracks" = "Sin pistas de audio";
+"Subtitles Off" = "Desactivados";
+"Subtitles Earlier" = "Adelantar subtítulos";
+"Subtitles Later" = "Retrasar subtítulos";
+"Reset Subtitle Timing" = "Restablecer sincronía de subtítulos";
+"Subtitles in sync" = "Subtítulos sincronizados";
+"Subtitles %@%.1f s" = "Subtítulos %@%.1f s";
+"Go to Time…" = "Ir a tiempo…";
+"Go to Time" = "Ir a tiempo";
+"Enter a time between 0:00 and %@." = "Escribe un tiempo entre 0:00 y %@.";
+"Go" = "Ir";

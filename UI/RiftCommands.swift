@@ -54,9 +54,6 @@ struct RiftCommands: Commands {
                 .keyboardShortcut("o", modifiers: [.command, .shift])
         }
         CommandGroup(after: .saveItem) {
-            Button("Load Subtitle File…") { state.openExternalSubtitles() }
-                .disabled(!state.hasVideo)
-            Divider()
             Button("Close Video") { state.closeVideo() }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
                 .disabled(!state.hasVideo)
@@ -143,6 +140,58 @@ struct RiftCommands: Commands {
             }
         }
 
+        CommandMenu("Audio") {
+            ForEach(state.audioTracks) { track in
+                Toggle(track.label, isOn: Binding(
+                    get: { state.selectedAudioTrackIndex == track.id },
+                    set: { _ in state.selectAudioTrack(track.id) }
+                ))
+            }
+            if state.audioTracks.isEmpty {
+                Button("No Audio Tracks") {}.disabled(true)
+            }
+            Divider()
+            Menu("Audio Sync") {
+                ForEach(Self.audioSyncOffsets, id: \.self) { offset in
+                    Toggle(Self.audioSyncTitle(for: offset), isOn: Binding(
+                        get: { abs(state.audioSyncOffset - offset) < 0.001 },
+                        set: { _ in state.setAudioSyncOffset(offset) }
+                    ))
+                }
+            }
+            .disabled(!state.hasVideo)
+        }
+
+        CommandMenu("Subtitles") {
+            let subtitleTracks = state.availableTracks.filter { $0.kind == .subtitle }
+            Toggle("Subtitles Off", isOn: Binding(
+                get: { state.selectedSubtitleTrack == nil },
+                set: { _ in state.selectPipelineTrack(nil) }
+            ))
+            .disabled(!state.hasVideo)
+            ForEach(subtitleTracks) { track in
+                Toggle(track.label, isOn: Binding(
+                    get: { state.selectedSubtitleTrack == track },
+                    set: { _ in state.selectPipelineTrack(track) }
+                ))
+            }
+            Divider()
+            Button("Load Subtitle File…") { state.openExternalSubtitles() }
+                .disabled(!state.hasVideo)
+            if state.externalSubtitleName != nil {
+                Button("Remove External Subtitles") { state.removeExternalSubtitles() }
+            }
+            Divider()
+            Button("Subtitles Earlier") { shiftSubtitles(by: -0.1) }
+                .keyboardShortcut("z", modifiers: [])
+                .disabled(!(state.hasVideo && focus.isPlayerKey))
+            Button("Subtitles Later") { shiftSubtitles(by: 0.1) }
+                .keyboardShortcut("x", modifiers: [])
+                .disabled(!(state.hasVideo && focus.isPlayerKey))
+            Button("Reset Subtitle Timing") { shiftSubtitles(by: -state.subtitleDelay) }
+                .disabled(state.subtitleDelay == 0)
+        }
+
         CommandGroup(before: .toolbar) {
             Button(state.areControlsVisible ? "Hide Controls" : "Show Controls") {
                 withAnimation { state.areControlsVisible.toggle() }
@@ -154,6 +203,9 @@ struct RiftCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: [.command, .option])
             .disabled(!state.hasVideo)
+            Button("Go to Time…") { GoToTimePrompt.run(state: state) }
+                .keyboardShortcut("j", modifiers: .command)
+                .disabled(!state.hasVideo)
             Button("Technical Info") {
                 NotificationCenter.default.post(name: .riftShowTechnicalInfo, object: nil)
             }
@@ -171,6 +223,23 @@ struct RiftCommands: Commands {
         }
         .keyboardShortcut(key, modifiers: modifiers)
         .disabled(!enabled)
+    }
+
+    static let audioSyncOffsets: [Double] = [-0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5]
+
+    static func audioSyncTitle(for offset: Double) -> String {
+        guard offset != 0 else { return NSLocalizedString("In Sync", comment: "") }
+        return String(format: "%@%.0f ms", offset > 0 ? "+" : "−", abs(offset) * 1_000)
+    }
+
+    private func shiftSubtitles(by delta: Double) {
+        let value = ((state.subtitleDelay + delta) * 10).rounded() / 10
+        state.subtitleDelay = min(max(value, -10), 10)
+        let text = state.subtitleDelay == 0
+            ? NSLocalizedString("Subtitles in sync", comment: "")
+            : String(format: NSLocalizedString("Subtitles %@%.1f s", comment: ""),
+                     state.subtitleDelay > 0 ? "+" : "−", abs(state.subtitleDelay))
+        state.feedback.show(FramePlusNotice(symbol: "captions.bubble", title: text, emphasized: false))
     }
 
     private func changeVolume(by delta: Double) {
