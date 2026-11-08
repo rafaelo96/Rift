@@ -81,17 +81,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     static func takePendingOpenURLs() -> [URL] {
         playerAcceptsOpenURLs = true
+        openBatchFlush?.cancel()
         defer { pendingOpenURLs.removeAll() }
-        return pendingOpenURLs
+        return sortedLikeFinder(pendingOpenURLs)
     }
 
+    /// Finder puede entregar una selección múltiple en varias llamadas seguidas
+    /// y sin orden garantizado: se juntan durante un instante y se ordenan por
+    /// nombre para que formen una sola lista de reproducción.
     @MainActor
     private static func enqueueOpenURLs(_ urls: [URL]) {
-        guard playerAcceptsOpenURLs else {
-            pendingOpenURLs.append(contentsOf: urls)
-            return
+        pendingOpenURLs.append(contentsOf: urls)
+        guard playerAcceptsOpenURLs else { return }
+        openBatchFlush?.cancel()
+        openBatchFlush = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let batch = sortedLikeFinder(pendingOpenURLs)
+            pendingOpenURLs.removeAll()
+            guard !batch.isEmpty else { return }
+            NotificationCenter.default.post(name: .riftOpenURLs, object: nil, userInfo: ["urls": batch])
         }
-        NotificationCenter.default.post(name: .riftOpenURLs, object: nil, userInfo: ["urls": urls])
+    }
+
+    private static var openBatchFlush: Task<Void, Never>?
+
+    static func sortedLikeFinder(_ urls: [URL]) -> [URL] {
+        urls.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
     /// Videos recientes en el menú del Dock.

@@ -372,10 +372,9 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             setupKeyboardMonitor()
             AppDelegate.playerState = state as? RiftPlayerState
             let pendingURLs = AppDelegate.takePendingOpenURLs()
-            for url in pendingURLs {
-                (state as? RiftPlayerState)?.loadVideo(url)
-            }
-            if pendingURLs.isEmpty {
+            if !pendingURLs.isEmpty {
+                (state as? RiftPlayerState)?.replacePlaylist(with: pendingURLs)
+            } else {
                 (state as? RiftPlayerState)?.restoreLastSessionIfAvailable()
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -955,37 +954,53 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
-            return false
-        }
+        let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !fileProviders.isEmpty else { return false }
 
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            let droppedURL: URL?
-
-            if let data = item as? Data {
-                droppedURL = URL(dataRepresentation: data, relativeTo: nil)
-            } else if let url = item as? URL {
-                droppedURL = url
-            } else if let string = item as? String {
-                droppedURL = URL(string: string)
-            } else {
-                droppedURL = nil
+        // Cada proveedor entrega su archivo por separado; se espera a todos
+        // para armar una sola lista en el orden de Finder.
+        let group = DispatchGroup()
+        let collected = DroppedURLCollector()
+        for provider in fileProviders {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                defer { group.leave() }
+                let droppedURL: URL?
+                if let data = item as? Data {
+                    droppedURL = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let url = item as? URL {
+                    droppedURL = url
+                } else if let string = item as? String {
+                    droppedURL = URL(string: string)
+                } else {
+                    droppedURL = nil
+                }
+                if let droppedURL, droppedURL.isFileURL { collected.append(droppedURL) }
             }
-
-            guard let droppedURL, droppedURL.isFileURL else { return }
-
-            Task { @MainActor in
-                (state as? RiftPlayerState)?.replacePlaylist(with: [droppedURL])
+        }
+        group.notify(queue: .main) {
+            MainActor.assumeIsolated {
+                let urls = AppDelegate.sortedLikeFinder(collected.urls)
+                guard !urls.isEmpty else { return }
+                (state as? RiftPlayerState)?.replacePlaylist(with: urls)
                 AppDelegate.bringPlayerWindowToFront()
             }
         }
-
         return true
     }
 
     private func handleOpenURLs(_ urls: [URL]) {
-        guard let url = urls.first else { return }
-        (state as? RiftPlayerState)?.loadVideo(url)
+        guard !urls.isEmpty else { return }
+        (state as? RiftPlayerState)?.replacePlaylist(with: urls)
         AppDelegate.bringPlayerWindowToFront()
     }
+}
+
+/// Junta las URLs que los proveedores del arrastre entregan desde otros hilos.
+private final class DroppedURLCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URL] = []
+
+    func append(_ url: URL) { lock.lock(); storage.append(url); lock.unlock() }
+    var urls: [URL] { lock.lock(); defer { lock.unlock() }; return storage }
 }
