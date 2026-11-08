@@ -100,3 +100,55 @@ public enum SuperResolutionPreference: String, CaseIterable, Sendable, Codable {
     case balanced
     case strong
 }
+
+// MARK: - Visual presets
+
+/// Valores del panel Visual. La temperatura va de −1 (fría) a +1 (cálida).
+public struct VisualSettings: Equatable, Sendable {
+    public var brightness: Double
+    public var contrast: Double
+    public var saturation: Double
+    public var temperature: Double
+
+    public init(brightness: Double = 0, contrast: Double = 1, saturation: Double = 1, temperature: Double = 0) {
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.temperature = temperature
+    }
+
+    public static let neutral = VisualSettings()
+
+    public var isNeutral: Bool { approximatelyEquals(.neutral) }
+
+    public func approximatelyEquals(_ other: VisualSettings) -> Bool {
+        abs(brightness - other.brightness) < 0.0001
+            && abs(contrast - other.contrast) < 0.0001
+            && abs(saturation - other.saturation) < 0.0001
+            && abs(temperature - other.temperature) < 0.0001
+    }
+}
+
+/// Filtros prestablecidos: combinaciones fijas de los cuatro controles. No se
+/// guarda cuál está activo; se deduce de los valores (si no coincide ninguno,
+/// el panel muestra "Personalizado").
+public enum VisualPreset: String, CaseIterable, Sendable, Codable {
+    case natural, vivid, cinema, soft, bright, warm, cool, mono
+
+    public var settings: VisualSettings {
+        switch self {
+        case .natural: return .neutral
+        case .vivid: return VisualSettings(contrast: 1.10, saturation: 1.30)
+        case .cinema: return VisualSettings(brightness: -0.02, contrast: 1.08, saturation: 0.85, temperature: 0.10)
+        case .soft: return VisualSettings(brightness: 0.02, contrast: 0.90, saturation: 0.90)
+        case .bright: return VisualSettings(brightness: 0.06, contrast: 0.95, saturation: 1.05)
+        case .warm: return VisualSettings(saturation: 1.05, temperature: 0.40)
+        case .cool: return VisualSettings(temperature: -0.40)
+        case .mono: return VisualSettings(contrast: 1.10, saturation: 0)
+        }
+    }
+
+    public static func matching(_ settings: VisualSettings) -> VisualPreset? {
+        allCases.first { $0.settings.approximatelyEquals(settings) }
+    }
+}

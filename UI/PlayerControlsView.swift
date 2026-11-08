@@ -353,9 +353,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(NSLocalizedString("Visual Controls", comment: ""))
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    Text(state.visualEnhancementsEnabled
-                         ? NSLocalizedString("Custom image adjustments", comment: "")
-                         : NSLocalizedString("Neutral image", comment: ""))
+                    Text(activeVisualPreset?.title ?? NSLocalizedString("Custom", comment: "Visual filter"))
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
@@ -371,6 +369,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .controlSize(.small)
                 .disabled(!state.visualEnhancementsEnabled)
             }
+
+            visualPresetGrid
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(NSLocalizedString("Super Resolution", comment: ""))
@@ -418,9 +418,63 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 valueText: String(format: "%.0f%%", state.visualSaturation * 100),
                 onChange: state.setVisualSaturation
             )
+
+            visualAdjustmentRow(
+                title: NSLocalizedString("Temperature", comment: ""),
+                value: state.visualTemperature,
+                range: -1...1,
+                step: 0.01,
+                valueText: temperatureText,
+                onChange: state.setVisualTemperature
+            )
         }
         .padding(16)
         .frame(width: 340)
+    }
+
+    private var activeVisualPreset: VisualPreset? {
+        VisualPreset.matching(VisualSettings(
+            brightness: state.visualBrightness,
+            contrast: state.visualContrast,
+            saturation: state.visualSaturation,
+            temperature: state.visualTemperature
+        ))
+    }
+
+    private var temperatureText: String {
+        let amount = Int((state.visualTemperature * 100).rounded())
+        if amount == 0 { return NSLocalizedString("Neutral", comment: "Color temperature") }
+        let format = amount > 0 ? NSLocalizedString("Warm %d", comment: "") : NSLocalizedString("Cool %d", comment: "")
+        return String(format: format, abs(amount))
+    }
+
+    private var visualPresetGrid: some View {
+        let active = activeVisualPreset
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+            ForEach(VisualPreset.allCases, id: \.self) { preset in
+                let isSelected = preset == active
+                Button {
+                    state.applyVisualPreset(preset)
+                } label: {
+                    Text(preset.title)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                        .foregroundStyle(isSelected ? Color.white : .primary)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary))
+                        )
+                        .contentShape(Capsule(style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help(preset.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(NSLocalizedString("Filters", comment: ""))
     }
 
     private func visualAdjustmentRow(

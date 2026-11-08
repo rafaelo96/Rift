@@ -16,7 +16,6 @@
 "Clear Recent Videos" = "Borrar videos recientes";
 "Close Video" = "Cerrar video";
 "Contrast" = "Contraste";
-"Custom image adjustments" = "Ajustes de imagen personalizados";
 "Decode error: %@" = "Error de decodificación: %@";
 "Disabled" = "Desactivado";
 "Drop a video here or click to browse" = "Suelta un video aquí o haz clic para buscarlo";
@@ -48,7 +47,6 @@
 "More playback options" = "Más opciones de reproducción";
 "Mute" = "Silenciar";
 "Muted" = "Silencio";
-"Neutral image" = "Imagen neutra";
 "Next Video" = "Video siguiente";
 "No readable subtitles in %@" = "No hay subtítulos legibles en %@";
 "No video track" = "No hay pista de video";
@@ -134,3 +132,18 @@
 "Go to Time" = "Ir a tiempo";
 "Enter a time between 0:00 and %@." = "Escribe un tiempo entre 0:00 y %@.";
 "Go" = "Ir";
+
+/* Filtros del panel Visual */
+"Filters" = "Filtros";
+"Custom" = "Personalizado";
+"Vivid" = "Vívido";
+"Cinema" = "Cine";
+"Soft" = "Suave";
+"Bright" = "Brillante";
+"Warm" = "Cálido";
+"Cool" = "Frío";
+"B&W" = "B/N";
+"Temperature" = "Temperatura";
+"Neutral" = "Neutra";
+"Warm %d" = "Cálida %d";
+"Cool %d" = "Fría %d";

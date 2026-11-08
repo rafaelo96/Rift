@@ -209,6 +209,14 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   corriendo con la imagen congelada. La ventana del reproductor se reconoce por
   su `id` de escena (`AppDelegate.playerWindowID`), no por el título: el título
   muestra el video abierto.
+- **Filtros del panel Visual**: 8 filtros prestablecidos (`VisualPreset` en
+  Contracts) son combinaciones fijas de brillo, contraste, saturación y
+  temperatura. El filtro activo no se guarda: se deduce de los valores, y si no
+  coincide ninguno el panel muestra "Personalizado". Rendering encadena
+  `CIColorControls` y `CITemperatureAndTint` (fuente D65, destino 4500 K…10000 K)
+  en `displayLayer.filters`; con valores neutros no hay filtro. Los cuatro
+  valores se guardan en las preferencias. Sin verificar con video HDR en
+  pantalla EDR.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

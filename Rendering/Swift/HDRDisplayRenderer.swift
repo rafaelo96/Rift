@@ -12,17 +12,30 @@ public struct VisualAdjustments: Equatable, Sendable {
     public var brightness: Float
     public var contrast: Float
     public var saturation: Float
+    /// −1 (fría) … +1 (cálida); 0 deja el balance de blancos intacto.
+    public var temperature: Float
 
     public static let neutral = VisualAdjustments(
         brightness: 0,
         contrast: 1,
-        saturation: 1
+        saturation: 1,
+        temperature: 0
     )
 
-    public init(brightness: Float, contrast: Float, saturation: Float) {
+    public init(brightness: Float, contrast: Float, saturation: Float, temperature: Float = 0) {
         self.brightness = min(max(brightness, -1), 1)
         self.contrast = min(max(contrast, 0), 2)
         self.saturation = min(max(saturation, 0), 2)
+        self.temperature = min(max(temperature, -1), 1)
+    }
+
+    var hasColorControls: Bool { brightness != 0 || contrast != 1 || saturation != 1 }
+
+    /// Blanco de destino para CITemperatureAndTint, con la fuente en D65 (6500 K).
+    /// Un destino más bajo calienta la imagen. Medido sobre gris 0.5: 4500 K y
+    /// 10000 K dan un desplazamiento de color parecido, de ahí la escala asimétrica.
+    var targetKelvin: Float {
+        temperature >= 0 ? 6500 - 2000 * temperature : 6500 - 3500 * temperature
     }
 }
 
@@ -99,15 +112,21 @@ public final class HDRDisplayRenderer {
             return
         }
 
-        guard let colorControls = CIFilter(name: "CIColorControls") else {
-            displayLayer.filters = []
-            return
+        var filters: [CIFilter] = []
+        if adjustments.hasColorControls, let colorControls = CIFilter(name: "CIColorControls") {
+            colorControls.name = "rift.visual.color-controls"
+            colorControls.setValue(adjustments.brightness, forKey: kCIInputBrightnessKey)
+            colorControls.setValue(adjustments.contrast, forKey: kCIInputContrastKey)
+            colorControls.setValue(adjustments.saturation, forKey: kCIInputSaturationKey)
+            filters.append(colorControls)
         }
-        colorControls.name = "rift.visual.color-controls"
-        colorControls.setValue(adjustments.brightness, forKey: kCIInputBrightnessKey)
-        colorControls.setValue(adjustments.contrast, forKey: kCIInputContrastKey)
-        colorControls.setValue(adjustments.saturation, forKey: kCIInputSaturationKey)
-        displayLayer.filters = [colorControls]
+        if adjustments.temperature != 0, let temperature = CIFilter(name: "CITemperatureAndTint") {
+            temperature.name = "rift.visual.temperature"
+            temperature.setValue(CIVector(x: 6500, y: 0), forKey: "inputNeutral")
+            temperature.setValue(CIVector(x: CGFloat(adjustments.targetKelvin), y: 0), forKey: "inputTargetNeutral")
+            filters.append(temperature)
+        }
+        displayLayer.filters = filters
     }
 
     // Wrapping CVPixelBuffer -> CMSampleBuffer con timing, preservando HDR attachments
