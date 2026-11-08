@@ -64,6 +64,11 @@ private struct InterpolatedBuffersBox: @unchecked Sendable {
     let buffers: [CVPixelBuffer]
 }
 
+struct UpNextCountdown: Equatable {
+    let title: String
+    let secondsLeft: Int
+}
+
 struct RecentVideo: Codable, Identifiable {
     let path: String
     let lastOpened: Date
@@ -244,6 +249,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published private(set) var recentVideos: [RecentVideo] = []
     @Published private(set) var playlist: [PlaylistItem] = []
     @Published private(set) var activePlaylistItemID: String?
+    /// Cuenta regresiva hacia el siguiente video de la lista al terminar uno.
+    @Published private(set) var upNext: UpNextCountdown?
+    /// El reloj llegó al final del video; Reproducir vuelve a empezar.
+    @Published private(set) var playbackEnded = false
+    private var upNextTask: Task<Void, Never>?
     @Published private(set) var markers: [PlaybackMarker] = []
     @Published private(set) var chapters: [ChapterInfo] = []
     @Published private(set) var technicalInfo: PlaybackTechnicalInfo?
@@ -1038,10 +1048,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
     }
 
-    func playPlaylistItem(_ item: PlaylistItem) {
+    func playPlaylistItem(_ item: PlaylistItem, fromStart: Bool = false) {
         guard playlist.contains(item) else { return }
         activePlaylistItemID = item.id
-        loadVideo(item.url)
+        if fromStart {
+            // Avance automático: el siguiente episodio empieza en 0:00 sin preguntar.
+            loadVideo(item.url, restoringAt: 0)
+        } else {
+            loadVideo(item.url)
+        }
     }
 
     func playNextPlaylistItem() {
@@ -1155,7 +1170,81 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         return track.codecName
     }
 
+    /// Fin del video: el reloj se detiene en el último frame (antes seguía
+    /// corriendo con la pantalla congelada) y, si hay un video siguiente en la
+    /// lista, empieza una cuenta regresiva para abrirlo.
+    private func handlePlaybackEnded() {
+        guard !playbackEnded else { return }
+        playbackEnded = true
+        currentTime = duration
+        if isPlaying {
+            isPlaying = false
+            compensator?.resetTemporalState()
+            pendingLoadAction = nil
+            scheduler?.synchronizer.setRate(0, time: CMTime(seconds: duration, preferredTimescale: 600))
+            updateTimePolling()
+            invalidatePictureInPicturePlaybackState()
+        }
+        // Al terminar, la posición guardada vuelve al inicio.
+        persistCurrentSession(force: true)
+        areControlsVisible = true
+        startUpNextCountdown()
+    }
+
+    var nextPlaylistItem: PlaylistItem? {
+        guard let activePlaylistItemID,
+              let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }),
+              playlist.indices.contains(index + 1) else { return nil }
+        return playlist[index + 1]
+    }
+
+    var previousPlaylistItem: PlaylistItem? {
+        guard let activePlaylistItemID,
+              let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }),
+              playlist.indices.contains(index - 1) else { return nil }
+        return playlist[index - 1]
+    }
+
+    private func startUpNextCountdown() {
+        guard let next = nextPlaylistItem else { return }
+        upNextTask?.cancel()
+        upNextTask = Task { @MainActor [weak self] in
+            for remaining in stride(from: 5, through: 1, by: -1) {
+                guard let self, !Task.isCancelled else { return }
+                self.upNext = UpNextCountdown(title: next.title, secondsLeft: remaining)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.upNext = nil
+            self.upNextTask = nil
+            self.playPlaylistItem(next, fromStart: true)
+        }
+    }
+
+    /// "Reproducir ahora" en la tarjeta: no espera la cuenta regresiva.
+    func playUpNextNow() {
+        guard let next = nextPlaylistItem else { return }
+        cancelUpNext()
+        playPlaylistItem(next, fromStart: true)
+    }
+
+    func cancelUpNext() {
+        upNextTask?.cancel()
+        upNextTask = nil
+        if upNext != nil { upNext = nil }
+    }
+
     func togglePlay() {
+        cancelUpNext()
+        if playbackEnded, !isPlaying {
+            // Al final del video, Reproducir empieza de nuevo desde el inicio.
+            playbackEnded = false
+            enqueueSeek(to: 0) { [weak self] in
+                guard let self, !self.isPlaying else { return }
+                self.togglePlay()
+            }
+            return
+        }
         isPlaying.toggle()
         let wasPaused = !isPlaying
         if wasPaused {
@@ -1187,6 +1276,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self, let sched = self.scheduler else { return }
                     self.currentTime = sched.synchronizer.currentTime().seconds
+                    if self.duration > 0, self.currentTime >= self.duration - 0.05 {
+                        self.handlePlaybackEnded()
+                        return
+                    }
                     self.updateActiveSubtitle(at: self.currentTime)
                     self.persistCurrentSession()
                 }
@@ -1313,6 +1406,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     private func performSeek(to time: Double) async {
         let target = min(max(time, 0), duration)
+        cancelUpNext()
+        if target < duration - 0.5 { playbackEnded = false }
         let shouldResume = isPlaying
         feedback.coverVideo(.seeking)
         playbackGeneration &+= 1
@@ -1417,6 +1512,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         sched.synchronizer.setRate(isPlaying ? playbackRate : 0, time: time)
     }
     func closeVideo() {
+        cancelUpNext()
+        playbackEnded = false
         videoOpenRequestID = UUID()
         cancelResumePlaybackDialog()
         closeFloatingPictureInPicture()
@@ -2094,6 +2191,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
+        cancelUpNext()
+        playbackEnded = false
         let access = resolveMediaAccess(url)
         let requestID = UUID()
         videoOpenRequestID = requestID

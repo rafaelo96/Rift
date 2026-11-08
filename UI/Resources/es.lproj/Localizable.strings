@@ -115,3 +115,8 @@
 "Waiting" = "En espera";
 "When Minimized" = "Al minimizar";
 "When Switching Apps" = "Al cambiar de app";
+
+/* Siguiente video */
+"Up next in %d s" = "Siguiente en %d s";
+"Play Now" = "Reproducir ahora";
+"Cancel" = "Cancelar";

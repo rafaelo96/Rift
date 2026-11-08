@@ -356,6 +356,15 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     )
                 }
             }
+
+            if state.hasVideo, let rift = state as? RiftPlayerState, !rift.isPictureInPictureActive,
+               let upNext = rift.upNext {
+                UpNextCard(countdown: upNext, playNow: rift.playUpNextNow, cancel: rift.cancelUpNext)
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 150)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
+            }
         }
         .background(appBackdrop)
         .background {
@@ -366,6 +375,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: handleDrop)
         .animation(controlVisibilityAnimation, value: state.hasVideo)
+        .animation(.easeOut(duration: 0.25), value: (state as? RiftPlayerState)?.upNext?.title)
         .animation(controlDragAnimation, value: isDropTargeted)
         .onAppear {
             state.startHideTimer()
