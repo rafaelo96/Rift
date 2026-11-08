@@ -15,7 +15,7 @@ struct RiftApp: App {
     @StateObject private var windowFocus = PlayerWindowFocus()
 
     var body: some Scene {
-        Window("Rift", id: "player") {
+        Window("Rift", id: AppDelegate.playerWindowID) {
             ContentView<RiftPlayerState>(state: state)
                 .frame(minWidth: 780, minHeight: 480)
                 .onAppear {
@@ -129,9 +129,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.bringPlayerWindowToFront()
     }
 
+    /// `id` de la escena `Window` del reproductor; SwiftUI lo usa como identificador de la ventana.
+    static let playerWindowID = "player"
+
+    static var playerWindow: NSWindow? {
+        NSApp.windows.first { $0.identifier?.rawValue == playerWindowID && !($0 is NSPanel) }
+    }
+
     static func isPlayerWindow(_ window: NSWindow?) -> Bool {
         guard let window, !(window is NSPanel) else { return false }
-        return window.title == "Rift" || window === playerState?.pictureInPicturePlayerWindow
+        // Por identificador, no por título: el título muestra el video abierto.
+        return window.identifier?.rawValue == playerWindowID || window === playerState?.pictureInPicturePlayerWindow
     }
 
     @MainActor
@@ -140,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             if let window = playerState?.pictureInPicturePlayerWindow
-                ?? NSApp.windows.first(where: { $0.title == "Rift" && !($0 is NSPanel) }) {
+                ?? playerWindow {
                 configureTranslucentAppearance(for: window)
                 if window.isMiniaturized { window.deminiaturize(nil) }
                 window.makeKeyAndOrderFront(nil)

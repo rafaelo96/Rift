@@ -367,6 +367,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .background(appBackdrop)
+        .navigationTitle((state as? RiftPlayerState)?.windowTitle ?? "Rift")
+        .onChange(of: (state as? RiftPlayerState)?.openFileURL, initial: true) { _, url in
+            // Ícono del archivo en la barra de título (⌘-clic muestra su carpeta).
+            AppDelegate.playerWindow?.representedURL = url
+        }
         .background {
             if let rift = state as? RiftPlayerState {
                 AutomaticPictureInPictureObserver(state: rift)

@@ -1191,6 +1191,18 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         startUpNextCountdown()
     }
 
+    /// Archivo abierto, para el ícono de documento de la barra de título.
+    var openFileURL: URL? { hasVideo ? sourceURL : nil }
+
+    /// Título de la ventana: el video abierto y, con lista, su posición en ella.
+    var windowTitle: String {
+        guard hasVideo, let sourceURL else { return "Rift" }
+        let name = sourceURL.deletingPathExtension().lastPathComponent
+        guard playlist.count > 1, let activePlaylistItemID,
+              let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }) else { return name }
+        return name + " · " + String(format: NSLocalizedString("%d of %d", comment: "Playlist position"), index + 1, playlist.count)
+    }
+
     var nextPlaylistItem: PlaylistItem? {
         guard let activePlaylistItemID,
               let index = playlist.firstIndex(where: { $0.id == activePlaylistItemID }),
