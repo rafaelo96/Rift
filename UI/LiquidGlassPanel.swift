@@ -50,19 +50,42 @@ struct GlassBackground: View {
 struct VideoOverlayGlass: View {
     var cornerRadius: CGFloat = 16
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if reduceTransparency {
-            shape.fill(Color(nsColor: .windowBackgroundColor))
-        } else if #available(macOS 26.0, *) {
-            Color.clear
-                .glassEffect(.regular, in: shape)
-                .opacity(0.85)
+        Group {
+            if reduceTransparency {
+                shape.fill(Color(nsColor: .windowBackgroundColor))
+            } else if #available(macOS 26.0, *) {
+                // Sin .opacity encima: atenuar el vidrio lo enturbia y le quita
+                // la refracción; el material regular ya es legible sobre video.
+                Color.clear
+                    .glassEffect(.regular, in: shape)
+            } else {
+                shape.fill(.ultraThinMaterial)
+                    .overlay(shape.strokeBorder(.white.opacity(0.22), lineWidth: 0.6))
+            }
+        }
+        .overlay {
+            if contrast == .increased {
+                shape.strokeBorder(.white.opacity(0.7), lineWidth: 1)
+            }
+        }
+    }
+}
+
+/// Agrupa varios elementos de vidrio para que el sistema los combine y los
+/// transforme juntos (macOS 26+); en versiones anteriores no hace nada.
+struct GlassGroup<Content: View>: View {
+    var spacing: CGFloat? = nil
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { content }
         } else {
-            shape.fill(.ultraThinMaterial)
-                .opacity(0.85)
-                .overlay(shape.strokeBorder(.white.opacity(0.22), lineWidth: 0.6))
+            content
         }
     }
 }

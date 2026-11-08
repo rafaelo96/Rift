@@ -17,14 +17,11 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     .padding(.horizontal, 4)
 
                 ZStack {
-                    HStack(spacing: 14) {
-                        playbackInfoCluster
-                            .fixedSize(horizontal: true, vertical: false)
-
-                        Spacer(minLength: 190)
-
-                        optionsBar
-                            .fixedSize(horizontal: true, vertical: false)
+                    // En ventanas estrechas las opciones muestran solo el ícono
+                    // en vez de desbordar la barra por ambos lados.
+                    ViewThatFits(in: .horizontal) {
+                        controlRow(compactOptions: false)
+                        controlRow(compactOptions: true)
                     }
 
                     transportControls
@@ -47,6 +44,19 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             } else {
                 state.startHideTimer()
             }
+        }
+    }
+
+    private func controlRow(compactOptions: Bool) -> some View {
+        HStack(spacing: 14) {
+            playbackInfoCluster
+                .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 190)
+
+            optionsBar
+                .environment(\.riftCompactPills, compactOptions)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -95,7 +105,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
             fpsReadout
         }
-        .frame(minWidth: 184, alignment: .leading)
+        .frame(minWidth: 218, alignment: .leading)
     }
 
     private var volumeControl: some View {
@@ -136,13 +146,13 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     .lineLimit(1)
 
                 Text(framePlusStateTitle)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1)
             }
         }
         .foregroundStyle(state.fpsMode.isActive ? accentColor : .white.opacity(0.78))
-        .frame(width: 88, alignment: .leading)
+        .frame(width: 122, alignment: .leading)
     }
 
     // MARK: - Transport Controls
@@ -284,7 +294,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     Text(state.visualEnhancementsEnabled
                          ? NSLocalizedString("Custom image adjustments", comment: "")
                          : NSLocalizedString("Neutral image", comment: ""))
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
 
@@ -364,7 +374,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 Text(title)
                 Spacer()
                 Text(valueText)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
             .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -473,7 +483,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var motionTitle: String {
-        if state.isFramePlusPreparing { return "Frame⁺..." }
+        if state.isFramePlusPreparing { return "Frame⁺…" }
         return "Frame⁺"
     }
 
@@ -494,12 +504,24 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 }
 
+private struct CompactPillsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var riftCompactPills: Bool {
+        get { self[CompactPillsKey.self] }
+        set { self[CompactPillsKey.self] = newValue }
+    }
+}
+
 private struct GlassPill: View {
     let title: String
     let systemName: String
     let isActive: Bool
     let hint: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.riftCompactPills) private var compact
     @State private var isHovered = false
 
     var body: some View {
@@ -510,11 +532,13 @@ private struct GlassPill: View {
                 .modifier(BusySymbolEffect(isActive: systemName == "hourglass" && !reduceMotion))
                 .frame(width: 13)
 
-            Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .contentTransition(reduceMotion ? .identity : .numericText())
-                .lineLimit(1)
-                .fixedSize()
+            if !compact {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .contentTransition(reduceMotion ? .identity : .numericText())
+                    .lineLimit(1)
+                    .fixedSize()
+            }
         }
         .foregroundStyle(isActive ? .white : .white.opacity(isHovered ? 0.84 : 0.60))
         .frame(height: 32)
@@ -759,7 +783,7 @@ struct TimelineTrack: View {
             .clipped()
 
             Text(formatTime(previewProgress * duration))
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.92))
         }
         .padding(4)

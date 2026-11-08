@@ -2118,7 +2118,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         currentTime = max(rememberedPosition, 0)
         duration = 0
         lastPersistedPlaybackPosition = -1
-        statusMessage = "Opening \(url.lastPathComponent)..."
+        statusMessage = "Opening \(url.lastPathComponent)…"
         conversionProgress = 0.1
         hasVideo = false
         // Instrumentación de sesión (RIFT_DIAGNOSTICS=1): reset por apertura.

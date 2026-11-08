@@ -238,7 +238,6 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                                 .opacity(state.areControlsVisible ? 1.0 : 0.0)
                                 .scaleEffect(reduceMotion ? 1 : (state.areControlsVisible ? 1 : 0.985))
                                 .offset(y: reduceMotion || state.areControlsVisible ? 0 : 10)
-                                .blur(radius: reduceMotion || state.areControlsVisible ? 0 : 3)
                                 .allowsHitTesting(state.areControlsVisible)
                                 .animation(controlVisibilityAnimation, value: state.areControlsVisible)
                                 .onHover { isHovering in
@@ -283,7 +282,6 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .opacity(state.areControlsVisible ? 1.0 : 0.0)
                     .scaleEffect(reduceMotion ? 1 : (state.areControlsVisible ? 1 : 0.985))
                     .offset(y: reduceMotion || state.areControlsVisible ? 0 : 10)
-                    .blur(radius: reduceMotion || state.areControlsVisible ? 0 : 3)
                     .allowsHitTesting(state.areControlsVisible)
                     .background {
                         GeometryReader { proxy in
@@ -530,6 +528,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var topPlayerControls: some View {
+        GlassGroup(spacing: 2) {
         HStack(spacing: 2) {
             TopChromeButton(
                 systemName: presentationMode.icon,
@@ -562,13 +561,13 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 Button {
                     (state as? RiftPlayerState)?.openVideo()
                 } label: {
-                    Label(NSLocalizedString("Open Video...", comment: ""), systemImage: "folder")
+                    Label(NSLocalizedString("Open Video…", comment: ""), systemImage: "folder")
                 }
 
                 Button {
                     (state as? RiftPlayerState)?.addVideosToPlaylist()
                 } label: {
-                    Label(NSLocalizedString("Add to Playlist...", comment: ""), systemImage: "text.badge.plus")
+                    Label(NSLocalizedString("Add to Playlist…", comment: ""), systemImage: "text.badge.plus")
                 }
 
                 if let rift = state as? RiftPlayerState, !rift.recentVideos.isEmpty {
@@ -669,7 +668,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     Button {
                         rift.openExternalSubtitles()
                     } label: {
-                        Label(NSLocalizedString("Load Subtitle File...", comment: ""), systemImage: "captions.bubble")
+                        Label(NSLocalizedString("Load Subtitle File…", comment: ""), systemImage: "captions.bubble")
                     }
 
                     if let subtitleName = rift.externalSubtitleName {
@@ -711,6 +710,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             ) {
                 NSApp.keyWindow?.toggleFullScreen(nil)
             }
+        }
         }
         .fixedSize()
         .padding(6)
@@ -954,7 +954,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
 
     private func formatBadge(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .font(.system(size: 11, weight: .medium, design: .rounded))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
