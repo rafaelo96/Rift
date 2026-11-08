@@ -192,7 +192,15 @@ private final class PictureInPictureCoordinator: NSObject, @preconcurrency AVPic
 @MainActor
 final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var isPlaying = false { didSet { updatePlaybackSleepPrevention() } }
-    @Published var currentTime: Double = 0 { didSet { updatePlaybackSleepPrevention() } }
+    /// Fuera de `@Published` a propósito: ver `PlaybackClock`.
+    let clock = PlaybackClock()
+    var currentTime: Double {
+        get { clock.time }
+        set {
+            clock.time = newValue
+            updatePlaybackSleepPrevention()
+        }
+    }
     @Published var duration: Double = 0 { didSet { updatePlaybackSleepPrevention() } }
     @Published var volume: Double = 0.68
     @Published private(set) var audioSyncOffset: Double = 0
@@ -220,7 +228,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var isFramePlusPreparing = false
     @Published var isFramePlusPreRendered = false
     @Published var isArtificialInterpolationActive = false
-    @Published var displayRenderingFPS: Double = 24
+    var displayRenderingFPS: Double {
+        get { clock.renderingFPS }
+        set { clock.renderingFPS = newValue }
+    }
     @Published var audioTracks: [AudioTrack] = []
     @Published var selectedAudioTrackIndex = 0
     @Published var availableTracks: [MediaTrack] = []
@@ -254,6 +265,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// El reloj llegó al final del video; Reproducir vuelve a empezar.
     @Published private(set) var playbackEnded = false
     private var upNextTask: Task<Void, Never>?
+    /// Sonda: cuadros encolados cuando su hora ya había pasado.
+    private var probeLateEnqueues = 0
     @Published private(set) var markers: [PlaybackMarker] = []
     @Published private(set) var chapters: [ChapterInfo] = []
     @Published private(set) var technicalInfo: PlaybackTechnicalInfo?
@@ -830,6 +843,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             let exercisePausedSeek = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "pause-seek"
             // Frame+ off→on por el mismo camino que el menú (setInterpolationMode).
             let exerciseFramePlusToggle = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "frameplus-toggle"
+            // Interfaz ocupada: controles, miniatura de la línea de tiempo y avisos
+            // cada segundo, sin tocar la reproducción.
+            let exerciseUIStress = env["RIFT_FLUENCY_PROBE_CONTROLS"] == "ui-stress"
+            let hitchMonitor = MainThreadHitchMonitor()
+            hitchMonitor.start()
             var toggledMode: InterpolationMode?
             Task { @MainActor [weak self] in
                 var pausedSeekTarget: Double?
@@ -862,6 +880,21 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         default: break
                         }
                     }
+                    if exerciseUIStress, second >= 5 {
+                        Task { @MainActor [weak self] in
+                            // Cuatro ráfagas por segundo, como alguien moviendo el mouse.
+                            for step in 0..<4 {
+                                guard let self else { return }
+                                self.areControlsVisible = step % 2 == 0
+                                if self.duration > 0 {
+                                    self.requestTimelineThumbnail(at: Double.random(in: 0..<self.duration))
+                                }
+                                if step == 0 { self.feedback.show(.volume(self.volume)) }
+                                if step == 2 { self.feedback.show(.maxFluidityOn) }
+                                try? await Task.sleep(nanoseconds: 250_000_000)
+                            }
+                        }
+                    }
                     if exerciseControls {
                         switch second {
                         case 8, 18: self.togglePictureInPicture()
@@ -883,6 +916,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                         self.currentSubtitleText == nil ? 0 : 1,
                         self.renderer?.subtitleCompositionFailures ?? 0)
                     FileHandle.standardOutput.write(Data(line.utf8))
+                    let hitches = hitchMonitor.snapshot()
+                    FileHandle.standardOutput.write(Data(String(format:
+                        "MAINTHREAD second=%d hitch8=%d hitch16=%d hitch33=%d maxMS=%.1f lateEnqueues=%d timeoutDrops=%d\n",
+                        second, hitches.over8, hitches.over16, hitches.over33, hitches.maxMS,
+                        self.probeLateEnqueues, self.framesDroppedTimeout).utf8))
                     if #available(macOS 14.4, *), second % 5 == 0,
                        let videoRenderer = self.renderer?.displayLayer.sampleBufferRenderer {
                         videoRenderer.loadVideoPerformanceMetrics { metrics in
@@ -3102,6 +3140,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 return false
             }
             if rend.displayLayer.isReadyForMoreMediaData, rend.enqueue(sbuf) {
+                if pts < clock { probeLateEnqueues += 1 }
                 feedback.revealVideo()
                 enqueuedFramesInWindow += 1
                 framesEnqueuedReady += 1

@@ -139,7 +139,7 @@ final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
         panel.contentMinSize = CGSize(width: minimumWidth, height: minimumWidth / ratio)
         panel.delegate = self
         panel.contentView = NSHostingView(rootView: FloatingVideoContent(
-            state: state, displayLayer: displayLayer,
+            state: state, clock: state.clock, displayLayer: displayLayer,
             restore: { [weak self] in self?.restore() }
         ))
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
@@ -212,6 +212,8 @@ final class FloatingPictureInPictureController: NSObject, NSWindowDelegate {
 
 private struct FloatingVideoContent: View {
     @ObservedObject var state: RiftPlayerState
+    /// El tiempo ya no se publica desde `state`; esta ventana lo lee del reloj.
+    @ObservedObject var clock: PlaybackClock
     let displayLayer: AVSampleBufferDisplayLayer
     let restore: () -> Void
     @State private var hovering = true
@@ -220,7 +222,7 @@ private struct FloatingVideoContent: View {
     @State private var hideControlsTask: Task<Void, Never>?
     @AccessibilityFocusState private var timelineFocused: Bool
 
-    private var position: Double { scrubbing ? scrubTime : state.currentTime }
+    private var position: Double { scrubbing ? scrubTime : clock.time }
 
     var body: some View {
         ZStack {

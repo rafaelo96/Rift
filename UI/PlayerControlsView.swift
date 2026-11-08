@@ -80,28 +80,14 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .padding(.trailing, -6)
             }
 
-            Text(state.formattedTime(isDraggingSlider ? dragSliderValue : state.currentTime))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .frame(width: 56, alignment: .leading)
-                .foregroundStyle(.primary)
+            readingClock { time, _ in
+                Text(state.formattedTime(isDraggingSlider ? dragSliderValue : time))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .frame(width: 56, alignment: .leading)
+                    .foregroundStyle(.primary)
+            }
 
-            TimelineTrack(
-                currentTime: isDraggingSlider ? dragSliderValue : state.currentTime,
-                duration: max(state.duration, 1),
-                thumbnailImage: (state as? RiftPlayerState)?.timelineThumbnail?.image,
-                isThumbnailLoading: (state as? RiftPlayerState)?.isTimelineThumbnailLoading ?? false,
-                onSeek: {
-                    isDraggingSlider = true
-                    dragSliderValue = $0
-                },
-                onSeekEnd: {
-                    state.seek(to: $0)
-                    isDraggingSlider = false
-                },
-                onPreviewRequest: { (state as? RiftPlayerState)?.requestTimelineThumbnail(at: $0) },
-                onPreviewDismiss: { (state as? RiftPlayerState)?.hideTimelineThumbnailPreview() }
-            )
-            .accessibilityLabel(NSLocalizedString("Playback position", comment: ""))
+            readingClock { time, _ in timelineTrack(time: time) }
 
             Text(state.formattedTime(state.duration))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -119,6 +105,38 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func timelineTrack(time: Double) -> some View {
+        TimelineTrack(
+            currentTime: isDraggingSlider ? dragSliderValue : time,
+            duration: max(state.duration, 1),
+            thumbnailImage: (state as? RiftPlayerState)?.timelineThumbnail?.image,
+            isThumbnailLoading: (state as? RiftPlayerState)?.isTimelineThumbnailLoading ?? false,
+            onSeek: {
+                isDraggingSlider = true
+                dragSliderValue = $0
+            },
+            onSeekEnd: {
+                state.seek(to: $0)
+                isDraggingSlider = false
+            },
+            onPreviewRequest: { (state as? RiftPlayerState)?.requestTimelineThumbnail(at: $0) },
+            onPreviewDismiss: { (state as? RiftPlayerState)?.hideTimelineThumbnailPreview() }
+        )
+        .accessibilityLabel(NSLocalizedString("Playback position", comment: ""))
+    }
+
+    /// Lee tiempo y fps del reloj solo en la vista que los muestra (ver `PlaybackClock`).
+    @ViewBuilder
+    private func readingClock<Content: View>(
+        @ViewBuilder _ content: @escaping (_ time: Double, _ fps: Double) -> Content
+    ) -> some View {
+        if let clock = (state as? RiftPlayerState)?.clock {
+            ClockReader(clock: clock) { content($0.time, $0.renderingFPS) }
+        } else {
+            content(state.currentTime, state.displayRenderingFPS)
+        }
     }
 
     // MARK: - Playback Info
@@ -166,10 +184,12 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 .shadow(color: state.fpsMode.isActive ? accentColor.opacity(0.55) : .clear, radius: 3)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(String(format: "%.0f fps ↗", state.displayRenderingFPS))
-                    .help("Frames delivered to the system per second; this does not measure what the display physically shows.")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .lineLimit(1)
+                readingClock { _, fps in
+                    Text(String(format: "%.0f fps ↗", fps))
+                        .help("Frames delivered to the system per second; this does not measure what the display physically shows.")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .lineLimit(1)
+                }
 
                 Text(framePlusStateTitle)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -957,4 +977,11 @@ struct GlassIconButton: View {
             ? .linear(duration: 0.01)
             : .timingCurve(0.25, 1, 0.5, 1, duration: 0.12)
     }
+}
+
+private struct ClockReader<Content: View>: View {
+    @ObservedObject var clock: PlaybackClock
+    let content: (PlaybackClock) -> Content
+
+    var body: some View { content(clock) }
 }
