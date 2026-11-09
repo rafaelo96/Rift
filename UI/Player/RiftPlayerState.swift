@@ -1279,14 +1279,15 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     /// Idioma más el título de la pista cuando aporta algo: "Español (Forzados)".
-    /// Si el título repite el idioma ("Español"), queda solo el idioma.
+    /// Si el título repite el idioma ("Español", "Audio Inglés"), queda solo el idioma.
     private static nonisolated func languageAndTitle(for track: TrackInfo) -> String? {
         let title = track.streamTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let name = languageName(for: track.streamLanguage) else {
             return (title?.isEmpty == false) ? title : nil
         }
+        // Si el título ya incluye el idioma ("Audio Inglés"), no aporta nada más.
         guard let title, !title.isEmpty,
-              title.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) != .orderedSame else {
+              title.range(of: name, options: [.caseInsensitive, .diacriticInsensitive]) == nil else {
             return name
         }
         return "\(name) (\(title))"
