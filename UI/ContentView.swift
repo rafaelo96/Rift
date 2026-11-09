@@ -722,11 +722,24 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     technicalInfoRow(NSLocalizedString("Color", comment: ""), info.colorSpace)
                     technicalInfoRow(NSLocalizedString("Audio", comment: ""), info.audio)
                     technicalInfoRow(NSLocalizedString("Duration", comment: ""), info.duration)
+                    // Lo que antes mostraba la barra: fps entregados y objetivo de Frame+.
+                    ClockReader(clock: rift.clock) { clock in
+                        technicalInfoRow(NSLocalizedString("Output", comment: "Frames delivered per second"),
+                                         outputRateText(rift, fps: clock.renderingFPS))
+                    }
                 }
             }
             .padding(18)
             .frame(width: 320, alignment: .leading)
         }
+    }
+
+    private func outputRateText(_ rift: RiftPlayerState, fps: Double) -> String {
+        guard rift.interpolationMode != .disabled, !rift.isFramePlusPreparing else {
+            return String(format: NSLocalizedString("%.0f fps", comment: ""), fps)
+        }
+        return String(format: NSLocalizedString("%.0f fps · Frame+ target %.0f fps", comment: ""),
+                      fps, rift.targetRenderingFPS)
     }
 
     private func technicalInfoRow(_ label: String, _ value: String) -> some View {

@@ -141,15 +141,11 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     // MARK: - Playback Info
 
+    /// Solo volumen: los fps viven en la píldora Frame+ y el detalle en
+    /// Información técnica (⌘I).
     private var playbackInfoCluster: some View {
-        HStack(spacing: 11) {
-            volumeControl
-
-            optionDivider
-
-            fpsReadout
-        }
-        .frame(minWidth: 218, alignment: .leading)
+        volumeControl
+            .frame(minWidth: 134, alignment: .leading)
     }
 
     private var volumeControl: some View {
@@ -169,36 +165,6 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             .accessibilityLabel(NSLocalizedString("Volume", comment: ""))
         }
         .frame(width: 134, alignment: .leading)
-    }
-
-    private var fpsReadout: some View {
-        HStack(spacing: 6) {
-            Image(systemName: state.fpsMode.isActive
-                ? "gauge.open.with.lines.needle.33percent"
-                : "display")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-
-            Circle()
-                .fill(state.fpsMode.isActive ? accentColor : .white.opacity(0.28))
-                .frame(width: 4, height: 4)
-                .shadow(color: state.fpsMode.isActive ? accentColor.opacity(0.55) : .clear, radius: 3)
-
-            VStack(alignment: .leading, spacing: 1) {
-                readingClock { _, fps in
-                    Text(String(format: "%.0f fps ↗", fps))
-                        .help("Frames delivered to the system per second; this does not measure what the display physically shows.")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .lineLimit(1)
-                }
-
-                Text(framePlusStateTitle)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .lineLimit(1)
-            }
-        }
-        .foregroundStyle(state.fpsMode.isActive ? accentColor : .white.opacity(0.78))
-        .frame(width: 122, alignment: .leading)
     }
 
     // MARK: - Transport Controls
@@ -292,36 +258,53 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 state.interpolationMode == .disabled ? .motion4x : .disabled
             )
         } label: {
-            glassPill(
-                title: motionTitle,
-                systemName: state.isFramePlusPreparing
-                    ? "hourglass"
-                    : (state.interpolationMode == .disabled
-                        ? "rectangle.on.rectangle"
-                        : "rectangle.on.rectangle.fill"),
-                isActive: state.interpolationMode != .disabled,
-                hint: NSLocalizedString("Frame Interpolation", comment: "")
-            )
+            // Solo la píldora lee el reloj: los fps no redibujan la barra entera.
+            readingClock { _, fps in
+                glassPill(
+                    title: motionTitle(fps: fps),
+                    systemName: state.isFramePlusPreparing
+                        ? "hourglass"
+                        : (state.interpolationMode == .disabled
+                            ? "rectangle.on.rectangle"
+                            : "rectangle.on.rectangle.fill"),
+                    isActive: state.interpolationMode != .disabled,
+                    hint: "\(NSLocalizedString("Frame Interpolation", comment: "")) · \(framePlusStateTitle)"
+                )
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : NSLocalizedString("Interpolation enabled", comment: ""))")
     }
 
+    private var playbackRates: [Float] { [0.5, 1, 1.5, 2] }
+
     private var speedButton: some View {
-        Button {
-            withAnimation(surfaceAnimation) {
-                state.cyclePlaybackRate()
+        Menu {
+            ForEach(playbackRates, id: \.self) { rate in
+                Button {
+                    withAnimation(surfaceAnimation) { state.playbackRate = rate }
+                    state.showFeedback(.rate(rate))
+                } label: {
+                    let title = rate == 1
+                        ? NSLocalizedString("Normal", comment: "")
+                        : rate.formatted(.number.precision(.fractionLength(0...1))) + "×"
+                    if abs(state.playbackRate - rate) < 0.001 {
+                        Label(title, systemImage: "checkmark")
+                    } else {
+                        Text(title)
+                    }
+                }
             }
-            state.showFeedback(.rate(state.playbackRate))
         } label: {
-            glassPill(
+            GlassPill(
                 title: speedTitle,
                 systemName: "gauge.with.dots.needle.33percent",
                 isActive: state.playbackRate != 1.0,
                 hint: NSLocalizedString("Playback Speed", comment: "")
             )
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .accessibilityLabel("\(NSLocalizedString("Playback Speed", comment: "")), \(speedTitle)")
     }
 
@@ -587,10 +570,6 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     // MARK: - Helpers
 
-    private var optionDivider: some View {
-        Divider().frame(height: 22)
-    }
-
     private var accentColor: Color {
         RiftPalette.blue
     }
@@ -608,9 +587,10 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
         return value == 1 ? NSLocalizedString("1x", comment: "") : String(format: NSLocalizedString("%.2gx", comment: ""), value)
     }
 
-    private var motionTitle: String {
+    private func motionTitle(fps: Double) -> String {
         if state.isFramePlusPreparing { return "Frame⁺…" }
-        return "Frame⁺"
+        guard state.interpolationMode != .disabled else { return "Frame⁺" }
+        return String(format: NSLocalizedString("Frame+ · %.0f fps", comment: "Frame+ pill with live frame rate"), fps)
     }
 
     private var framePlusStateTitle: String {
@@ -661,6 +641,7 @@ private struct GlassPill: View {
             if !compact {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                     .contentTransition(reduceMotion ? .identity : .numericText())
                     .lineLimit(1)
                     .fixedSize()
@@ -1043,7 +1024,8 @@ struct GlassIconButton: View {
     }
 }
 
-private struct ClockReader<Content: View>: View {
+/// También lo usa el panel de Información técnica.
+struct ClockReader<Content: View>: View {
     @ObservedObject var clock: PlaybackClock
     let content: (PlaybackClock) -> Content
 
