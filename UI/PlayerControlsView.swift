@@ -256,9 +256,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var interpolationButton: some View {
         Button {
-            state.setInterpolationMode(
-                state.interpolationMode == .disabled ? .motion4x : .disabled
-            )
+            state.setInterpolationMode(state.isFramePlusRequested ? .disabled : .enabled)
         } label: {
             // Solo la píldora lee el reloj: los fps no redibujan la barra entera.
             readingClock { _, fps in
@@ -266,16 +264,16 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                     title: motionTitle(fps: fps),
                     systemName: state.isFramePlusPreparing
                         ? "hourglass"
-                        : (state.interpolationMode == .disabled
-                            ? "rectangle.on.rectangle"
-                            : "rectangle.on.rectangle.fill"),
-                    isActive: state.interpolationMode != .disabled,
+                        : (state.isFramePlusRequested
+                            ? "rectangle.on.rectangle.fill"
+                            : "rectangle.on.rectangle"),
+                    isActive: state.isFramePlusRequested,
                     hint: "\(NSLocalizedString("Frame Interpolation", comment: "")) · \(framePlusStateTitle)"
                 )
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.interpolationMode == .disabled ? NSLocalizedString("Interpolation disabled", comment: "") : NSLocalizedString("Interpolation enabled", comment: ""))")
+        .accessibilityLabel("\(NSLocalizedString("Frame Interpolation", comment: "")), \(state.isFramePlusRequested ? NSLocalizedString("Interpolation enabled", comment: "") : NSLocalizedString("Interpolation disabled", comment: ""))")
     }
 
     private var playbackRates: [Float] { [0.5, 1, 1.5, 2] }
@@ -592,11 +590,14 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     private func motionTitle(fps: Double) -> String {
         if state.isFramePlusPreparing { return "Frame⁺…" }
         // En pausa el reloj conserva el último valor: no lo mostramos como si siguiera.
-        guard state.interpolationMode != .disabled, state.isPlaying else { return "Frame⁺" }
+        guard state.isFramePlusRequested, state.isPlaying else { return "Frame⁺" }
         return String(format: NSLocalizedString("Frame+ · %.0f fps", comment: "Frame+ pill with live frame rate"), fps)
     }
 
     private var framePlusStateTitle: String {
+        if let nativeFPS = (state as? RiftPlayerState)?.framePlusNotNeededFPS {
+            return String(format: NSLocalizedString("Not needed: this video is already %.0f fps", comment: ""), nativeFPS)
+        }
         if state.isFramePlusPreparing { return NSLocalizedString("Preparing HQ", comment: "") }
         if state.isFramePlusPreRendered {
             let target = (state as? RiftPlayerState)?.targetRenderingFPS ?? 60

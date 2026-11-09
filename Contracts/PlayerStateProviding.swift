@@ -34,7 +34,10 @@ public protocol PlaybackControlling: ObservableObject {
 @MainActor
 public protocol InterpolationStateProviding: ObservableObject {
     var fpsMode: FPSMode { get }
+    /// Frame+ activo en este momento (puede estar en pausa por carga o no hacer falta).
     var interpolationMode: InterpolationMode { get }
+    /// Lo que pidió el usuario: el interruptor Frame+ refleja esto.
+    var isFramePlusRequested: Bool { get }
     var isFramePlusPreparing: Bool { get }
     var isFramePlusPreRendered: Bool { get }
     var isArtificialInterpolationActive: Bool { get }

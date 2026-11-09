@@ -114,8 +114,8 @@ struct RiftCommands: Commands {
 
             Divider()
             Toggle("Frame+", isOn: Binding(
-                get: { state.interpolationMode != .disabled },
-                set: { state.setInterpolationMode($0 ? .motion4x : .disabled) }
+                get: { state.isFramePlusRequested },
+                set: { state.setInterpolationMode($0 ? .enabled : .disabled) }
             ))
             .keyboardShortcut("i", modifiers: [.command, .option])
             Toggle("Maximum Fluidity", isOn: Binding(

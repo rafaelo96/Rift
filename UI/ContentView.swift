@@ -554,8 +554,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             Button(rift.isPlaying ? "Pause" : "Play") { rift.togglePlay() }
             Divider()
             Toggle("Frame+", isOn: Binding(
-                get: { rift.interpolationMode != .disabled },
-                set: { rift.setInterpolationMode($0 ? .motion4x : .disabled) }
+                get: { rift.isFramePlusRequested },
+                set: { rift.setInterpolationMode($0 ? .enabled : .disabled) }
             ))
             Toggle("Super Resolution", isOn: Binding(
                 get: { rift.superResolutionMode != .off },

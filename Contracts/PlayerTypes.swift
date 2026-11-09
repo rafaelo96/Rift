@@ -2,20 +2,27 @@ import Foundation
 
 // MARK: - Interpolation Mode
 
-public enum InterpolationMode: String, CaseIterable, Sendable {
+/// Frame+ solo se enciende o se apaga. La cadencia (60 fps, 48 fps o sin
+/// interpolar) la elige Rift según lo que mide en el Mac y según el video.
+public enum InterpolationMode: CaseIterable, Sendable, RawRepresentable {
     case disabled
-    case motion2x
-    case motion4x
-    case motionAdaptive
-    case motion2Intense
+    case enabled
 
-    public var displayName: String {
+    public var rawValue: String {
         switch self {
-        case .disabled: "Off"
-        case .motion2x: "Motion 2x"
-        case .motion4x: "Motion 4x"
-        case .motionAdaptive: "Adaptive"
-        case .motion2Intense: "Motion² Intenso"
+        case .disabled: "disabled"
+        case .enabled: "enabled"
+        }
+    }
+
+    /// Acepta los valores guardados por versiones anteriores, que tenían varios
+    /// modos ("motion2x", "motion4x", "motionAdaptive", "motion2Intense"):
+    /// todos significan Frame+ encendido.
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "disabled": self = .disabled
+        case "enabled", "motion2x", "motion4x", "motionAdaptive", "motion2Intense": self = .enabled
+        default: return nil
         }
     }
 }

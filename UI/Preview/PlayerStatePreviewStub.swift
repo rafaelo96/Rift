@@ -28,6 +28,7 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
 
     var fpsMode: FPSMode = .native
     var interpolationMode: InterpolationMode = .disabled
+    var isFramePlusRequested: Bool { interpolationMode != .disabled }
     var isFramePlusPreparing: Bool = false
     var isFramePlusPreRendered: Bool = false
     var isArtificialInterpolationActive: Bool = false

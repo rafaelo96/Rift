@@ -448,6 +448,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Preferencia del usuario, separada del tier activo. Una degradación
     /// automática a 48/24 no debe convertirse en su nueva configuración.
     @Published private(set) var requestedInterpolationMode: InterpolationMode = .disabled
+    var isFramePlusRequested: Bool { requestedInterpolationMode != .disabled }
+    /// Cadencia reducida a 48 fps porque 60 no se sostiene. La decide Rift, no
+    /// el usuario; se vuelve a intentar 60 con cada video nuevo.
+    private var reducedCadence = false
+    /// El video ya trae 48 fps o más: interpolar no aporta fluidez y solo gasta.
+    /// Frame+ sigue pedido, pero no se activa mientras dure este video.
+    @Published private(set) var framePlusNotNeededFPS: Double?
+    private static let framePlusNativeThresholdFPS = 47.0
     /// Number of interpolated pairs to skip before the budget gate activates.
     private let interpolationWarmupPairs = 5
 
@@ -730,7 +738,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             return
         }
         os_log("Frame+ baja de 60 a 48 fps: %{public}@", log: benchLog, type: .info, reason)
-        applyInterpolationMode(.motion2x, persistRequest: false)
+        reducedCadence = true
+        applyInterpolationMode(.enabled, persistRequest: false)
         feedback.show(.reducedTo48)
     }
 
@@ -751,6 +760,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// mediciones de esta sesión deciden si se queda en 60, baja a 48 o a 24.
     private func startFramePlusCalibrationForNewVideo() {
         calibratedInterpolationQuality = nil
+        reducedCadence = false
+        framePlusNotNeededFPS = nil
         superResolutionPausedForFluidity = false
         guard requestedInterpolationMode != .disabled else { return }
         interpolationQuality = ProcessInfo.processInfo.environment["RIFT_AUTO_FORCE_QUALITY"]
@@ -1782,9 +1793,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// `persistRequest: false`, con lo que el interruptor Frame+ sigue
     /// representando la intención del usuario aunque la máquina esté en 48/24.
     private func applyInterpolationMode(_ m: InterpolationMode, persistRequest: Bool) {
-        interpolationMode = m
+        // Con un video de 48 fps o más, Frame+ queda pedido pero sin interpolar.
+        interpolationMode = framePlusNotNeededFPS == nil ? m : .disabled
         if persistRequest {
             requestedInterpolationMode = m
+            reducedCadence = false
             persistPlaybackPreferences()
         }
         if persistRequest {
@@ -1812,10 +1825,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         switch interpolationMode {
         case .disabled:
             scheduler?.setMode(.native24)
-        case .motion2x:
-            scheduler?.setMode(.interpolated48)
-        case .motion4x, .motionAdaptive, .motion2Intense:
-            scheduler?.setMode(.interpolated60)
+        case .enabled:
+            scheduler?.setMode(reducedCadence ? .interpolated48 : .interpolated60)
         }
     }
 
@@ -1823,10 +1834,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var interpolationConfig: InterpolationConfig {
         let profile: InterpolationConfig = interpolationQuality == 2 ? .fluidHighQuality
             : interpolationQuality == 1 ? .fluid : .fluidEconomy
-        if interpolationMode == .motionAdaptive {
-            return InterpolationConfig(workWidth: profile.workWidth, workHeight: profile.workHeight,
-                                       usesDrawingHold: !maximumFluidity)
-        }
         return InterpolationConfig(workWidth: profile.workWidth, workHeight: profile.workHeight,
             blockSize: profile.blockSize, lambdaPx: profile.lambdaPx, subpel: profile.subpel,
             temporalGatePx: profile.temporalGatePx,
@@ -1835,6 +1842,19 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             usesAttenuatedCatastrophicSafetyBlend: profile.usesAttenuatedCatastrophicSafetyBlend,
             usesUnmatchableEffectSafetyCheck: profile.usesUnmatchableEffectSafetyCheck,
             usesDrawingHold: !maximumFluidity)
+    }
+
+    /// Elige si interpolar según el video: a 48 fps o más el original ya es
+    /// fluido y Frame+ no se activa; por debajo, apunta a 60 fps.
+    private func applySourceFrameRatePolicy() {
+        let fps = sourceFrameRate ?? 0
+        let notNeeded = fps >= Self.framePlusNativeThresholdFPS ? fps : nil
+        guard notNeeded != framePlusNotNeededFPS else { return }
+        framePlusNotNeededFPS = notNeeded
+        if notNeeded != nil {
+            os_log("Frame+ no se activa: el video ya es de %.0f fps", log: benchLog, type: .default, fps)
+        }
+        applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
     }
 
     private func rememberSessionQuality() {
@@ -1863,8 +1883,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             )
         case .recover:
             guard presentationRecoverEligible else { return }
-            if scheduler?.mode == .interpolated48, requestedInterpolationMode != .motion2x {
-                applyInterpolationMode(requestedInterpolationMode, persistRequest: false)
+            if reducedCadence, requestedInterpolationMode != .disabled {
+                reducedCadence = false
+                applyInterpolationMode(.enabled, persistRequest: false)
             } else if interpolationQuality < 2 {
                 changeInterpolationQuality(to: interpolationQuality + 1)
             }
@@ -1889,7 +1910,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             // Moderate presentation pressure may lower 60→48, but never turns
             // Frame+ off by itself. The monitor has a separate severe path.
             if scheduler?.mode == .interpolated60 {
-                applyInterpolationMode(.motion2x, persistRequest: false)
+                reducedCadence = true
+                applyInterpolationMode(.enabled, persistRequest: false)
                 feedback.show(.reducedTo48)
             }
         case .recover:
@@ -2577,6 +2599,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         self.currentTime = min(max(startTime, 0), info.duration)
         invalidatePictureInPicturePlaybackState()
         self.sourceFrameRate = v.frameRate
+        self.applySourceFrameRatePolicy()
         self.activePlaylistItemID = self.playlist.first(where: { $0.path == url.path })?.id
         self.markers = self.markersByPath[url.path] ?? []
         self.chapters = info.chapters
@@ -3665,7 +3688,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                        let retryAt = automaticRetryAt,
                        ProcessInfo.processInfo.systemUptime >= retryAt {
                         interpolationQuality = 0
-                        applyInterpolationMode(.motion2x, persistRequest: false)
+                        reducedCadence = true
+                        applyInterpolationMode(.enabled, persistRequest: false)
                         continue
                     }
                     guard let f = pool.oldest() else {

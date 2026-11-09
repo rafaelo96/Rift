@@ -129,7 +129,7 @@ struct RiftSettingsView: View {
             Section {
                 Toggle("Activar Frame+", isOn: Binding(
                     get: { state.requestedInterpolationMode != .disabled },
-                    set: { state.setInterpolationMode($0 ? .motionAdaptive : .disabled) }
+                    set: { state.setInterpolationMode($0 ? .enabled : .disabled) }
                 ))
             } footer: {
                 Text("Aumenta la fluidez durante la reproducción. Rift adapta el trabajo a la capacidad medida de tu Mac; pueden aparecer artefactos en movimientos rápidos.")

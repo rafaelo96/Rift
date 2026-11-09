@@ -171,3 +171,4 @@
 "The playlist is empty" = "La lista está vacía";
 "Now Playing" = "Reproduciendo";
 "1 video" = "1 video";
+"Not needed: this video is already %.0f fps" = "No hace falta: este video ya es de %.0f fps";
