@@ -159,3 +159,6 @@
 "Resumed at %@" = "Retomado en %@";
 "Start from Beginning" = "Empezar desde el inicio";
 "Close" = "Cerrar";
+"Continue Watching" = "Continuar viendo";
+"%d min left" = "Quedan %d min";
+"Continue %@, %@" = "Continuar %@, %@";

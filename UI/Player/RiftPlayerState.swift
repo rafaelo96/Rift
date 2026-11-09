@@ -1080,6 +1080,26 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         encode(recentVideos, forKey: Self.recentVideosKey)
     }
 
+    /// Recientes sin terminar para la fila "Continuar viendo" de la pantalla vacía.
+    /// Omite los archivos que ya no están en su ruta (comprobarlo por marcador
+    /// escribiría en UserDefaults en cada dibujo de la vista).
+    var continueWatching: [RecentVideo] {
+        recentVideos
+            .filter { $0.resumePosition >= 5 }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .prefix(4)
+            .map { $0 }
+    }
+
+    /// Miniatura en la posición guardada; usa el mismo extractor acotado que la
+    /// línea de tiempo (no copia ni transcodifica el archivo).
+    func thumbnail(forRecent video: RecentVideo) async -> CGImage? {
+        let lease = mediaBookmarks.access(video.url)
+        let image = try? await timelineThumbnailExtractor.thumbnail(for: lease.url, at: video.playbackPosition)?.image
+        withExtendedLifetime(lease) {}
+        return image
+    }
+
     func clearRecentVideos() {
         recentVideos = []
         UserDefaults.standard.removeObject(forKey: Self.recentVideosKey)

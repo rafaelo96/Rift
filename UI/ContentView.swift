@@ -903,9 +903,51 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var openVideoPrompt: some View {
-        ZStack {
+        let recents = (state as? RiftPlayerState)?.continueWatching ?? []
+        return ZStack {
+            // En ventanas estrechas caben menos tarjetas; sin espacio para la
+            // fila, se queda solo la apertura.
+            ViewThatFits {
+                ForEach([4, 3, 2], id: \.self) { count in
+                    openVideoStack(recents: Array(recents.prefix(count)))
+                }
+                openVideoHero(markSize: 118)
+            }
+            .padding(.bottom, 30)
+
+            VStack {
+                Spacer()
+
+                Divider()
+
+                Label(NSLocalizedString("Supports MKV, MP4, HEVC, AV1, 4K", comment: ""), systemImage: "folder")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+            }
+        }
+        .padding(.horizontal, 36)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .animation(controlDragAnimation, value: isDropTargeted)
+    }
+
+    private func openVideoStack(recents: [RecentVideo]) -> some View {
+        VStack(spacing: 30) {
+            openVideoHero(markSize: recents.isEmpty ? 118 : 84)
+            if let rift = state as? RiftPlayerState, !recents.isEmpty {
+                ContinueWatchingRow(videos: recents,
+                                    thumbnail: { await rift.thumbnail(forRecent: $0) },
+                                    open: { rift.loadVideo($0.url) })
+            }
+        }
+    }
+
+    private func openVideoHero(markSize: CGFloat) -> some View {
             VStack(spacing: 18) {
-                RiftBrandMark(size: 118)
+                RiftBrandMark(size: markSize)
                     .scaleEffect(isDropTargeted ? 1.04 : 1)
                     .shadow(color: Color.accentColor.opacity(0.32), radius: 22, y: 8)
 
@@ -929,46 +971,6 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 }
                 .riftGlassButton(prominent: true)
                 .controlSize(.large)
-            }
-
-            VStack {
-                Spacer()
-
-                Divider()
-
-                HStack(spacing: 14) {
-                    Label(NSLocalizedString("Supports MKV, MP4, HEVC, AV1, 4K", comment: ""), systemImage: "folder")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    formatBadge("MKV")
-                    formatBadge("MP4")
-                    formatBadge("HEVC")
-                    formatBadge("AV1")
-                    formatBadge("4K")
-                }
-                .padding(.top, 8)
-            }
-        }
-        .padding(.horizontal, 36)
-        .padding(.vertical, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .animation(controlDragAnimation, value: isDropTargeted)
-    }
-
-    private func formatBadge(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background {
-                Capsule()
-                    .fill(.white.opacity(0.025))
-                    .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5) }
             }
     }
 
