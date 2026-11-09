@@ -1094,8 +1094,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Miniatura en la posición guardada; usa el mismo extractor acotado que la
     /// línea de tiempo (no copia ni transcodifica el archivo).
     func thumbnail(forRecent video: RecentVideo) async -> CGImage? {
-        let lease = mediaBookmarks.access(video.url)
-        let image = try? await timelineThumbnailExtractor.thumbnail(for: lease.url, at: video.playbackPosition)?.image
+        await thumbnail(for: video.url, at: video.playbackPosition)
+    }
+
+    func thumbnail(for url: URL, at time: Double) async -> CGImage? {
+        let lease = mediaBookmarks.access(url)
+        let image = try? await timelineThumbnailExtractor.thumbnail(for: lease.url, at: time)?.image
         withExtendedLifetime(lease) {}
         return image
     }
@@ -1125,6 +1129,24 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             activePlaylistItemID = first.id
             loadVideo(first.url)
         }
+    }
+
+    /// Reordenar arrastrando en el panel de lista.
+    func movePlaylistItems(fromOffsets source: IndexSet, toOffset destination: Int) {
+        playlist.move(fromOffsets: source, toOffset: destination)
+        encode(playlist, forKey: Self.playlistKey)
+    }
+
+    /// Panel lateral de la lista (tecla L). No se guarda entre sesiones.
+    @Published var isPlaylistPanelVisible = false
+
+    func togglePlaylistPanel() {
+        isPlaylistPanelVisible.toggle()
+    }
+
+    /// Lo que Rift recuerda del episodio: duración y posición guardada.
+    func recentRecord(for item: PlaylistItem) -> RecentVideo? {
+        recentVideos.first { $0.path == item.path }
     }
 
     func removeFromPlaylist(_ item: PlaylistItem) {
@@ -2360,7 +2382,6 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             self.resumedAt = nil
         }
     }
-
 
     func dismissResumedNotice() {
         resumedNoticeTask?.cancel()

@@ -360,18 +360,28 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             if state.hasVideo, let rift = state as? RiftPlayerState, !rift.isPictureInPictureActive,
                let upNext = rift.upNext {
                 UpNextCard(countdown: upNext, playNow: rift.playUpNextNow, cancel: rift.cancelUpNext)
-                    .padding(.trailing, 24)
+                    .padding(.trailing, cardTrailingInset(rift))
                     .padding(.bottom, 150)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
             }
+            if state.hasVideo, let rift = state as? RiftPlayerState, rift.isPlaylistPanelVisible {
+                // Termina encima de la barra de controles para no taparla.
+                PlaylistPanel(state: rift)
+                    .padding(.top, 52)
+                    .padding(.bottom, 146)
+                    .padding(.trailing, 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
+            }
+
             if state.hasVideo, let rift = state as? RiftPlayerState, !rift.isPictureInPictureActive,
                rift.upNext == nil, let resumedAt = rift.resumedAt {
                 ResumedCard(positionText: rift.formattedTime(resumedAt),
                             restart: rift.restartFromBeginning,
                             dismiss: rift.dismissResumedNotice,
                             hold: rift.holdResumedNotice)
-                    .padding(.trailing, 24)
+                    .padding(.trailing, cardTrailingInset(rift))
                     .padding(.bottom, 150)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
@@ -393,6 +403,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         .animation(controlVisibilityAnimation, value: state.hasVideo)
         .animation(.easeOut(duration: 0.25), value: (state as? RiftPlayerState)?.upNext?.title)
         .animation(.easeOut(duration: 0.25), value: (state as? RiftPlayerState)?.resumedAt)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 0.86),
+                   value: (state as? RiftPlayerState)?.isPlaylistPanelVisible)
         .animation(controlDragAnimation, value: isDropTargeted)
         .onAppear {
             state.startHideTimer()
@@ -594,6 +606,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                             rift.clearRecentVideos()
                         }
                     }
+                }
+                Button(rift.isPlaylistPanelVisible ? NSLocalizedString("Hide Playlist", comment: "")
+                                                   : NSLocalizedString("Show Playlist", comment: ""),
+                       systemImage: "sidebar.right") {
+                    rift.togglePlaylistPanel()
                 }
                 if !rift.playlist.isEmpty {
                     Menu(NSLocalizedString("Playlist", comment: ""), systemImage: "list.bullet") {
@@ -933,6 +950,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .animation(controlDragAnimation, value: isDropTargeted)
+    }
+
+    /// Las tarjetas de abajo a la derecha se apartan del panel de lista.
+    private func cardTrailingInset(_ rift: RiftPlayerState) -> CGFloat {
+        rift.isPlaylistPanelVisible ? 24 + 330 + 14 : 24
     }
 
     private func openVideoStack(recents: [RecentVideo]) -> some View {

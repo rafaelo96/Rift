@@ -198,6 +198,11 @@ struct RiftCommands: Commands {
             }
             .keyboardShortcut("h", modifiers: [])
             .disabled(!(state.hasVideo && focus.isPlayerKey))
+            Button(state.isPlaylistPanelVisible ? "Hide Playlist" : "Show Playlist") {
+                state.togglePlaylistPanel()
+            }
+            .keyboardShortcut("l", modifiers: [])
+            .disabled(!(state.hasVideo && focus.isPlayerKey))
             Button("Toggle Fit / Fill") {
                 NotificationCenter.default.post(name: .riftTogglePresentation, object: nil)
             }
