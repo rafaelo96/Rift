@@ -659,7 +659,10 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         HStack(spacing: 2) {
             TopChromeButton(
                 systemName: presentationMode.icon,
-                accessibilityLabel: NSLocalizedString("Toggle video presentation", comment: "")
+                // Dice lo que hará el clic, no el estado actual.
+                accessibilityLabel: presentationMode == .fit
+                    ? NSLocalizedString("Fill Window", comment: "Zoom the video to cover the window")
+                    : NSLocalizedString("Fit to Window", comment: "Show the whole video inside the window")
             ) {
                 withAnimation(controlDragAnimation) {
                     presentationMode = presentationMode == .fit ? .fill : .fit
