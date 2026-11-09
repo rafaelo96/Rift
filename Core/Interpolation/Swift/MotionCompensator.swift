@@ -101,7 +101,12 @@ public final class MotionCompensator {
     }
     /// 12 entradas: la UI precarga cada frame decodificado y decodifica 0.35–0.5 s
     /// por delante (8–12 frames); con menos, las precargas se expulsarían antes de usarse.
-    private let lumaCache = LumaCache(capacity: 12)
+    /// Cubre lo que el decoder lee por adelantado (~0.35–0.5 s, 9–12 frames a
+    /// 24 fps) más el margen de reordenamiento del pool. Con 12 entradas la luma
+    /// precargada a veces salía antes de usarse y el par la recalculaba en su
+    /// camino crítico (14 % de fallos a 4K HDR). Cada entrada pesa
+    /// workWidth×workHeight×2 bytes (0.5 MB en el plano ligero, 2 MB en el detallado).
+    private let lumaCache = LumaCache(capacity: 24)
     /// RIFT_LUMA_CACHE=0 desactiva la caché (comparación A/B).
     private let lumaCacheEnabled = ProcessInfo.processInfo.environment["RIFT_LUMA_CACHE"] != "0"
     /// Aciertos/fallos acumulados de la caché de luma (diagnóstico).
