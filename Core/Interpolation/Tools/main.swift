@@ -1784,6 +1784,10 @@ guard zip(frameTimes, frameTimes.dropFirst()).allSatisfy({ $0 < $1 }) else {
     exit(2)
 }
 
+if envInt("MV_PAIR_HASH",0)==1 {
+    do { try checkPairHashes(buffers: frameBuffers); exit(0) }
+    catch { print("PAIR HASH FAILED: \(error)"); exit(3) }
+}
 if let output=ProcessInfo.processInfo.environment["MV_NATIVE_SCENE_OUTPUT"] {
     do {try auditNativeScene(buffers:frameBuffers,pts:frameTimes,output:output);exit(0)}
     catch {print("NATIVE SCENE FAILED: \(error)");exit(3)}
