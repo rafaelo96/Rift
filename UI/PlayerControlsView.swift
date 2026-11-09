@@ -861,7 +861,7 @@ struct TimelineTrack: View {
                     timelinePreview
                         .position(
                             x: min(max(geo.size.width * previewProgress, 78), geo.size.width - 78),
-                            y: previewChapter == nil ? -58 : -66
+                            y: previewChapter == nil ? -58 : -73
                         )
                         .allowsHitTesting(false)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -904,12 +904,15 @@ struct TimelineTrack: View {
                 .foregroundStyle(.white.opacity(0.92))
 
             if let chapter = previewChapter {
+                // Hasta dos líneas: los títulos de capítulo suelen ser largos.
                 Text(chapter.title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 148)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 148)
             }
         }
         .padding(4)

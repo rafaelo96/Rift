@@ -38,22 +38,27 @@ struct PlaylistPanel: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(NSLocalizedString("Playlist", comment: ""))
                     .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
                     .foregroundStyle(.white)
                     .accessibilityAddTraits(.isHeader)
-                Text(String(format: NSLocalizedString("%d videos", comment: "Playlist item count"), state.playlist.count))
+                Text(state.playlist.count == 1
+                     ? NSLocalizedString("1 video", comment: "Playlist with one item")
+                     : String(format: NSLocalizedString("%d videos", comment: "Playlist item count"), state.playlist.count))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.6))
                     .monospacedDigit()
             }
             Spacer()
+            // Solo el ícono, para que el título quepa en una línea.
             Button {
                 state.addVideosToPlaylist()
             } label: {
-                Label(NSLocalizedString("Add…", comment: "Add videos to the playlist"), systemImage: "plus")
+                Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                    .fixedSize()
+                    .frame(width: 18, height: 18)
             }
             .riftGlassButton()
+            .accessibilityLabel(NSLocalizedString("Add to Playlist…", comment: ""))
             .help(NSLocalizedString("Add to Playlist…", comment: ""))
 
             Button {

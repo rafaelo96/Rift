@@ -163,7 +163,6 @@
 "%d min left" = "Quedan %d min";
 "Continue %@, %@" = "Continuar %@, %@";
 "%d videos" = "%d videos";
-"Add…" = "Agregar…";
 "Hide Playlist" = "Ocultar lista";
 "Show Playlist" = "Mostrar lista";
 "Play from Beginning" = "Reproducir desde el inicio";
@@ -171,3 +170,4 @@
 "Remove from Playlist" = "Quitar de la lista";
 "The playlist is empty" = "La lista está vacía";
 "Now Playing" = "Reproduciendo";
+"1 video" = "1 video";
