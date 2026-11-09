@@ -417,7 +417,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// El siguiente episodio arranca ahí en vez de volver a la calidad alta y
     /// pasar ~3 s atrasado hasta que el monitor la baja. Solo vive en memoria:
     /// cada sesión vuelve a medir en vivo.
-    private var sessionQualityByResolution: [String: Int] = [:]
+    @Published private(set) var sessionQualityByResolution: [String: Int] = [:]
+
+    /// Nombre del chip para Ajustes → Frame+ ("Apple M4"). Solo informativo:
+    /// la calidad sale de la medición en vivo, no del modelo.
+    static let chipName: String = {
+        var size = 0
+        guard sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0) == 0, size > 0 else { return "Mac" }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("machdep.cpu.brand_string", &buffer, &size, nil, 0) == 0 else { return "Mac" }
+        return String(cString: buffer)
+    }()
     private var calibrationResolutionKey: String? {
         guard let width = videoTrack?.width, let height = videoTrack?.height else { return nil }
         return "\(width)x\(height)"

@@ -135,6 +135,22 @@ struct RiftSettingsView: View {
                 Text("Aumenta la fluidez durante la reproducción. Rift adapta el trabajo a la capacidad medida de tu Mac; pueden aparecer artefactos en movimientos rápidos.")
             }
             Section {
+                LabeledContent("Chip", value: RiftPlayerState.chipName)
+                if state.sessionQualityByResolution.isEmpty {
+                    Text("Aún sin medir. Rift mide tu Mac la primera vez que reproduces con Frame+.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(state.sessionQualityByResolution.sorted { $0.key > $1.key }, id: \.key) { resolution, quality in
+                        LabeledContent(resolution.replacingOccurrences(of: "x", with: "×"),
+                                       value: Self.qualityName(quality))
+                    }
+                }
+            } header: {
+                Text("Medición en este Mac")
+            } footer: {
+                Text("Medido durante esta sesión. Rift vuelve a medir cada vez que se abre, porque la capacidad real cambia con la temperatura y lo que esté haciendo tu Mac.")
+            }
+            Section {
                 Toggle("Fluidez máxima", isOn: Binding(
                     get: { state.maximumFluidity },
                     set: { state.setMaximumFluidity($0) }
@@ -158,6 +174,14 @@ struct RiftSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private static func qualityName(_ quality: Int) -> String {
+        switch quality {
+        case 2: return String(localized: "Calidad alta")
+        case 1: return String(localized: "Calidad equilibrada")
+        default: return String(localized: "Calidad económica")
+        }
     }
 
     private var pictureInPicture: some View {

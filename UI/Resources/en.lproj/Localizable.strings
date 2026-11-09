@@ -57,3 +57,11 @@
 /* Control bar (Group B) */
 "Frame+ · %.0f fps" = "Frame⁺ · %.0f fps";
 "%.0f fps · Frame+ target %.0f fps" = "%.0f fps · target %.0f";
+
+/* Ajustes → Frame+: medición */
+"Medición en este Mac" = "Measured on This Mac";
+"Aún sin medir. Rift mide tu Mac la primera vez que reproduces con Frame+." = "Not measured yet. Rift measures your Mac the first time you play with Frame+.";
+"Medido durante esta sesión. Rift vuelve a medir cada vez que se abre, porque la capacidad real cambia con la temperatura y lo que esté haciendo tu Mac." = "Measured during this session. Rift measures again each time it opens, because real capacity changes with temperature and whatever else your Mac is doing.";
+"Calidad alta" = "High quality";
+"Calidad equilibrada" = "Balanced quality";
+"Calidad económica" = "Economy quality";
