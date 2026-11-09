@@ -8,7 +8,7 @@ struct ContinueWatchingRow: View {
     let open: (RecentVideo) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(NSLocalizedString("Continue Watching", comment: ""))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -47,7 +47,7 @@ private struct ContinueWatchingCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottom) {
                     Rectangle().fill(.white.opacity(0.06))
                     if let image {
@@ -79,7 +79,7 @@ private struct ContinueWatchingCard: View {
                     }
                     .frame(height: 3)
                 }
-                .frame(width: 184, height: 104)
+                .frame(width: 160, height: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -97,7 +97,7 @@ private struct ContinueWatchingCard: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                .frame(width: 184, alignment: .leading)
+                .frame(width: 160, alignment: .leading)
             }
             .contentShape(Rectangle())
         }

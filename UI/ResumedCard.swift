@@ -6,6 +6,7 @@ struct ResumedCard: View {
     let positionText: String
     let restart: () -> Void
     let dismiss: () -> Void
+    var hold: (Bool) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -40,6 +41,7 @@ struct ResumedCard: View {
         .padding(.vertical, 10)
         .background(VideoOverlayGlass(cornerRadius: 18))
         .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+        .onHover(perform: hold)
         .accessibilityElement(children: .contain)
     }
 }

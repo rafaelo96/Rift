@@ -2337,14 +2337,30 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func showResumedNotice(at position: Double) {
-        resumedNoticeTask?.cancel()
         resumedAt = position
+        scheduleResumedNoticeDismissal(after: 10)
+    }
+
+    /// Con el puntero encima la tarjeta no se va; al salir le quedan 3 s.
+    func holdResumedNotice(_ hovering: Bool) {
+        guard resumedAt != nil else { return }
+        if hovering {
+            resumedNoticeTask?.cancel()
+            resumedNoticeTask = nil
+        } else {
+            scheduleResumedNoticeDismissal(after: 3)
+        }
+    }
+
+    private func scheduleResumedNoticeDismissal(after seconds: Double) {
+        resumedNoticeTask?.cancel()
         resumedNoticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             self.resumedAt = nil
         }
     }
+
 
     func dismissResumedNotice() {
         resumedNoticeTask?.cancel()

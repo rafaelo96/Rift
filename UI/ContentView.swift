@@ -369,7 +369,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                rift.upNext == nil, let resumedAt = rift.resumedAt {
                 ResumedCard(positionText: rift.formattedTime(resumedAt),
                             restart: rift.restartFromBeginning,
-                            dismiss: rift.dismissResumedNotice)
+                            dismiss: rift.dismissResumedNotice,
+                            hold: rift.holdResumedNotice)
                     .padding(.trailing, 24)
                     .padding(.bottom, 150)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -913,7 +914,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 }
                 openVideoHero(markSize: 118)
             }
-            .padding(.bottom, 30)
+            .padding(.bottom, 24)
 
             VStack {
                 Spacer()
@@ -935,8 +936,8 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private func openVideoStack(recents: [RecentVideo]) -> some View {
-        VStack(spacing: 30) {
-            openVideoHero(markSize: recents.isEmpty ? 118 : 84)
+        VStack(spacing: 22) {
+            openVideoHero(markSize: recents.isEmpty ? 118 : 76)
             if let rift = state as? RiftPlayerState, !recents.isEmpty {
                 ContinueWatchingRow(videos: recents,
                                     thumbnail: { await rift.thumbnail(forRecent: $0) },
