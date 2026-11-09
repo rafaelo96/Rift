@@ -30,20 +30,6 @@ struct RiftSettingsView: View {
                     Text("Empezar desde el principio").tag(PlaybackOpeningBehavior.restart)
                 }
                 Toggle("Recordar audio y subtítulos por archivo", isOn: $state.rememberTrackSelections)
-                Picker("Velocidad", selection: $state.playbackRate) {
-                    Text("0,5×").tag(Float(0.5))
-                    Text("1× (normal)").tag(Float(1))
-                    Text("1,5×").tag(Float(1.5))
-                    Text("2×").tag(Float(2))
-                }
-                HStack {
-                    Slider(value: Binding(get: { state.volume }, set: state.setVolume), in: 0...1) {
-                        Text("Volumen")
-                    }
-                    Text(state.volume, format: .percent.precision(.fractionLength(0)))
-                        .monospacedDigit()
-                        .frame(width: 44, alignment: .trailing)
-                }
                 Picker("Desfase de audio", selection: Binding(
                     get: { state.audioSyncOffset }, set: state.setAudioSyncOffset
                 )) {
@@ -58,8 +44,6 @@ struct RiftSettingsView: View {
                 state.reopenLastVideoOnLaunch = true
                 state.openingBehavior = .resume
                 state.rememberTrackSelections = true
-                state.playbackRate = 1
-                state.setVolume(0.68)
                 state.setAudioSyncOffset(0)
             }
         }
