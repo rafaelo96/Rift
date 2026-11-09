@@ -365,6 +365,16 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
             }
+            if state.hasVideo, let rift = state as? RiftPlayerState, !rift.isPictureInPictureActive,
+               rift.upNext == nil, let resumedAt = rift.resumedAt {
+                ResumedCard(positionText: rift.formattedTime(resumedAt),
+                            restart: rift.restartFromBeginning,
+                            dismiss: rift.dismissResumedNotice)
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 150)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
+            }
         }
         .background(appBackdrop)
         .navigationTitle((state as? RiftPlayerState)?.windowTitle ?? "Rift")
@@ -381,6 +391,7 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: handleDrop)
         .animation(controlVisibilityAnimation, value: state.hasVideo)
         .animation(.easeOut(duration: 0.25), value: (state as? RiftPlayerState)?.upNext?.title)
+        .animation(.easeOut(duration: 0.25), value: (state as? RiftPlayerState)?.resumedAt)
         .animation(controlDragAnimation, value: isDropTargeted)
         .onAppear {
             state.startHideTimer()

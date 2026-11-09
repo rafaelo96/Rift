@@ -56,7 +56,7 @@ struct RiftSettingsView: View {
             }
             Button("Restablecer reproducción") {
                 state.reopenLastVideoOnLaunch = true
-                state.openingBehavior = .ask
+                state.openingBehavior = .resume
                 state.rememberTrackSelections = true
                 state.playbackRate = 1
                 state.setVolume(0.68)

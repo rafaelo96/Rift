@@ -269,6 +269,10 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published private(set) var activePlaylistItemID: String?
     /// Cuenta regresiva hacia el siguiente video de la lista al terminar uno.
     @Published private(set) var upNext: UpNextCountdown?
+    /// Posición desde la que se retomó el video abierto; muestra la tarjeta
+    /// "Retomado en…" unos segundos con la opción de empezar desde el inicio.
+    @Published private(set) var resumedAt: Double?
+    private var resumedNoticeTask: Task<Void, Never>?
     /// El reloj llegó al final del video; Reproducir vuelve a empezar.
     @Published private(set) var playbackEnded = false
     private var upNextTask: Task<Void, Never>?
@@ -306,7 +310,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var reopenLastVideoOnLaunch = UserDefaults.standard.object(forKey: "rift.reopenLastVideoOnLaunch") as? Bool ?? true {
         didSet { UserDefaults.standard.set(reopenLastVideoOnLaunch, forKey: "rift.reopenLastVideoOnLaunch") }
     }
-    @Published var openingBehavior = PlaybackOpeningBehavior(rawValue: UserDefaults.standard.string(forKey: "rift.openingBehavior") ?? "ask") ?? .ask {
+    @Published var openingBehavior = PlaybackOpeningBehavior(rawValue: UserDefaults.standard.string(forKey: "rift.openingBehavior") ?? "resume") ?? .resume {
         didSet { UserDefaults.standard.set(openingBehavior.rawValue, forKey: "rift.openingBehavior") }
     }
     @Published var rememberTrackSelections = UserDefaults.standard.object(forKey: "rift.rememberTrackSelections") as? Bool ?? true {
@@ -1591,6 +1595,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     func closeVideo() {
         cancelUpNext()
+        dismissResumedNotice()
         playbackEnded = false
         videoOpenRequestID = UUID()
         cancelResumePlaybackDialog()
@@ -2306,11 +2311,36 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             }
             return
         }
-        loadVideo(url, restoringAt: openingBehavior == .restart ? 0 : rememberedPosition)
+        let restoringAt = openingBehavior == .restart ? 0 : rememberedPosition
+        loadVideo(url, restoringAt: restoringAt)
+        if restoringAt >= 5 { showResumedNotice(at: restoringAt) }
+    }
+
+    private func showResumedNotice(at position: Double) {
+        resumedNoticeTask?.cancel()
+        resumedAt = position
+        resumedNoticeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.resumedAt = nil
+        }
+    }
+
+    func dismissResumedNotice() {
+        resumedNoticeTask?.cancel()
+        resumedNoticeTask = nil
+        if resumedAt != nil { resumedAt = nil }
+    }
+
+    /// "Empezar desde el inicio" en la tarjeta de retomar.
+    func restartFromBeginning() {
+        dismissResumedNotice()
+        seek(to: 0)
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
         cancelUpNext()
+        dismissResumedNotice()
         playbackEnded = false
         let access = resolveMediaAccess(url)
         let requestID = UUID()

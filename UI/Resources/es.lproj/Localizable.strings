@@ -154,3 +154,8 @@
 "Output" = "Salida";
 "%.0f fps" = "%.0f fps";
 "%.0f fps · Frame+ target %.0f fps" = "%.0f fps · objetivo %.0f";
+
+/* Primer uso y regreso (Grupo C) */
+"Resumed at %@" = "Retomado en %@";
+"Start from Beginning" = "Empezar desde el inicio";
+"Close" = "Cerrar";
