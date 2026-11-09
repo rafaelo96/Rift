@@ -61,7 +61,7 @@
 /* Ajustes → Frame+: medición */
 "Medición en este Mac" = "Measured on This Mac";
 "Aún sin medir. Rift mide tu Mac la primera vez que reproduces con Frame+." = "Not measured yet. Rift measures your Mac the first time you play with Frame+.";
-"Medido durante esta sesión. Rift vuelve a medir cada vez que se abre, porque la capacidad real cambia con la temperatura y lo que esté haciendo tu Mac." = "Measured during this session. Rift measures again each time it opens, because real capacity changes with temperature and whatever else your Mac is doing.";
-"Calidad alta" = "High quality";
-"Calidad equilibrada" = "Balanced quality";
-"Calidad económica" = "Economy quality";
+"Es el tamaño en el que Frame+ analiza el movimiento; el video siempre se muestra en su resolución completa. Rift elige el mayor que tu Mac sostiene a 60 fps y lo vuelve a medir cada vez que se abre, porque la capacidad real cambia con la temperatura y lo que esté haciendo tu Mac." = "This is the size at which Frame+ analyzes motion; the video always shows at its full resolution. Rift picks the largest one your Mac holds at 60 fps and measures again each time it opens, because real capacity changes with temperature and whatever else your Mac is doing.";
+"Análisis detallado" = "Detailed analysis";
+"Análisis equilibrado" = "Balanced analysis";
+"Análisis ligero" = "Light analysis";

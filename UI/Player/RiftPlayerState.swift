@@ -419,6 +419,13 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// cada sesión vuelve a medir en vivo.
     @Published private(set) var sessionQualityByResolution: [String: Int] = [:]
 
+    /// Tamaño del plano de análisis de movimiento de cada calidad, para Ajustes.
+    static func analysisPlaneSize(forQuality quality: Int) -> String {
+        let config: InterpolationConfig = quality == 2 ? .fluidHighQuality
+            : quality == 1 ? .fluid : .fluidEconomy
+        return "\(config.workWidth)×\(config.workHeight)"
+    }
+
     /// Nombre del chip para Ajustes → Frame+ ("Apple M4"). Solo informativo:
     /// la calidad sale de la medición en vivo, no del modelo.
     static let chipName: String = {

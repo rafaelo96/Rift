@@ -148,7 +148,7 @@ struct RiftSettingsView: View {
             } header: {
                 Text("Medición en este Mac")
             } footer: {
-                Text("Medido durante esta sesión. Rift vuelve a medir cada vez que se abre, porque la capacidad real cambia con la temperatura y lo que esté haciendo tu Mac.")
+                Text("Es el tamaño en el que Frame+ analiza el movimiento; el video siempre se muestra en su resolución completa. Rift elige el mayor que tu Mac sostiene a 60 fps y lo vuelve a medir cada vez que se abre, porque la capacidad real cambia con la temperatura y lo que esté haciendo tu Mac.")
             }
             Section {
                 Toggle("Fluidez máxima", isOn: Binding(
@@ -176,12 +176,17 @@ struct RiftSettingsView: View {
         .formStyle(.grouped)
     }
 
+    /// "Análisis ligero (768×320)": la calidad es el plano donde Frame+ estima
+    /// el movimiento, no la resolución con la que se ve el video.
     private static func qualityName(_ quality: Int) -> String {
+        let size = RiftPlayerState.analysisPlaneSize(forQuality: quality)
+        let level: String
         switch quality {
-        case 2: return String(localized: "Calidad alta")
-        case 1: return String(localized: "Calidad equilibrada")
-        default: return String(localized: "Calidad económica")
+        case 2: level = String(localized: "Análisis detallado")
+        case 1: level = String(localized: "Análisis equilibrado")
+        default: level = String(localized: "Análisis ligero")
         }
+        return "\(level) (\(size))"
     }
 
     private var pictureInPicture: some View {
