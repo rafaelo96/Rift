@@ -1270,24 +1270,57 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     /// Etiqueta legible para una pista de subtítulos (se compone en UI, no en Demux).
     private static nonisolated func subtitleLabel(for track: TrackInfo, index: Int) -> String {
-        if let name = languageName(for: track.streamLanguage) {
-            return name
-        }
-        if let title = track.streamTitle, !title.isEmpty {
-            return title
-        }
-        return "Subtítulo \(index + 1)"
+        languageAndTitle(for: track) ?? "Subtítulo \(index + 1)"
     }
 
     /// Etiqueta legible para una pista de audio (comparte languageName con subtítulos).
     private static nonisolated func audioLabel(for track: TrackInfo) -> String {
-        if let name = languageName(for: track.streamLanguage) {
+        languageAndTitle(for: track) ?? track.codecName
+    }
+
+    /// Idioma más el título de la pista cuando aporta algo: "Español (Forzados)".
+    /// Si el título repite el idioma ("Español"), queda solo el idioma.
+    private static nonisolated func languageAndTitle(for track: TrackInfo) -> String? {
+        let title = track.streamTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name = languageName(for: track.streamLanguage) else {
+            return (title?.isEmpty == false) ? title : nil
+        }
+        guard let title, !title.isEmpty,
+              title.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) != .orderedSame else {
             return name
         }
-        if let title = track.streamTitle, !title.isEmpty {
-            return title
+        return "\(name) (\(title))"
+    }
+
+    /// Si dos pistas siguen llamándose igual, se les agrega el formato y, de
+    /// ser necesario, un número: "Español · SRT", "Español · PGS".
+    private static nonisolated func disambiguated(_ labels: [String], codecs: [String]) -> [String] {
+        func duplicates(_ values: [String]) -> Set<String> {
+            Set(Dictionary(grouping: values, by: { $0 }).filter { $0.value.count > 1 }.keys)
         }
-        return track.codecName
+        let repeated = duplicates(labels)
+        var result = labels.indices.map { i in
+            repeated.contains(labels[i]) ? "\(labels[i]) · \(codecDisplayName(codecs[i]))" : labels[i]
+        }
+        let stillRepeated = duplicates(result)
+        var seen: [String: Int] = [:]
+        for i in result.indices where stillRepeated.contains(result[i]) {
+            seen[result[i], default: 0] += 1
+            result[i] += " \(seen[result[i]]!)"
+        }
+        return result
+    }
+
+    private static nonisolated func codecDisplayName(_ codec: String) -> String {
+        switch codec {
+        case "subrip", "srt": "SRT"
+        case "ass", "ssa": "ASS"
+        case "hdmv_pgs_subtitle": "PGS"
+        case "dvd_subtitle": "VobSub"
+        case "webvtt": "WebVTT"
+        case "mov_text": "TX3G"
+        default: codec.uppercased()
+        }
     }
 
     /// Fin del video: el reloj se detiene en el último frame (antes seguía
@@ -2596,7 +2629,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         }
         self.availableTracks = {
             var subtitleOrdinal = 0
-            return info.tracks.map { t in
+            let tracks: [MediaTrack] = info.tracks.map { t in
                 let kind: MediaTrack.Kind
                 switch t.kind { case .video: kind = .video; case .audio: kind = .audio; default: kind = .subtitle }
                 let label: String
@@ -2608,6 +2641,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 }
                 return MediaTrack(id: "\(t.streamIndex)", kind: kind, index: t.streamIndex, label: label, languageCode: t.streamLanguage)
             }
+            let subtitles = zip(tracks, info.tracks).filter { $0.0.kind == .subtitle }
+            let unique = Self.disambiguated(subtitles.map { $0.0.label }, codecs: subtitles.map { $0.1.codecName })
+            var byIndex: [Int: String] = [:]
+            for (pair, label) in zip(subtitles, unique) { byIndex[pair.0.index] = label }
+            return tracks.map { track in
+                guard let label = byIndex[track.index], label != track.label else { return track }
+                return MediaTrack(id: track.id, kind: track.kind, index: track.index, label: label, languageCode: track.languageCode)
+            }
         }()
         let subtitleIndex = trackPreferences.subtitleIndex(
             available: self.availableTracks.filter { $0.kind == .subtitle }.map(\.index),
@@ -2617,7 +2658,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             $0.kind == .subtitle && $0.index == subtitleIndex
         }
         self.subtitleTrack = info.tracks.first { $0.streamIndex == subtitleIndex }
-        self.audioTracks = audioTracksAll.map { t in AudioTrack(id: t.streamIndex, label: Self.audioLabel(for: t), language: t.streamLanguage) }
+        let audioLabels = Self.disambiguated(audioTracksAll.map { Self.audioLabel(for: $0) },
+                                             codecs: audioTracksAll.map(\.codecName))
+        self.audioTracks = zip(audioTracksAll, audioLabels).map { t, label in
+            AudioTrack(id: t.streamIndex, label: label, language: t.streamLanguage)
+        }
         self.hasVideo = true
         self.statusMessage = "Ready"
         self.conversionProgress = 1.0
