@@ -54,11 +54,11 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private func controlRow(compactOptions: Bool) -> some View {
-        HStack(spacing: 14) {
+        // Los controles de transporte van centrados encima: cada lado necesita
+        // la mitad del ancho libre, así que la fila mide el lado más ancho dos veces.
+        SymmetricSidesLayout(centerWidth: 176 + 2 * 14) {
             playbackInfoCluster
                 .fixedSize(horizontal: true, vertical: false)
-
-            Spacer(minLength: 190)
 
             optionsBar
                 .environment(\.riftCompactPills, compactOptions)
@@ -591,7 +591,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private func motionTitle(fps: Double) -> String {
         if state.isFramePlusPreparing { return "Frame⁺…" }
-        guard state.interpolationMode != .disabled else { return "Frame⁺" }
+        // En pausa el reloj conserva el último valor: no lo mostramos como si siguiera.
+        guard state.interpolationMode != .disabled, state.isPlaying else { return "Frame⁺" }
         return String(format: NSLocalizedString("Frame+ · %.0f fps", comment: "Frame+ pill with live frame rate"), fps)
     }
 
@@ -766,22 +767,22 @@ struct VolumeTrack: View {
 
 // MARK: - Timeline Track
 
-struct TimelineTrack: View {
 /// Capítulo o marcador dibujado sobre la línea de tiempo.
 struct TimelineMark: Equatable {
     let time: Double
     let title: String
 }
 
+struct TimelineTrack: View {
     let currentTime: Double
     let duration: Double
     let thumbnailImage: CGImage?
     let isThumbnailLoading: Bool
     let onSeek: (Double) -> Void
     let onSeekEnd: (Double) -> Void
-    let onPreviewRequest: (Double) -> Void
     var chapters: [TimelineMark] = []
     var markers: [TimelineMark] = []
+    let onPreviewRequest: (Double) -> Void
     let onPreviewDismiss: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -810,9 +811,9 @@ struct TimelineMark: Equatable {
                     .frame(width: geo.size.width * progress, height: trackHeight)
                     .shadow(color: accentColor.opacity(0.45), radius: isDragging ? 5 : 3, x: 0, y: 0)
 
-                Circle()
                 timelineMarks(in: geo.size)
 
+                Circle()
                     .fill(.white)
                     .frame(width: thumbSize, height: thumbSize)
                     .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
@@ -901,7 +902,6 @@ struct TimelineMark: Equatable {
             Text(formatTime(previewProgress * duration))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.92))
-        }
 
             if let chapter = previewChapter {
                 Text(chapter.title)
@@ -911,6 +911,7 @@ struct TimelineMark: Equatable {
                     .truncationMode(.tail)
                     .frame(maxWidth: 148)
             }
+        }
         .padding(4)
         .background {
             VideoOverlayGlass(cornerRadius: 9)
@@ -918,7 +919,6 @@ struct TimelineMark: Equatable {
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
     }
 
-    private func updatePreview(at x: CGFloat, width: CGFloat) {
     /// Cortes de capítulo (muesca oscura que atraviesa la barra) y marcadores
     /// del usuario (punto sobre la barra).
     @ViewBuilder
@@ -948,6 +948,7 @@ struct TimelineMark: Equatable {
         return chapters.last { $0.time <= time + 0.01 }.flatMap { $0.title.isEmpty ? nil : $0 }
     }
 
+    private func updatePreview(at x: CGFloat, width: CGFloat) {
         guard width > 0 else { return }
         previewProgress = min(max(Double(x / width), 0), 1)
         onPreviewRequest(previewProgress * duration)

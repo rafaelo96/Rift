@@ -56,4 +56,4 @@
 
 /* Control bar (Group B) */
 "Frame+ · %.0f fps" = "Frame⁺ · %.0f fps";
-"%.0f fps · Frame+ target %.0f fps" = "%.0f fps · Frame⁺ target %.0f fps";
+"%.0f fps · Frame+ target %.0f fps" = "%.0f fps · target %.0f";
