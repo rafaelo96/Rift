@@ -121,6 +121,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
                 state.seek(to: $0)
                 isDraggingSlider = false
             },
+            chapters: (state as? RiftPlayerState)?.chapters.map { TimelineMark(time: $0.start, title: $0.title) } ?? [],
+            markers: (state as? RiftPlayerState)?.markers.map { TimelineMark(time: $0.time, title: $0.title) } ?? [],
             onPreviewRequest: { (state as? RiftPlayerState)?.requestTimelineThumbnail(at: $0) },
             onPreviewDismiss: { (state as? RiftPlayerState)?.hideTimelineThumbnailPreview() }
         )
@@ -765,6 +767,12 @@ struct VolumeTrack: View {
 // MARK: - Timeline Track
 
 struct TimelineTrack: View {
+/// Capítulo o marcador dibujado sobre la línea de tiempo.
+struct TimelineMark: Equatable {
+    let time: Double
+    let title: String
+}
+
     let currentTime: Double
     let duration: Double
     let thumbnailImage: CGImage?
@@ -772,6 +780,8 @@ struct TimelineTrack: View {
     let onSeek: (Double) -> Void
     let onSeekEnd: (Double) -> Void
     let onPreviewRequest: (Double) -> Void
+    var chapters: [TimelineMark] = []
+    var markers: [TimelineMark] = []
     let onPreviewDismiss: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -801,6 +811,8 @@ struct TimelineTrack: View {
                     .shadow(color: accentColor.opacity(0.45), radius: isDragging ? 5 : 3, x: 0, y: 0)
 
                 Circle()
+                timelineMarks(in: geo.size)
+
                     .fill(.white)
                     .frame(width: thumbSize, height: thumbSize)
                     .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
@@ -848,7 +860,7 @@ struct TimelineTrack: View {
                     timelinePreview
                         .position(
                             x: min(max(geo.size.width * previewProgress, 78), geo.size.width - 78),
-                            y: -58
+                            y: previewChapter == nil ? -58 : -66
                         )
                         .allowsHitTesting(false)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -890,6 +902,15 @@ struct TimelineTrack: View {
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.92))
         }
+
+            if let chapter = previewChapter {
+                Text(chapter.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 148)
+            }
         .padding(4)
         .background {
             VideoOverlayGlass(cornerRadius: 9)
@@ -898,6 +919,35 @@ struct TimelineTrack: View {
     }
 
     private func updatePreview(at x: CGFloat, width: CGFloat) {
+    /// Cortes de capítulo (muesca oscura que atraviesa la barra) y marcadores
+    /// del usuario (punto sobre la barra).
+    @ViewBuilder
+    private func timelineMarks(in size: CGSize) -> some View {
+        let visibleChapters = chapters.filter { $0.time > 0.5 && $0.time < duration - 0.5 }
+        ForEach(visibleChapters.indices, id: \.self) { (index: Int) in
+            Rectangle()
+                .fill(.black.opacity(0.6))
+                .frame(width: 2, height: trackHeight + 2)
+                .position(x: size.width * visibleChapters[index].time / duration, y: size.height / 2)
+                .allowsHitTesting(false)
+        }
+        ForEach(markers.indices, id: \.self) { (index: Int) in
+            Circle()
+                .fill(.white.opacity(0.85))
+                .frame(width: 4, height: 4)
+                .shadow(color: .black.opacity(0.4), radius: 1)
+                .position(x: size.width * min(max(markers[index].time / duration, 0), 1),
+                          y: size.height / 2 - trackHeight / 2 - 5)
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// Capítulo bajo el puntero: el último que empieza antes de ese tiempo.
+    private var previewChapter: TimelineMark? {
+        let time = previewProgress * duration
+        return chapters.last { $0.time <= time + 0.01 }.flatMap { $0.title.isEmpty ? nil : $0 }
+    }
+
         guard width > 0 else { return }
         previewProgress = min(max(Double(x / width), 0), 1)
         onPreviewRequest(previewProgress * duration)
