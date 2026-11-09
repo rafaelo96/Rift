@@ -55,6 +55,7 @@ public protocol TrackSelectionProviding: ObservableObject {
     var visualContrast: Double { get }
     var visualSaturation: Double { get }
     var visualTemperature: Double { get }
+    var visualVibrance: Double { get }
     var superResolutionMode: SuperResolutionPreference { get }
     var currentSubtitleText: String? { get }
 
@@ -65,6 +66,7 @@ public protocol TrackSelectionProviding: ObservableObject {
     func setVisualContrast(_ value: Double)
     func setVisualSaturation(_ value: Double)
     func setVisualTemperature(_ value: Double)
+    func setVisualVibrance(_ value: Double)
     func applyVisualPreset(_ preset: VisualPreset)
     func setSuperResolutionMode(_ mode: SuperResolutionPreference)
     func resetVisualEnhancements()

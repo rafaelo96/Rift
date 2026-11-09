@@ -133,6 +133,7 @@ private struct PlaybackPreferences: Codable {
     let visualContrast: Double?
     let visualSaturation: Double?
     let visualTemperature: Double?
+    let visualVibrance: Double?
 }
 
 @MainActor
@@ -245,6 +246,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var visualContrast: Double = 1
     @Published var visualSaturation: Double = 1
     @Published var visualTemperature: Double = 0
+    @Published var visualVibrance: Double = 0
     @Published var superResolutionMode: SuperResolutionPreference = .off
     /// Frame+ "fluidez máxima": sin sostén del dibujo (los cambios de pose se
     /// interpolan siempre) y deduplicación de hasta dos repetidos seguidos
@@ -1007,6 +1009,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         visualContrast = min(max(preferences.visualContrast ?? 1, 0.5), 1.5)
         visualSaturation = min(max(preferences.visualSaturation ?? 1, 0), 2)
         visualTemperature = min(max(preferences.visualTemperature ?? 0, -1), 1)
+        visualVibrance = min(max(preferences.visualVibrance ?? 0, 0), 1)
         updateVisualEnhancements()
         if let rate = preferences.playbackRate, [Float(0.5), 1, 1.5, 2].contains(rate) {
             playbackRate = rate
@@ -1042,7 +1045,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 visualBrightness: visualBrightness,
                 visualContrast: visualContrast,
                 visualSaturation: visualSaturation,
-                visualTemperature: visualTemperature
+                visualTemperature: visualTemperature,
+                visualVibrance: visualVibrance
             ),
             forKey: Self.preferencesKey
         )
@@ -2109,10 +2113,17 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         persistPlaybackPreferences()
     }
 
+    func setVisualVibrance(_ value: Double) {
+        visualVibrance = min(max(value, 0), 1)
+        updateVisualEnhancements()
+        persistPlaybackPreferences()
+    }
+
     /// Los valores del panel visual tal como están ahora.
     var visualSettings: VisualSettings {
         VisualSettings(brightness: visualBrightness, contrast: visualContrast,
-                       saturation: visualSaturation, temperature: visualTemperature)
+                       saturation: visualSaturation, temperature: visualTemperature,
+                       vibrance: visualVibrance)
     }
 
     /// Aplica un filtro prestablecido. La superresolución no cambia: es otra decisión.
@@ -2122,6 +2133,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         visualContrast = settings.contrast
         visualSaturation = settings.saturation
         visualTemperature = settings.temperature
+        visualVibrance = settings.vibrance
         updateVisualEnhancements()
         persistPlaybackPreferences()
     }
@@ -2163,6 +2175,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         visualContrast = 1
         visualSaturation = 1
         visualTemperature = 0
+        visualVibrance = 0
         superResolutionMode = .off
         visualEnhancementsEnabled = false
         applyVisualAdjustments()
@@ -2181,7 +2194,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
                 brightness: Float(visualBrightness),
                 contrast: Float(visualContrast),
                 saturation: Float(visualSaturation),
-                temperature: Float(visualTemperature)
+                temperature: Float(visualTemperature),
+                vibrance: Float(visualVibrance)
             ),
             enabled: visualEnhancementsEnabled
         )

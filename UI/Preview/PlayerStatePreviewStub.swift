@@ -44,6 +44,7 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
     var visualContrast: Double = 1
     var visualSaturation: Double = 1
     var visualTemperature: Double = 0
+    var visualVibrance: Double = 0
     var superResolutionMode: SuperResolutionPreference = .off
     var currentSubtitleText: String? = nil
 
@@ -100,11 +101,16 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
         visualTemperature = value
         updateVisualEnhancementsEnabled()
     }
+    func setVisualVibrance(_ value: Double) {
+        visualVibrance = value
+        updateVisualEnhancementsEnabled()
+    }
     func applyVisualPreset(_ preset: VisualPreset) {
         visualBrightness = preset.settings.brightness
         visualContrast = preset.settings.contrast
         visualSaturation = preset.settings.saturation
         visualTemperature = preset.settings.temperature
+        visualVibrance = preset.settings.vibrance
         updateVisualEnhancementsEnabled()
     }
     func resetVisualEnhancements() {
@@ -112,6 +118,7 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
         visualContrast = 1
         visualSaturation = 1
         visualTemperature = 0
+        visualVibrance = 0
         superResolutionMode = .off
         visualEnhancementsEnabled = false
     }
@@ -121,6 +128,7 @@ final class PlayerStatePreviewStub: PlayerStateProviding, ObservableObject {
             || abs(visualContrast - 1) > 0.0001
             || abs(visualSaturation - 1) > 0.0001
             || abs(visualTemperature) > 0.0001
+            || abs(visualVibrance) > 0.0001
             || superResolutionMode != .off
     }
 }

@@ -420,6 +420,15 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             )
 
             visualAdjustmentRow(
+                title: NSLocalizedString("Vibrance", comment: ""),
+                value: state.visualVibrance,
+                range: 0...1,
+                step: 0.01,
+                valueText: String(format: "%.0f%%", state.visualVibrance * 100),
+                onChange: state.setVisualVibrance
+            )
+
+            visualAdjustmentRow(
                 title: NSLocalizedString("Temperature", comment: ""),
                 value: state.visualTemperature,
                 range: -1...1,
@@ -437,7 +446,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             brightness: state.visualBrightness,
             contrast: state.visualContrast,
             saturation: state.visualSaturation,
-            temperature: state.visualTemperature
+            temperature: state.visualTemperature,
+            vibrance: state.visualVibrance
         ))
     }
 

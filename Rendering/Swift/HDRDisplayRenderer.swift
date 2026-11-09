@@ -14,22 +14,24 @@ public struct VisualAdjustments: Equatable, Sendable {
     public var saturation: Float
     /// −1 (fría) … +1 (cálida); 0 deja el balance de blancos intacto.
     public var temperature: Float
+    /// Realza los colores apagados y protege la piel y los ya saturados (CIVibrance).
+    public var vibrance: Float
 
     public static let neutral = VisualAdjustments(
         brightness: 0,
         contrast: 1,
         saturation: 1,
-        temperature: 0
+        temperature: 0,
+        vibrance: 0
     )
 
-    public init(brightness: Float, contrast: Float, saturation: Float, temperature: Float = 0) {
+    public init(brightness: Float, contrast: Float, saturation: Float, temperature: Float = 0, vibrance: Float = 0) {
         self.brightness = min(max(brightness, -1), 1)
         self.contrast = min(max(contrast, 0), 2)
         self.saturation = min(max(saturation, 0), 2)
         self.temperature = min(max(temperature, -1), 1)
+        self.vibrance = min(max(vibrance, -1), 1)
     }
-
-    var hasColorControls: Bool { brightness != 0 || contrast != 1 || saturation != 1 }
 
     /// Blanco de destino para CITemperatureAndTint, con la fuente en D65 (6500 K).
     /// Un destino más bajo calienta la imagen. Medido sobre gris 0.5: 4500 K y
@@ -37,6 +39,16 @@ public struct VisualAdjustments: Equatable, Sendable {
     var targetKelvin: Float {
         temperature >= 0 ? 6500 - 2000 * temperature : 6500 - 3500 * temperature
     }
+
+    /// Contraste como curva en S con el gris medio fijo: negro y blanco no se cortan.
+    var contrastCurvePoints: [CIVector] {
+        let k = CGFloat(0.25 * (contrast - 1))
+        return [CIVector(x: 0, y: 0), CIVector(x: 0.25, y: 0.25 - k), CIVector(x: 0.5, y: 0.5),
+                CIVector(x: 0.75, y: 0.75 + k), CIVector(x: 1, y: 1)]
+    }
+
+    /// Brillo como gamma de medios tonos (+0.12 → potencia 0.85): negro y blanco quedan fijos.
+    var gammaPower: Float { powf(2, -2 * brightness) }
 }
 
 public final class HDRDisplayRenderer {
@@ -112,13 +124,32 @@ public final class HDRDisplayRenderer {
             return
         }
 
+        // La capa trabaja en luz lineal. CIColorControls aplica brillo y contraste ahí
+        // (contraste 1.1 mandaba a negro todo lo que estaba por debajo del 20 % de gris;
+        // brillo +0.06 subía el negro a 82/255), así que solo se usa para la saturación.
+        // CIToneCurve y CIGammaAdjust ya operan en gamma sRGB por su cuenta.
         var filters: [CIFilter] = []
-        if adjustments.hasColorControls, let colorControls = CIFilter(name: "CIColorControls") {
-            colorControls.name = "rift.visual.color-controls"
-            colorControls.setValue(adjustments.brightness, forKey: kCIInputBrightnessKey)
-            colorControls.setValue(adjustments.contrast, forKey: kCIInputContrastKey)
+        if adjustments.contrast != 1, let curve = CIFilter(name: "CIToneCurve") {
+            curve.name = "rift.visual.contrast"
+            for (index, point) in adjustments.contrastCurvePoints.enumerated() {
+                curve.setValue(point, forKey: "inputPoint\(index)")
+            }
+            filters.append(curve)
+        }
+        if adjustments.brightness != 0, let gamma = CIFilter(name: "CIGammaAdjust") {
+            gamma.name = "rift.visual.brightness"
+            gamma.setValue(adjustments.gammaPower, forKey: "inputPower")
+            filters.append(gamma)
+        }
+        if adjustments.saturation != 1, let colorControls = CIFilter(name: "CIColorControls") {
+            colorControls.name = "rift.visual.saturation"
             colorControls.setValue(adjustments.saturation, forKey: kCIInputSaturationKey)
             filters.append(colorControls)
+        }
+        if adjustments.vibrance != 0, let vibrance = CIFilter(name: "CIVibrance") {
+            vibrance.name = "rift.visual.vibrance"
+            vibrance.setValue(adjustments.vibrance, forKey: "inputAmount")
+            filters.append(vibrance)
         }
         if adjustments.temperature != 0, let temperature = CIFilter(name: "CITemperatureAndTint") {
             temperature.name = "rift.visual.temperature"

@@ -103,18 +103,22 @@ public enum SuperResolutionPreference: String, CaseIterable, Sendable, Codable {
 
 // MARK: - Visual presets
 
-/// Valores del panel Visual. La temperatura va de −1 (fría) a +1 (cálida).
+/// Valores del panel Visual. La temperatura va de −1 (fría) a +1 (cálida); la
+/// vibrancia, de 0 a 1.
 public struct VisualSettings: Equatable, Sendable {
     public var brightness: Double
     public var contrast: Double
     public var saturation: Double
     public var temperature: Double
+    public var vibrance: Double
 
-    public init(brightness: Double = 0, contrast: Double = 1, saturation: Double = 1, temperature: Double = 0) {
+    public init(brightness: Double = 0, contrast: Double = 1, saturation: Double = 1,
+                temperature: Double = 0, vibrance: Double = 0) {
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
         self.temperature = temperature
+        self.vibrance = vibrance
     }
 
     public static let neutral = VisualSettings()
@@ -126,25 +130,28 @@ public struct VisualSettings: Equatable, Sendable {
             && abs(contrast - other.contrast) < 0.0001
             && abs(saturation - other.saturation) < 0.0001
             && abs(temperature - other.temperature) < 0.0001
+            && abs(vibrance - other.vibrance) < 0.0001
     }
 }
 
-/// Filtros prestablecidos: combinaciones fijas de los cuatro controles. No se
+/// Filtros prestablecidos: combinaciones fijas de los cinco controles. No se
 /// guarda cuál está activo; se deduce de los valores (si no coincide ninguno,
-/// el panel muestra "Personalizado").
+/// el panel muestra "Personalizado"). Valores basados en práctica de colorista:
+/// contraste como curva en S, brillo en medios tonos, vibrancia en vez de
+/// saturación para no forzar la piel, y Cine algo más cálido.
 public enum VisualPreset: String, CaseIterable, Sendable, Codable {
     case natural, vivid, cinema, soft, bright, warm, cool, mono
 
     public var settings: VisualSettings {
         switch self {
         case .natural: return .neutral
-        case .vivid: return VisualSettings(contrast: 1.10, saturation: 1.30)
-        case .cinema: return VisualSettings(brightness: -0.02, contrast: 1.08, saturation: 0.85, temperature: 0.10)
-        case .soft: return VisualSettings(brightness: 0.02, contrast: 0.90, saturation: 0.90)
-        case .bright: return VisualSettings(brightness: 0.06, contrast: 0.95, saturation: 1.05)
+        case .vivid: return VisualSettings(contrast: 1.12, vibrance: 0.30)
+        case .cinema: return VisualSettings(brightness: -0.03, contrast: 1.10, saturation: 0.88, temperature: 0.15)
+        case .soft: return VisualSettings(brightness: 0.03, contrast: 0.88, saturation: 0.92)
+        case .bright: return VisualSettings(brightness: 0.12, saturation: 1.05)
         case .warm: return VisualSettings(saturation: 1.05, temperature: 0.40)
         case .cool: return VisualSettings(temperature: -0.40)
-        case .mono: return VisualSettings(contrast: 1.10, saturation: 0)
+        case .mono: return VisualSettings(contrast: 1.15, saturation: 0)
         }
     }
 
