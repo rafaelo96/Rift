@@ -346,8 +346,12 @@ public final class MotionCompensator {
             }
             var buffers: [CVPixelBuffer]=[],nativeMS=0.0
             do {
-                _=try me.runPairBatched(cur: a,ref: b); let forward=me.downloadMV(level: 0)
-                _=try reverse.runPairBatched(cur: b,ref: a); let backward=reverse.downloadMV(level: 0)
+                // Ida y vuelta son independientes y cada motor tiene su propia cola:
+                // se envían juntas y se espera una sola vez.
+                let forwardCommand=try me.commitPairBatched(cur: a,ref: b)
+                let backwardCommand=try reverse.commitPairBatched(cur: b,ref: a)
+                try me.waitPairBatched(forwardCommand); try reverse.waitPairBatched(backwardCommand)
+                let forward=me.downloadMV(level: 0),backward=reverse.downloadMV(level: 0)
                 // Corte de escena: no hay correspondencia que interpolar. Se repite el
                 // frame fuente más cercano y se descarta la historia del plano anterior.
                 let cutGrid=me.grids[1]

@@ -356,6 +356,28 @@ public final class MotionSearchEngine {
         return PairTimes(stages: stages,uploadMS: result.uploadMS)
     }
 
+    /// Como `runPairBatched`, pero sin esperar a la GPU: envía el lote y lo
+    /// devuelve para que otro motor (con su propia cola) pueda trabajar a la vez.
+    /// Devuelve nil si este motor no admite lotes; entonces ya terminó en línea.
+    /// Leer resultados solo después de `waitPairBatched`.
+    public func commitPairBatched(cur: Data,ref: Data) throws -> MTLCommandBuffer? {
+        guard let first=spec.first,cur.count==first.width*first.height*2,ref.count==cur.count else { throw EngineError.pipeline("Search batch input geometry mismatch") }
+        guard temporalGatePx==0 && batchSubmissions else { _=runPair(cur: cur,ref: ref); return nil }
+        guard batchCommand==nil,let command=queue.makeCommandBuffer() else { throw EngineError.pipeline("Search batch allocation failed") }
+        batchCommand=command; batchEncodingFailed=false
+        defer { batchCommand=nil }
+        _=runPair(cur: cur,ref: ref)
+        guard !batchEncodingFailed else { throw EngineError.pipeline("Search batch encoding failed") }
+        command.commit()
+        return command
+    }
+
+    public func waitPairBatched(_ command: MTLCommandBuffer?) throws {
+        guard let command else { return }
+        command.waitUntilCompleted()
+        guard command.status == .completed else { throw EngineError.pipeline(command.error?.localizedDescription ?? "Search batch GPU failure") }
+    }
+
     private func makeEncoder(_ command: MTLCommandBuffer) -> MTLComputeCommandEncoder? {
         let encoder=command.makeComputeCommandEncoder()
         if batchCommand != nil && encoder == nil { batchEncodingFailed=true }
