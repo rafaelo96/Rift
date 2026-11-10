@@ -651,26 +651,6 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 }
             }
 
-            Section {
-                Menu(NSLocalizedString("Audio Sync", comment: ""), systemImage: "waveform") {
-                    ForEach(RiftCommands.audioSyncOffsets, id: \.self) { offset in
-                        Toggle(RiftCommands.audioSyncTitle(for: offset), isOn: Binding(
-                            get: { abs(rift.audioSyncOffset - offset) < 0.001 },
-                            set: { _ in rift.setAudioSyncOffset(offset) }
-                        ))
-                    }
-                }
-                Button(NSLocalizedString("Load Subtitle File…", comment: ""), systemImage: "captions.bubble") {
-                    rift.openExternalSubtitles()
-                }
-                if let subtitleName = rift.externalSubtitleName {
-                    Button("\(NSLocalizedString("Remove External Subtitles", comment: "")) (\(subtitleName))",
-                           systemImage: "captions.bubble.fill") {
-                        rift.removeExternalSubtitles()
-                    }
-                }
-            }
-
             Button(NSLocalizedString("Technical Info", comment: ""), systemImage: "info.circle") {
                 showTechnicalInfo = true
             }

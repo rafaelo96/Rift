@@ -242,11 +242,14 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             speedButton
             visualButton
 
-            if state.audioTracks.count > 1 {
+            // Con una sola pista el botón sigue haciendo falta: lleva la sincronía.
+            if !state.audioTracks.isEmpty {
                 audioTrackButton
             }
 
-            if state.availableTracks.filter({ $0.kind == .subtitle }).count > 0 {
+            // Siempre visible con un video abierto: sin subtítulos incrustados
+            // es justo cuando hay que cargar un archivo.
+            if state.hasVideo {
                 subtitleButton
             }
         }
@@ -501,15 +504,26 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
     }
 
     private var audioTrackButton: some View {
-        Menu {
-            ForEach(state.audioTracks) { track in
-                Button {
-                    state.selectAudioTrack(track.id)
-                } label: {
-                    if track.id == state.selectedAudioTrackIndex {
-                        Label(track.label, systemImage: "checkmark")
-                    } else {
-                        Text(track.label)
+        let rift = state as? RiftPlayerState
+
+        return Menu {
+            Section {
+                ForEach(state.audioTracks) { track in
+                    Toggle(track.label, isOn: Binding(
+                        get: { track.id == state.selectedAudioTrackIndex },
+                        set: { _ in state.selectAudioTrack(track.id) }
+                    ))
+                }
+            }
+            if let rift {
+                Section {
+                    Menu(NSLocalizedString("Audio Sync", comment: ""), systemImage: "waveform") {
+                        ForEach(RiftCommands.audioSyncOffsets, id: \.self) { offset in
+                            Toggle(RiftCommands.audioSyncTitle(for: offset), isOn: Binding(
+                                get: { abs(rift.audioSyncOffset - offset) < 0.001 },
+                                set: { _ in rift.setAudioSyncOffset(offset) }
+                            ))
+                        }
                     }
                 }
             }
@@ -517,7 +531,8 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             GlassPill(
                 title: NSLocalizedString("Audio", comment: ""),
                 systemName: "music.note.list",
-                isActive: state.selectedAudioTrackIndex != (state.audioTracks.first?.id ?? 0),
+                isActive: state.selectedAudioTrackIndex != (state.audioTracks.first?.id ?? 0)
+                    || (rift?.audioSyncOffset ?? 0) != 0,
                 hint: NSLocalizedString("Audio Track", comment: "")
             )
         }
@@ -528,32 +543,57 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
 
     private var subtitleButton: some View {
         let subtitleTracks = state.availableTracks.filter { $0.kind == .subtitle }
+        let rift = state as? RiftPlayerState
+        let externalName = rift?.externalSubtitleName
+        let isShowingSubtitles = state.selectedSubtitleTrack != nil || externalName != nil
 
         return Menu {
-            Button {
-                state.selectPipelineTrack(nil)
-            } label: {
-                Label(NSLocalizedString("None", comment: ""), systemImage: state.selectedSubtitleTrack == nil ? "checkmark" : "captions.bubble")
+            Section {
+                Toggle(NSLocalizedString("None", comment: ""), isOn: Binding(
+                    get: { !isShowingSubtitles },
+                    set: { _ in state.selectPipelineTrack(nil) }
+                ))
+                ForEach(subtitleTracks) { track in
+                    Toggle(track.label, isOn: Binding(
+                        get: { state.selectedSubtitleTrack == track },
+                        set: { _ in state.selectPipelineTrack(track) }
+                    ))
+                }
+                if let externalName {
+                    // El archivo cargado es una opción más de la lista, ya elegida.
+                    Toggle(externalName, isOn: .constant(true))
+                }
             }
-
-            Divider()
-
-            ForEach(subtitleTracks) { track in
-                Button {
-                    state.selectPipelineTrack(track)
-                } label: {
-                    if state.selectedSubtitleTrack == track {
-                        Label(track.label, systemImage: "checkmark")
-                    } else {
-                        Text(track.label)
+            if let rift {
+                Section {
+                    Button(NSLocalizedString("Load Subtitle File…", comment: ""), systemImage: "doc.badge.plus") {
+                        rift.openExternalSubtitles()
                     }
+                    if externalName != nil {
+                        Button(NSLocalizedString("Remove External Subtitles", comment: ""), systemImage: "minus.circle") {
+                            rift.removeExternalSubtitles()
+                        }
+                    }
+                }
+                Section {
+                    Menu(NSLocalizedString("Subtitle Timing", comment: ""), systemImage: "timer") {
+                        Text(rift.subtitleDelayDescription)
+                        Divider()
+                        Button(NSLocalizedString("Subtitles Earlier", comment: "")) { rift.shiftSubtitleDelay(by: -0.1) }
+                        Button(NSLocalizedString("Subtitles Later", comment: "")) { rift.shiftSubtitleDelay(by: 0.1) }
+                        Button(NSLocalizedString("Reset Subtitle Timing", comment: "")) {
+                            rift.shiftSubtitleDelay(by: -rift.subtitleDelay)
+                        }
+                        .disabled(rift.subtitleDelay == 0)
+                    }
+                    .disabled(!isShowingSubtitles)
                 }
             }
         } label: {
             GlassPill(
                 title: NSLocalizedString("Subs", comment: ""),
                 systemName: "captions.bubble",
-                isActive: state.selectedSubtitleTrack != nil,
+                isActive: isShowingSubtitles,
                 hint: NSLocalizedString("Subtitles", comment: "")
             )
         }

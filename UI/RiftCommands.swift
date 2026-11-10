@@ -36,7 +36,7 @@ struct RiftCommands: Commands {
     @ObservedObject var state: RiftPlayerState
     @ObservedObject var focus: PlayerWindowFocus
 
-    private static let rates: [Float] = [1, 1.5, 2, 0.5]
+    private static let rates: [Float] = [0.5, 1, 1.5, 2]
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -79,6 +79,25 @@ struct RiftCommands: Commands {
             Button("Next Video") { state.playNextPlaylistItem() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
                 .disabled(state.nextPlaylistItem == nil)
+
+            Divider()
+            Button("Go to Time…") { GoToTimePrompt.run(state: state) }
+                .keyboardShortcut("j", modifiers: .command)
+                .disabled(!state.hasVideo)
+            Menu("Chapters") {
+                ForEach(Array(state.chapters.enumerated()), id: \.offset) { index, chapter in
+                    Button("\(index + 1). \(chapter.title)  \(state.formattedTime(chapter.start))") {
+                        state.seek(to: chapter.start)
+                    }
+                }
+            }
+            .disabled(state.chapters.isEmpty)
+            Menu("Markers") {
+                ForEach(state.markers) { marker in
+                    Button(marker.title) { state.seek(to: marker.time) }
+                }
+            }
+            .disabled(state.markers.isEmpty)
             Button("Add Marker") { state.addMarker() }
                 .keyboardShortcut("b", modifiers: .command)
                 .disabled(!state.hasVideo)
@@ -112,7 +131,9 @@ struct RiftCommands: Commands {
                 }
             }
 
-            Divider()
+        }
+
+        CommandMenu("Video") {
             Toggle("Frame+", isOn: Binding(
                 get: { state.isFramePlusRequested },
                 set: { state.setInterpolationMode($0 ? .enabled : .disabled) }
@@ -127,6 +148,13 @@ struct RiftCommands: Commands {
                 set: { state.setSuperResolutionMode($0 ? .strong : .off) }
             ))
             .keyboardShortcut("u", modifiers: [.command, .option])
+
+            Divider()
+            Button("Toggle Fit / Fill") {
+                NotificationCenter.default.post(name: .riftTogglePresentation, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .option])
+            .disabled(!state.hasVideo)
 
             Divider()
             Button(state.isPictureInPictureActive ? "Exit Picture in Picture" : "Enter Picture in Picture") {
@@ -165,7 +193,7 @@ struct RiftCommands: Commands {
         CommandMenu("Subtitles") {
             let subtitleTracks = state.availableTracks.filter { $0.kind == .subtitle }
             Toggle("Subtitles Off", isOn: Binding(
-                get: { state.selectedSubtitleTrack == nil },
+                get: { state.selectedSubtitleTrack == nil && state.externalSubtitleName == nil },
                 set: { _ in state.selectPipelineTrack(nil) }
             ))
             .disabled(!state.hasVideo)
@@ -175,6 +203,9 @@ struct RiftCommands: Commands {
                     set: { _ in state.selectPipelineTrack(track) }
                 ))
             }
+            if let name = state.externalSubtitleName {
+                Toggle(name, isOn: .constant(true))
+            }
             Divider()
             Button("Load Subtitle File…") { state.openExternalSubtitles() }
                 .disabled(!state.hasVideo)
@@ -182,13 +213,13 @@ struct RiftCommands: Commands {
                 Button("Remove External Subtitles") { state.removeExternalSubtitles() }
             }
             Divider()
-            Button("Subtitles Earlier") { shiftSubtitles(by: -0.1) }
+            Button("Subtitles Earlier") { state.shiftSubtitleDelay(by: -0.1) }
                 .keyboardShortcut("z", modifiers: [])
                 .disabled(!(state.hasVideo && focus.isPlayerKey))
-            Button("Subtitles Later") { shiftSubtitles(by: 0.1) }
+            Button("Subtitles Later") { state.shiftSubtitleDelay(by: 0.1) }
                 .keyboardShortcut("x", modifiers: [])
                 .disabled(!(state.hasVideo && focus.isPlayerKey))
-            Button("Reset Subtitle Timing") { shiftSubtitles(by: -state.subtitleDelay) }
+            Button("Reset Subtitle Timing") { state.shiftSubtitleDelay(by: -state.subtitleDelay) }
                 .disabled(state.subtitleDelay == 0)
         }
 
@@ -203,14 +234,6 @@ struct RiftCommands: Commands {
             }
             .keyboardShortcut("l", modifiers: [])
             .disabled(!(state.hasVideo && focus.isPlayerKey))
-            Button("Toggle Fit / Fill") {
-                NotificationCenter.default.post(name: .riftTogglePresentation, object: nil)
-            }
-            .keyboardShortcut("f", modifiers: [.command, .option])
-            .disabled(!state.hasVideo)
-            Button("Go to Time…") { GoToTimePrompt.run(state: state) }
-                .keyboardShortcut("j", modifiers: .command)
-                .disabled(!state.hasVideo)
             Button("Technical Info") {
                 NotificationCenter.default.post(name: .riftShowTechnicalInfo, object: nil)
             }
@@ -237,16 +260,6 @@ struct RiftCommands: Commands {
         return String(format: "%@%.0f ms", offset > 0 ? "+" : "−", abs(offset) * 1_000)
     }
 
-    private func shiftSubtitles(by delta: Double) {
-        let value = ((state.subtitleDelay + delta) * 10).rounded() / 10
-        state.subtitleDelay = min(max(value, -10), 10)
-        let text = state.subtitleDelay == 0
-            ? NSLocalizedString("Subtitles in sync", comment: "")
-            : String(format: NSLocalizedString("Subtitles %@%.1f s", comment: ""),
-                     state.subtitleDelay > 0 ? "+" : "−", abs(state.subtitleDelay))
-        state.feedback.show(FramePlusNotice(symbol: "captions.bubble", title: text, emphasized: false))
-    }
-
     private func changeVolume(by delta: Double) {
         state.setVolume(state.volume + delta)
         state.showFeedback(.volume(state.volume))
@@ -254,5 +267,23 @@ struct RiftCommands: Commands {
 
     private func rateTitle(_ rate: Float) -> String {
         rate == 1 ? String(localized: "Normal") : rate.formatted(.number.precision(.fractionLength(0...1))) + "×"
+    }
+}
+
+extension RiftPlayerState {
+    /// Texto del desfase actual de los subtítulos ("Subtítulos +0.3 s").
+    var subtitleDelayDescription: String {
+        subtitleDelay == 0
+            ? NSLocalizedString("Subtitles in sync", comment: "")
+            : String(format: NSLocalizedString("Subtitles %@%.1f s", comment: ""),
+                     subtitleDelay > 0 ? "+" : "−", abs(subtitleDelay))
+    }
+
+    /// Mueve los subtítulos en pasos de 0.1 s (±10 s) y avisa en pantalla.
+    /// Lo usan la barra de menús y el botón de subtítulos.
+    func shiftSubtitleDelay(by delta: Double) {
+        let value = ((subtitleDelay + delta) * 10).rounded() / 10
+        subtitleDelay = min(max(value, -10), 10)
+        feedback.show(FramePlusNotice(symbol: "captions.bubble", title: subtitleDelayDescription, emphasized: false))
     }
 }
