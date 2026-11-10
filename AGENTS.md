@@ -269,7 +269,12 @@ desarrollo (M4 mini) se generaliza a otros chips sin esta calibración
 en vivo. La calibración de arranque no captura variación térmica
 (throttling en sesiones largas de 4K sostenido) — limitación conocida
 a resolver en `Core/Scheduler` si el costo real observado se desvía
-mucho del calibrado.
+mucho del calibrado. Medido en Apple M4 (Mac mini, 2026-11-10): 30 min
+seguidos de 4K HDR (Avatar 3832×1600) con Frame+ y Fluidez máxima se
+mantienen a 60 fps, 3 frames perdidos de 107 906 (todos en los primeros
+5 min), plano ligero todo el tramo, memoria estable (478 → 502 MB) y sin
+aviso térmico de macOS. No dice nada de portátiles sin ventilador
+(MacBook Air), que es donde el throttling es esperable.
 
 ## Validación pendiente: HDR en pantalla real
 Rendering (HDRDisplayRenderer) está implementado según la documentación de Apple (wantsExtendedDynamicRangeContent, propagación correcta de CVBufferAttachments HDR10 BT.2020/PQ desde Decode y desde el buffer interpolado de Interpolation tras el fix en WarpEngine.swift), pero NO se ha podido verificar visualmente que el HDR se muestra correctamente en una pantalla real, porque el hardware de desarrollo (Mac mini M4) no tiene pantalla EDR (maxEDR=1.0, SDR only).
