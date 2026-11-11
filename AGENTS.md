@@ -234,7 +234,13 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   reconocer el hilo principal como MainActor y SwiftUI se cierra en el
   siguiente menú o movimiento del puntero (3 de 3). "Igual que el sistema" se
   aplica con el UID de la salida actual del sistema y se actualiza cuando
-  cambia. Sin probar con una TV real todavía.
+  cambia. Probado con una TV LG webOS (UQ8050PSB) por AirPlay, Mac mini M4,
+  Avatar 4K HDR con Frame+ (2026-11-10): duplicando, 60 fps y 4 frames
+  perdidos de 3511 en 60 s, audio por la TV y sincronizado (visto por el
+  usuario); como pantalla extendida, ida y vuelta funcionan y en la TV se
+  pierde 1 frame en ~55 s (unos 10 durante los traslados). La TV llega a
+  1920×1080 y sin EDR, así que el HDR se ve como SDR. Un traslado pedido
+  durante la animación de pantalla completa se aplica al terminar.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

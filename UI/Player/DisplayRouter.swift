@@ -23,6 +23,14 @@ final class DisplayRouter: ObservableObject {
     /// pantalla principal se sale de ella.
     private var enteredFullScreenForMove = false
     private var observers: [NSObjectProtocol] = []
+    /// La ventana está entrando o saliendo de pantalla completa. AppKit ignora
+    /// `toggleFullScreen` en ese momento, así que un traslado pedido entonces
+    /// se guarda y se aplica al terminar la animación.
+    private var isInFullScreenTransition = false
+    private var pendingTarget: Screen?
+    /// Cuenta los traslados pedidos: un paso diferido de uno anterior no se
+    /// aplica si mientras tanto se pidió otro.
+    private var moveGeneration = 0
 
     init() {
         let center = NotificationCenter.default
@@ -37,6 +45,22 @@ final class DisplayRouter: ObservableObject {
                 self?.refresh()
             }
         })
+        for (name, transitioning) in [(NSWindow.willEnterFullScreenNotification, true),
+                                      (NSWindow.willExitFullScreenNotification, true),
+                                      (NSWindow.didEnterFullScreenNotification, false),
+                                      (NSWindow.didExitFullScreenNotification, false)] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, AppDelegate.isPlayerWindow(note.object as? NSWindow) else { return }
+                    self.isInFullScreenTransition = transitioning
+                    if !transitioning, let target = self.pendingTarget {
+                        self.pendingTarget = nil
+                        // Tras el aviso de fin, AppKit todavía coloca la ventana.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { self.move(to: target) }
+                    }
+                }
+            })
+        }
         refresh()
     }
 
@@ -56,6 +80,12 @@ final class DisplayRouter: ObservableObject {
     func move(to target: Screen) {
         guard let window = AppDelegate.playerWindow,
               let screen = NSScreen.screens.first(where: { $0.displayID == target.id }) else { return }
+        guard !isInFullScreenTransition else {
+            pendingTarget = target
+            return
+        }
+        moveGeneration += 1
+        let generation = moveGeneration
         if window.screen?.displayID == target.id {
             if !target.isMain, !window.styleMask.contains(.fullScreen) {
                 window.toggleFullScreen(nil)
@@ -64,7 +94,7 @@ final class DisplayRouter: ObservableObject {
             return
         }
         let finish = { [weak self] in
-            guard let self else { return }
+            guard let self, generation == self.moveGeneration else { return }
             Self.place(window, on: screen)
             if target.isMain {
                 self.enteredFullScreenForMove = false
@@ -72,6 +102,7 @@ final class DisplayRouter: ObservableObject {
                 // Cambiar de pantalla y pasar a pantalla completa en el mismo
                 // ciclo deja la animación en la pantalla anterior.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    guard generation == self.moveGeneration else { return }
                     if !window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
                     self.enteredFullScreenForMove = true
                 }
@@ -85,7 +116,9 @@ final class DisplayRouter: ObservableObject {
                 forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main
             ) { _ in
                 if let token { NotificationCenter.default.removeObserver(token) }
-                MainActor.assumeIsolated { finish() }
+                // Al terminar la salida, AppKit todavía devuelve la ventana a su
+                // marco anterior (en la pantalla de origen) y pisaría el nuevo.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { finish() }
             }
             window.toggleFullScreen(nil)
         } else {
