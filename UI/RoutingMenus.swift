@@ -7,7 +7,9 @@ struct ScreenMenuItems: View {
 
     var body: some View {
         let displays = state.displays
-        if displays.hasExternalScreen {
+        // Con una sola pantalla también se lista: al duplicar en una TV AirPlay,
+        // macOS la presenta como la única pantalla y así se ve que ya está conectada.
+        if !displays.screens.isEmpty {
             ForEach(displays.screens) { screen in
                 Toggle(screen.name, isOn: Binding(
                     get: { displays.currentScreenID == screen.id },

@@ -40,8 +40,6 @@ final class DisplayRouter: ObservableObject {
         refresh()
     }
 
-    var hasExternalScreen: Bool { screens.count > 1 }
-
     var currentScreen: Screen? { screens.first { $0.id == currentScreenID } }
 
     func refresh() {
