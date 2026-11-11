@@ -61,12 +61,20 @@ func checkDrawingHold() throws {
         }}
         return s/n
     }
-    let heldInside=mad(held,src,inside:true),plainInside=mad(plain,src,inside:true),outsideChange=mad(held,plain,inside:false)
+    // El redibujo sostenido se mueve con el paneo que lo rodea (12 px entre
+    // fuentes → 6 px en t = 0.5): se busca el desplazamiento de I0 que mejor lo
+    // explica. Sin seguimiento (RIFT_HOLD_FOLLOW=0) debe ser 0.
+    let follows=ProcessInfo.processInfo.environment["RIFT_HOLD_FOLLOW"] != "0"
+    func shifted(_ d: Int) -> [UInt16] {(0..<h).flatMap {y in (0..<w).map {x in src[y*w+max(0,min(w-1,x+d))]}}}
+    let best=(-12...12).map {d in (d,mad(held,shifted(d),inside:true))}.min {$0.1<$1.1}!
+    let heldInside=best.1,plainInside=mad(plain,shifted(best.0),inside:true),outsideChange=mad(held,plain,inside:false)
+    print("DRAWING HOLD: held region matches I0 shifted \(best.0) px")
+    guard follows ? (4...8).contains(abs(best.0)) : best.0==0 else {print("DRAWING HOLD CHECK FAILED: held region does not follow the pan");exit(3)}
     print("DRAWING HOLD: inside |held-I0| \(String(format:"%.2f",heldInside)) vs plain \(String(format:"%.2f",plainInside)); outside |held-plain| \(String(format:"%.3f",outsideChange))")
     // Sin la siembra por unmatched ("fluidez máxima") el redibujo se sostiene
     // igual por la siembra de daño; con RIFT_HOLD_DAMAGE=0 queda despedazado.
     let damageSeed=ProcessInfo.processInfo.environment["RIFT_HOLD_DAMAGE"] != "0"
-    guard heldInside<1 && (damageSeed ? plainInside<5 : plainInside>10) else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
+    guard heldInside<(follows ? 6 : 1) && (damageSeed ? plainInside<(follows ? 6 : 5) : plainInside>40) else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
     guard outsideChange<0.5 else {print("DRAWING HOLD CHECK FAILED: hold leaked into background");exit(3)}
     print("DRAWING HOLD: rigid pan byte-identical; redrawn region held; background untouched")
 }

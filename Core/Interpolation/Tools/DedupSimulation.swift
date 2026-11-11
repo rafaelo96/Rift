@@ -45,8 +45,10 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         return result
     }
     // MV_DEDUP_MODES="name:cap:hold|nohold,…" (default: today vs maximum fluidity).
-    let modes=(ProcessInfo.processInfo.environment["MV_DEDUP_MODES"] ?? "current:0:hold,dedup:1:hold,max:2:nohold").split(separator:",").map {item -> (String,Int,Bool) in
-        let parts=item.split(separator:":").map(String.init);return (parts[0],Int(parts[1])!,parts[2]=="hold")
+    // hold: sostén completo. damage: solo la siembra por daño (fluidez máxima).
+    // nohold: sin sostén (lo que hacía fluidez máxima antes de la siembra por daño).
+    let modes=(ProcessInfo.processInfo.environment["MV_DEDUP_MODES"] ?? "current:0:hold,dedup:1:hold,max:2:damage").split(separator:",").map {item -> (String,Int,String) in
+        let parts=item.split(separator:":").map(String.init);return (parts[0],Int(parts[1])!,parts[2])
     }
     let spec=[LevelSpec(width:mw,height:mh,blockSize:16,searchHalfPel:16,halfPelRefine:false,inheritFactor:1)]
     let probe=try MotionSearchEngine(msl:motionShadersMSL,spec:spec,lambdaPx:1,smoothL0:true,gateL0:true,temporalGatePx:0)
@@ -61,8 +63,8 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         let removed=cap==0 ? Set<Int>():dropped(cap:cap)
         droppedByMode[mode]=removed.sorted()
         let kept=(0..<buffers.count).filter {!removed.contains($0)}
-        setenv("RIFT_DRAWING_HOLD",hold ? "1":"0",1)
-        let engine=try MotionCompensator(config:config)
+        setenv("RIFT_DRAWING_HOLD",hold=="nohold" ? "0":"1",1)
+        let engine=try MotionCompensator(config:hold=="damage" ? InterpolationConfig(workWidth:config.workWidth,workHeight:config.workHeight,usesDrawingHold:false) : config)
         unsetenv("RIFT_DRAWING_HOLD")
         let step=1.0/60,epoch=pts[0]
         var previous: [UInt16]?,regionalFrozen=[Double](),motions=[Double](),changes=[Double](),pairCosts=[Double](),incomplete=0,farValues=[Double](),costMS=0.0,pairs=0,synthesized=0

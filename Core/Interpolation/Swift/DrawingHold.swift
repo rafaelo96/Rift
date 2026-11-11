@@ -25,6 +25,15 @@ import Metal
 // sostén anterior 0.183 → 0.116 %*, 0.167 → 0.027 %, 0.658 → 0.19 %
 // (*tramo de 14 pares de 9:50: 0.49 → 0.12 %, peor par 1.9 → 0.34 %).
 // RIFT_HOLD_DAMAGE=0 la quita (comportamiento anterior).
+//
+// La zona sostenida no se queda quieta: se mueve con su entorno. Los vectores
+// de los píxeles fiables fuera de toda zona sostenida se promedian a varias
+// escalas (mipmaps) y con ese vector se desplaza el dibujo fuente más cercano.
+// Un solo dibujo trasladado no puede despedazarse, y un personaje que cambia de
+// pose durante un paneo sigue el paneo en vez de congelarse. Simulación a
+// 60 fps (MV_DEDUP_SIM, E07, tramo de acción): zona en movimiento congelada
+// 41 % → 25 % con los umbrales normales y 18 % con los de fluidez máxima (sin
+// sostén, 8 %). RIFT_HOLD_FOLLOW=0 vuelve al sostén quieto.
 
 final class DrawingHold {
     static let radius = 16
@@ -35,6 +44,11 @@ final class DrawingHold {
     private let seeds: MTLTexture
     private let horizontal: MTLTexture
     private let mask: MTLTexture
+    /// Campo de movimiento fiable (vectores × peso, y peso) con mipmaps: su
+    /// promedio a varias escalas da el movimiento de lo que rodea a cada zona.
+    private let field: MTLTexture
+    private let fieldWeight: MTLTexture
+    private let movesWithSurroundings: Bool
     private let width: Int, height: Int
     /// x: 1 = siembra por falta de correspondencia; y: 1 = siembra por daño.
     private var seedKinds: SIMD2<Float>
@@ -56,10 +70,26 @@ final class DrawingHold {
             throw MotionSearchEngine.EngineError.pipeline("Drawing hold texture allocation failed")
         }
         self.seeds = seeds; self.horizontal = horizontal; self.mask = mask
-        let mismatch = Float(env["RIFT_HOLD_MISMATCH"] ?? "") ?? 0.04
-        let jump = Float(env["RIFT_HOLD_JUMP"] ?? "") ?? 2
-        let damageLow = Float(env["RIFT_HOLD_DAMAGE_LOW"] ?? "") ?? 0.05
-        let damageHigh = Float(env["RIFT_HOLD_DAMAGE_HIGH"] ?? "") ?? 0.12
+        let fieldDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: width, height: height, mipmapped: true)
+        fieldDescriptor.storageMode = .private
+        fieldDescriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
+        let weightDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r16Float, width: width, height: height, mipmapped: true)
+        weightDescriptor.storageMode = .private
+        weightDescriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
+        guard let field = device.makeTexture(descriptor: fieldDescriptor),
+              let fieldWeight = device.makeTexture(descriptor: weightDescriptor) else {
+            throw MotionSearchEngine.EngineError.pipeline("Drawing hold field allocation failed")
+        }
+        self.field = field; self.fieldWeight = fieldWeight
+        movesWithSurroundings = env["RIFT_HOLD_FOLLOW"] != "0"
+        // Sin la siembra por falta de correspondencia ("fluidez máxima") los
+        // umbrales de daño son más altos: se sostiene menos y queda algún
+        // defecto pequeño a cambio de más movimiento.
+        let gentle = !unmatchedSeed
+        let mismatch = Float(env["RIFT_HOLD_MISMATCH"] ?? "") ?? (gentle ? 0.05 : 0.04)
+        let jump = Float(env["RIFT_HOLD_JUMP"] ?? "") ?? (gentle ? 2.5 : 2)
+        let damageLow = Float(env["RIFT_HOLD_DAMAGE_LOW"] ?? "") ?? (gentle ? 0.08 : 0.05)
+        let damageHigh = Float(env["RIFT_HOLD_DAMAGE_HIGH"] ?? "") ?? (gentle ? 0.18 : 0.12)
         let damageRadius = Int(env["RIFT_HOLD_DAMAGE_RADIUS"] ?? "") ?? DrawingHold.radius
         let source = """
         #include <metal_stdlib>
@@ -110,19 +140,43 @@ final class DrawingHold {
             float2 density=sum/n;
             mask.write(max(smoothstep(0.05f,0.15f,density.x),smoothstep(DAMAGE_LOW,DAMAGE_HIGH,density.y)),p);
         }
-        kernel void holdApply(texture2d<float,access::read> mask [[texture(0)]],texture2d<float,access::read_write> coordinates [[texture(1)]],texture2d<float,access::read_write> blend [[texture(2)]],texture2d<uint,access::read_write> output [[texture(3)]],texture2d<float,access::read> first [[texture(4)]],texture2d<float,access::read> last [[texture(5)]],constant float &t [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
+        // Vectores de los píxeles fiables, × peso. Dentro de una zona sostenida
+        // ninguno cuenta: ahí hay vectores "con correspondencia" pero falsos.
+        kernel void holdField(texture2d<float,access::read> coordinates [[texture(0)]],texture2d<float,access::read> mask [[texture(1)]],texture2d<float,access::read> reliability [[texture(2)]],texture2d<float,access::write> field [[texture(3)]],texture2d<float,access::write> weight [[texture(4)]],uint2 p [[thread_position_in_grid]]) {
+            if(p.x>=coordinates.get_width()||p.y>=coordinates.get_height()) return;
+            float w=(mask.read(p).r>0||reliability.read(p).r<0.02f) ? 0 : 1;
+            field.write(coordinates.read(p)*w,p); weight.write(float4(w),p);
+        }
+        kernel void holdApply(texture2d<float,access::read> mask [[texture(0)]],texture2d<float,access::read_write> coordinates [[texture(1)]],texture2d<float,access::read_write> blend [[texture(2)]],texture2d<uint,access::read_write> output [[texture(3)]],texture2d<float,access::read> first [[texture(4)]],texture2d<float,access::read> last [[texture(5)]],texture2d<float,access::sample> field [[texture(6)]],texture2d<float,access::sample> weight [[texture(7)]],constant float2 &parameters [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
+            float t=parameters.x;
             if(p.x>=mask.get_width()||p.y>=mask.get_height()||t==0||t==1) return;
             float h=mask.read(p).r; if(h<=0) return;
             float nearest=t<=0.5f ? 0 : 1;
-            coordinates.write(coordinates.read(p)*(1-h),p);
+            // Movimiento del entorno: promedio de los vectores fiables a varias
+            // escalas; las finas mandan donde hay datos cerca y las gruesas
+            // rellenan el interior de una zona grande. Sin entorno fiable, 0.
+            float4 follow=float4(0);
+            if(parameters.y>0) {
+                constexpr sampler linear(filter::linear,mip_filter::linear,address::clamp_to_edge);
+                float2 uv=(float2(p)+0.5f)/float2(mask.get_width(),mask.get_height());
+                float4 sum=float4(0); float total=0,scale=1;
+                for(int mip=2;mip<int(field.get_num_mip_levels());++mip) {
+                    sum+=scale*field.sample(linear,uv,level(float(mip)));
+                    total+=scale*weight.sample(linear,uv,level(float(mip))).r;
+                    scale*=0.25f;
+                }
+                if(total>1e-4f) follow=sum/total;
+            }
+            coordinates.write(mix(coordinates.read(p),follow,h),p);
             blend.write(mix(blend.read(p).r,nearest,h),p);
-            float source=t<=0.5f ? first.read(p).r : last.read(p).r;
+            float2 q=float2(p)+(t<=0.5f ? follow.xy : follow.zw);
+            float source=t<=0.5f ? holdRead(first,q) : holdRead(last,q);
             output.write(uint(clamp(mix(float(output.read(p).r)/1023.0f,source,h),0.0f,1.0f)*1023+0.5f),p);
         }
         """
         let library = try device.makeLibrary(source: source, options: nil)
         var compiled = [String: MTLComputePipelineState]()
-        for name in ["holdSeed", "holdDensityX", "holdDensityY", "holdApply"] {
+        for name in ["holdSeed", "holdDensityX", "holdDensityY", "holdField", "holdApply"] {
             guard let function = library.makeFunction(name: name) else { throw MotionSearchEngine.EngineError.pipeline("Missing \(name)") }
             compiled[name] = try device.makeComputePipelineState(function: function)
         }
@@ -149,9 +203,18 @@ final class DrawingHold {
         }
         try dispatch("holdDensityX", [seeds, horizontal])
         try dispatch("holdDensityY", [horizontal, mask])
-        var t = time
-        try dispatch("holdApply", [mask, coordinates, blend, output, images[0], images[1]]) {
-            $0.setBytes(&t, length: MemoryLayout<Float>.stride, index: 0)
+        if movesWithSurroundings {
+            try dispatch("holdField", [coordinates, mask, reliability, field, fieldWeight])
+            guard let blit = command.makeBlitCommandEncoder() else {
+                throw MotionSearchEngine.EngineError.pipeline("Drawing hold mipmap encoder allocation failed")
+            }
+            blit.generateMipmaps(for: field)
+            blit.generateMipmaps(for: fieldWeight)
+            blit.endEncoding()
+        }
+        var parameters = SIMD2<Float>(time, movesWithSurroundings ? 1 : 0)
+        try dispatch("holdApply", [mask, coordinates, blend, output, images[0], images[1], field, fieldWeight]) {
+            $0.setBytes(&parameters, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
         }
     }
 }
