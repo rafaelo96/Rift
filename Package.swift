@@ -64,6 +64,7 @@ let package = Package(
         .executable(name: "MVProbe", targets: ["MVProbe"]),
         .executable(name: "SchedulerProbe", targets: ["SchedulerProbe"]),
         .executable(name: "DecodeAudioProbe", targets: ["DecodeAudioProbe"]),
+        .executable(name: "CastProbe", targets: ["CastProbe"]),
     ],
     targets: [
         .target(
@@ -243,6 +244,37 @@ let package = Package(
             name: "SchedulerProbe",
             dependencies: ["Scheduler"],
             path: "Core/Scheduler/Tools"
+        ),
+        // Core/Cast — repackages compressed packets into in-memory fMP4 segments
+        // and serves them as HLS for AirPlay. Never decodes, re-encodes or writes
+        // to disk. Independent of the playback pipeline (own libavformat context).
+        .target(
+            name: "CCastShim",
+            path: "Core/Cast/CSource",
+            cSettings: [
+                .headerSearchPath("include"),
+                .unsafeFlags(["-I\(ffmpegPrefix_)/include"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L\(ffmpegPrefix_)/lib",
+                    "-lavformat",
+                    "-lavcodec",
+                    "-lavutil",
+                ]),
+            ]
+        ),
+        .target(
+            name: "Cast",
+            dependencies: ["CCastShim"],
+            path: "Core/Cast",
+            exclude: ["CSource", "Tools"],
+            sources: ["Swift"]
+        ),
+        .executableTarget(
+            name: "CastProbe",
+            dependencies: ["Cast"],
+            path: "Core/Cast/Tools"
         ),
         // Rendering — presentation respecting HDR10 metadata (BT.2020/PQ)
         .target(
