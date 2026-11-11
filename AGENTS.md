@@ -170,8 +170,23 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   pool tenía 2 frames al reservar); con el default actual de 0.35 s los cubre
   todos (109/109 y 105/105 en dos tramos de 40 s). `RIFT_DEDUP=0` lo desactiva. Confirmado por el usuario en
   pantalla (19:40, con frente a sin dedup): más fluido.
-- **Modo "Fluidez máxima" (Ajustes → Frame+, apagado por defecto)**: desactiva
-  el sostén del dibujo (`InterpolationConfig.usesDrawingHold = false`) y deja
+- **Sostén por daño (2026-11-11)**: `DrawingHold` tiene una segunda siembra
+  que mira lo ya sintetizado: píxeles cuyas dos muestras mezcladas no son la
+  misma superficie (media 3×3 > 0.04) o cuyo mapa de coordenadas salta > 2 px
+  entre vecinos (parches). Densidad en la caja 33×33, h = smoothstep(0.05,
+  0.12). Está activa siempre, también en "Fluidez máxima", que ahora solo
+  quita la siembra por falta de correspondencia. Un paneo rígido sigue
+  idéntico byte a byte. Medido con MVProbe `MV_HOLD_AB=1` (E07 1080p, M4,
+  perfil fluid, t = 0.5): "lejos de ambos" frente al sostén anterior
+  0.167 → 0.027 % (5:00), 0.658 → 0.19 % (15:00) y, en los 14 pares de 9:50
+  que el usuario vio despedazados, 3.0 % sin sostén → 0.49 % con el anterior →
+  0.12 % (peor par 0.34 %). A cambio sostiene más área en acción (7.7 → 18 %
+  de píxeles tocados en el tramo de 15:00). En la app (M4, Fluidez máxima):
+  4K HDR 60 fps, par 31.4 ms igual que antes; 1080p 60 fps, par 27.2 ms.
+  `RIFT_HOLD_DAMAGE=0` vuelve al comportamiento anterior.
+- **Modo "Fluidez máxima" (Ajustes → Frame+, apagado por defecto)**: quita la
+  siembra por falta de correspondencia del sostén del dibujo
+  (`InterpolationConfig.usesDrawingHold = false`; la siembra por daño sigue) y deja
   que FramePool descarte hasta 2 repetidos seguidos (`maxConsecutive: 2`), con
   pares de hasta 3 periodos y hasta 8 muestras sintéticas
   (`maxSamplesPerPair` = 8). Decodifica con ≥ 0.5 s de antelación para tener

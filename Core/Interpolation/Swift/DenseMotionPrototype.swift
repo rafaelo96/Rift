@@ -92,7 +92,8 @@ public final class DenseMotionPrototype {
         }
         pairConfidence=(ProcessInfo.processInfo.environment["RIFT_PAIR_CONFIDENCE"] == "1" || ProcessInfo.processInfo.environment["RIFT_E2"] == "1") ? try PairConfidenceDiagnostics(device: device,width: width,height: height) : nil
         localConfidence=ProcessInfo.processInfo.environment["RIFT_E2"]=="1" ? try LocalConfidenceDegradation(device: device,width: width,height: height) : nil
-        self.drawingHold=drawingHold && ProcessInfo.processInfo.environment["RIFT_DRAWING_HOLD"] != "0" ? try DrawingHold(device: device,width: width,height: height) : nil
+        // `drawingHold == false` (fluidez máxima) conserva solo la siembra por daño.
+        self.drawingHold=ProcessInfo.processInfo.environment["RIFT_DRAWING_HOLD"] != "0" ? try DrawingHold(device: device,width: width,height: height,unmatchedSeed: drawingHold) : nil
         let candidateMode=ProcessInfo.processInfo.environment["RIFT_DENSE_CANDIDATES"] == "1"
         if candidateMode {
             guard let trace=device.makeBuffer(length: max(((width+3)/4+1)*((height+3)/4+1)*16*16,width*height*32),options: .storageModeShared) else { throw MotionSearchEngine.EngineError.pipeline("Candidate trace allocation failed") }

@@ -38,7 +38,7 @@ public struct InterpolationConfig: Sendable {
     public let usesUnmatchableEffectSafetyCheck: Bool
     /// Frame+: sostener el dibujo fuente donde la síntesis no encuentra
     /// correspondencia (`DrawingHold`). Desactivarlo es el modo "fluidez máxima":
-    /// los cambios de pose se interpolan siempre, con más artefactos.
+    /// solo se sostiene lo que la síntesis dejó visiblemente roto.
     public let usesDrawingHold: Bool
 
     public init(workWidth: Int = 1152,

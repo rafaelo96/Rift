@@ -63,7 +63,10 @@ func checkDrawingHold() throws {
     }
     let heldInside=mad(held,src,inside:true),plainInside=mad(plain,src,inside:true),outsideChange=mad(held,plain,inside:false)
     print("DRAWING HOLD: inside |held-I0| \(String(format:"%.2f",heldInside)) vs plain \(String(format:"%.2f",plainInside)); outside |held-plain| \(String(format:"%.3f",outsideChange))")
-    guard heldInside<1 && plainInside>10 else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
+    // Sin la siembra por unmatched ("fluidez máxima") el redibujo se sostiene
+    // igual por la siembra de daño; con RIFT_HOLD_DAMAGE=0 queda despedazado.
+    let damageSeed=ProcessInfo.processInfo.environment["RIFT_HOLD_DAMAGE"] != "0"
+    guard heldInside<1 && (damageSeed ? plainInside<5 : plainInside>10) else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
     guard outsideChange<0.5 else {print("DRAWING HOLD CHECK FAILED: hold leaked into background");exit(3)}
     print("DRAWING HOLD: rigid pan byte-identical; redrawn region held; background untouched")
 }
