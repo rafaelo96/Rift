@@ -184,6 +184,22 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   de píxeles tocados en el tramo de 15:00). En la app (M4, Fluidez máxima):
   4K HDR 60 fps, par 31.4 ms igual que antes; 1080p 60 fps, par 27.2 ms.
   `RIFT_HOLD_DAMAGE=0` vuelve al comportamiento anterior.
+- **Sostén que sigue al entorno y fundido (2026-11-11)**: la zona sostenida
+  ya no se queda quieta. Los vectores fiables fuera de toda zona sostenida se
+  promedian a varias escalas (mipmaps) y con ese vector se desplaza el dibujo
+  fuente (`RIFT_HOLD_FOLLOW=0` lo quita). En "Fluidez máxima" los umbrales de
+  daño son más altos (0.05 / 2.5 px / smoothstep 0.08–0.18) y, en vez de
+  cambiar de dibujo de golpe en t = 0.5, la zona se funde entre los dos
+  dibujos durante todo el intervalo (`fade` = 0.5; `RIFT_HOLD_FADE=0` vuelve
+  al corte). Es lo que hacen las TV donde no pueden interpolar. El modo normal
+  no funde. Simulación a 60 fps (`MV_DEDUP_SIM`, E07 1080p, M4, 100 frames),
+  zona en movimiento congelada con corte → con fundido: 38.5 → 16.1 % (9:47),
+  38.6 → 10.2 % (5:00), 18.5 → 6.4 % (15:00). Costo: al pausar a mitad de un
+  cambio de pose se ven los dos dibujos superpuestos, y "lejos de ambos" sube
+  (0.32 → 0.79 % en 9:47) porque la mezcla no es ninguno de los dos. En la app
+  (M4, Fluidez máxima): 4K HDR 60 fps, par 31.3 ms, 2 perdidos de 2595;
+  1080p 60 fps, par 28.0 ms, 2 de 1722. Pendiente que el usuario lo juzgue en
+  movimiento. Comparación fija: `docs/diagnostics/frame-9m50-tres-opciones.jpg`.
 - **Modo "Fluidez máxima" (Ajustes → Frame+, apagado por defecto)**: quita la
   siembra por falta de correspondencia del sostén del dibujo
   (`InterpolationConfig.usesDrawingHold = false`; la siembra por daño sigue) y deja

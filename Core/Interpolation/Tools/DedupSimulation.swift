@@ -67,6 +67,7 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
         let engine=try MotionCompensator(config:hold=="damage" ? InterpolationConfig(workWidth:config.workWidth,workHeight:config.workHeight,usesDrawingHold:false) : config)
         unsetenv("RIFT_DRAWING_HOLD")
         let step=1.0/60,epoch=pts[0]
+        var fallbackPairs=0,fallbackSpan=0.0,totalSpan=0.0
         var previous: [UInt16]?,regionalFrozen=[Double](),motions=[Double](),changes=[Double](),pairCosts=[Double](),incomplete=0,farValues=[Double](),costMS=0.0,pairs=0,synthesized=0
         for p in 1..<kept.count-2 {
             let ia=kept[p],ib=kept[p+1],pa=pts[ia],pb=pts[ib]
@@ -86,6 +87,9 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
                 let pairMS=Double(DispatchTime.now().uptimeNanoseconds-start)/1e6
                 costMS+=pairMS;pairs+=1;synthesized+=generated.count;pairCosts.append(pairMS)
                 if generated.count != tValues.count {incomplete+=1}
+                // Par entero repetido (corte de escena o seguridad): la imagen completa se congela.
+                if !generated.isEmpty && generated.allSatisfy({$0===buffers[ia] || $0===buffers[ib]}) {fallbackPairs+=1;fallbackSpan+=pb-pa}
+                totalSpan+=pb-pa
             }
             let a=plane(buffers[ia],mw,mh),b=plane(buffers[ib],mw,mh)
             var g=0
@@ -129,6 +133,7 @@ func simulateDedup(buffers: [CVPixelBuffer], pts: [Double], output: String) thro
             for i in 3..<changes.count-3 where changes[i-3...i+3].max()!>0.01 {active+=1;if changes[i]<0.001 {frozen+=1}}
         }
         let frozenFraction=active==0 ? 0:Double(frozen)/Double(active)
+        print("DEDUP \(mode): fallback pairs \(fallbackPairs) of \(pairs), \(String(format:"%.1f",100*fallbackSpan/max(totalSpan,1e-9)))% of the time; source frames dropped \(removed.count) of \(buffers.count)")
         let stall=moving==0 ? 0:Double(stalls)/Double(moving),stepVariation=variationN==0 ? 0:variation/Double(variationN)
         let meanFar=farValues.isEmpty ? 0:farValues.reduce(0,+)/Double(farValues.count)
         report[mode]=["outputs":motions.count+1,"pairs":pairs,"synthesized":synthesized,"costMS":costMS,

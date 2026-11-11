@@ -49,6 +49,8 @@ final class DrawingHold {
     private let field: MTLTexture
     private let fieldWeight: MTLTexture
     private let movesWithSurroundings: Bool
+    /// Semiancho (en t) del fundido entre los dos dibujos sostenidos; 0 = corte en t = 0.5.
+    private let fade: Float
     private let width: Int, height: Int
     /// x: 1 = siembra por falta de correspondencia; y: 1 = siembra por daño.
     private var seedKinds: SIMD2<Float>
@@ -82,6 +84,8 @@ final class DrawingHold {
         }
         self.field = field; self.fieldWeight = fieldWeight
         movesWithSurroundings = env["RIFT_HOLD_FOLLOW"] != "0"
+        // Fluidez máxima funde los dos dibujos en vez de cambiar de golpe.
+        fade = Float(env["RIFT_HOLD_FADE"] ?? "") ?? (unmatchedSeed ? 0 : 0.5)
         // Sin la siembra por falta de correspondencia ("fluidez máxima") los
         // umbrales de daño son más altos: se sostiene menos y queda algún
         // defecto pequeño a cambio de más movimiento.
@@ -147,11 +151,11 @@ final class DrawingHold {
             float w=(mask.read(p).r>0||reliability.read(p).r<0.02f) ? 0 : 1;
             field.write(coordinates.read(p)*w,p); weight.write(float4(w),p);
         }
-        kernel void holdApply(texture2d<float,access::read> mask [[texture(0)]],texture2d<float,access::read_write> coordinates [[texture(1)]],texture2d<float,access::read_write> blend [[texture(2)]],texture2d<uint,access::read_write> output [[texture(3)]],texture2d<float,access::read> first [[texture(4)]],texture2d<float,access::read> last [[texture(5)]],texture2d<float,access::sample> field [[texture(6)]],texture2d<float,access::sample> weight [[texture(7)]],constant float2 &parameters [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
+        kernel void holdApply(texture2d<float,access::read> mask [[texture(0)]],texture2d<float,access::read_write> coordinates [[texture(1)]],texture2d<float,access::read_write> blend [[texture(2)]],texture2d<uint,access::read_write> output [[texture(3)]],texture2d<float,access::read> first [[texture(4)]],texture2d<float,access::read> last [[texture(5)]],texture2d<float,access::sample> field [[texture(6)]],texture2d<float,access::sample> weight [[texture(7)]],constant float4 &parameters [[buffer(0)]],uint2 p [[thread_position_in_grid]]) {
             float t=parameters.x;
             if(p.x>=mask.get_width()||p.y>=mask.get_height()||t==0||t==1) return;
             float h=mask.read(p).r; if(h<=0) return;
-            float nearest=t<=0.5f ? 0 : 1;
+            float nearest=parameters.z>0 ? smoothstep(0.5f-parameters.z,0.5f+parameters.z,t) : (t<=0.5f ? 0 : 1);
             // Movimiento del entorno: promedio de los vectores fiables a varias
             // escalas; las finas mandan donde hay datos cerca y las gruesas
             // rellenan el interior de una zona grande. Sin entorno fiable, 0.
@@ -169,8 +173,7 @@ final class DrawingHold {
             }
             coordinates.write(mix(coordinates.read(p),follow,h),p);
             blend.write(mix(blend.read(p).r,nearest,h),p);
-            float2 q=float2(p)+(t<=0.5f ? follow.xy : follow.zw);
-            float source=t<=0.5f ? holdRead(first,q) : holdRead(last,q);
+            float source=mix(holdRead(first,float2(p)+follow.xy),holdRead(last,float2(p)+follow.zw),nearest);
             output.write(uint(clamp(mix(float(output.read(p).r)/1023.0f,source,h),0.0f,1.0f)*1023+0.5f),p);
         }
         """
@@ -212,9 +215,9 @@ final class DrawingHold {
             blit.generateMipmaps(for: fieldWeight)
             blit.endEncoding()
         }
-        var parameters = SIMD2<Float>(time, movesWithSurroundings ? 1 : 0)
+        var parameters = SIMD4<Float>(time, movesWithSurroundings ? 1 : 0, fade, 0)
         try dispatch("holdApply", [mask, coordinates, blend, output, images[0], images[1], field, fieldWeight]) {
-            $0.setBytes(&parameters, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
+            $0.setBytes(&parameters, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
         }
     }
 }

@@ -74,7 +74,19 @@ func checkDrawingHold() throws {
     // Sin la siembra por unmatched ("fluidez máxima") el redibujo se sostiene
     // igual por la siembra de daño; con RIFT_HOLD_DAMAGE=0 queda despedazado.
     let damageSeed=ProcessInfo.processInfo.environment["RIFT_HOLD_DAMAGE"] != "0"
-    guard heldInside<(follows ? 6 : 1) && (damageSeed ? plainInside<(follows ? 6 : 5) : plainInside>40) else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
+    // "Fluidez máxima" además funde los dos dibujos: en t = 0.5 la zona es la
+    // media de I0 e I1, cada uno desplazado con el paneo (RIFT_HOLD_FADE=0 lo quita).
+    let fades=(Float(ProcessInfo.processInfo.environment["RIFT_HOLD_FADE"] ?? "") ?? 0.5)>0
+    if damageSeed && fades && follows {
+        let next=luma(b2),d1=best.0-(best.0>0 ? 12 : -12)
+        let mix=zip(shifted(best.0),(0..<h).flatMap {y in (0..<w).map {x in next[y*w+max(0,min(w-1,x+d1))]}}).map {UInt16((Int($0)+Int($1))/2)}
+        let dissolve=mad(plain,mix,inside:true)
+        print("DRAWING HOLD: maximum fluidity |plain-mix| \(String(format:"%.2f",dissolve)) (vs I0 alone \(String(format:"%.2f",plainInside)))")
+        guard heldInside<6 && dissolve<6 && plainInside>dissolve else {print("DRAWING HOLD CHECK FAILED: redrawn region not dissolved");exit(3)}
+    } else {
+        guard damageSeed ? plainInside<(follows ? 6 : 5) : plainInside>40 else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
+    }
+    guard heldInside<(follows ? 6 : 1) else {print("DRAWING HOLD CHECK FAILED: redrawn region not held");exit(3)}
     guard outsideChange<0.5 else {print("DRAWING HOLD CHECK FAILED: hold leaked into background");exit(3)}
     print("DRAWING HOLD: rigid pan byte-identical; redrawn region held; background untouched")
 }
