@@ -126,10 +126,21 @@ final class DisplayRouter: ObservableObject {
         }
     }
 
-    /// Ajustes del Sistema → Pantallas, donde el menú "+" conecta una TV AirPlay.
-    func openDisplaySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Displays-Settings.extension") {
-            NSWorkspace.shared.open(url)
+    /// Aviso que el menú muestra cuando la conexión no se pudo iniciar sola.
+    @Published private(set) var connectionHint: String?
+
+    /// Conecta una TV AirPlay pulsando "Duplicar pantalla" del Centro de control
+    /// (ver `AirPlayDisplayConnector`). Nunca abre Ajustes del Sistema.
+    func connectAirPlayDisplay() {
+        Task { @MainActor in
+            switch await AirPlayDisplayConnector.connect() {
+            case .connecting, .listShown:
+                connectionHint = nil
+            case .needsPermission:
+                connectionHint = String(localized: "Allow Rift in Privacy & Security → Accessibility to connect from here")
+            case .unavailable:
+                connectionHint = String(localized: "To watch on a TV: Control Center → Screen Mirroring")
+            }
         }
     }
 

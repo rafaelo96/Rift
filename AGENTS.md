@@ -227,7 +227,13 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   de un `AVPlayer` (el header dice que el enrutado de
   `AVSampleBufferAudioRenderer` es solo de iOS/tvOS), así que Rift no envía
   video a la TV por AirPlay. La TV se usa como pantalla (el usuario la conecta
-  en Centro de control o Ajustes → Pantallas; ninguna API pública lo inicia) y
+  en Centro de control, o desde Rift: "Conectar una pantalla AirPlay…" pulsa
+  por accesibilidad "Duplicar pantalla" del Centro de control
+  (`AirPlayDisplayConnector`; con una sola TV la conecta, con varias deja la
+  lista abierta; requiere el permiso de Accesibilidad, que con firma ad-hoc se
+  pierde en cada compilación). Ninguna API pública lo inicia, y las internas
+  (`AVOutputContext.sharedSystemScreenContext`) devuelven `nil` sin
+  entitlement de Apple. El selector `AVRoutePickerView` solo cambia audio) y
   `DisplayRouter` mueve el video a ella en pantalla completa. El audio sale por
   `AVSampleBufferAudioRenderer.audioOutputDeviceUniqueID` (`AudioOutputDevices`).
   **No asignar `nil` a esa propiedad**: en macOS 27.2 deja el proceso sin

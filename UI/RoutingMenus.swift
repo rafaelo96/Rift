@@ -18,8 +18,11 @@ struct ScreenMenuItems: View {
             }
             Divider()
         }
-        Button(NSLocalizedString("Connect an AirPlay Display…", comment: "Opens Displays settings")) {
-            displays.openDisplaySettings()
+        Button(NSLocalizedString("Connect an AirPlay Display…", comment: "Opens the system's Screen Mirroring list")) {
+            displays.connectAirPlayDisplay()
+        }
+        if let hint = displays.connectionHint {
+            Text(hint)
         }
     }
 }
