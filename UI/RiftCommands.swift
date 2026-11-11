@@ -156,6 +156,10 @@ struct RiftCommands: Commands {
             .keyboardShortcut("f", modifiers: [.command, .option])
             .disabled(!state.hasVideo)
 
+            Menu("Show On") {
+                ScreenMenuItems(state: state)
+            }
+
             Divider()
             Button(state.isPictureInPictureActive ? "Exit Picture in Picture" : "Enter Picture in Picture") {
                 state.togglePictureInPicture()
@@ -179,6 +183,7 @@ struct RiftCommands: Commands {
                 Button("No Audio Tracks") {}.disabled(true)
             }
             Divider()
+            AudioOutputMenu(state: state)
             Menu("Audio Sync") {
                 ForEach(Self.audioSyncOffsets, id: \.self) { offset in
                     Toggle(Self.audioSyncTitle(for: offset), isOn: Binding(

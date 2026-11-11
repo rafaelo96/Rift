@@ -527,6 +527,20 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var audioTrackInfos: [Int: TrackInfo] = [:]
     private var audioDecoder: AudioDecoder?
     private var audioRenderer: AVSampleBufferAudioRenderer?
+
+    /// Pantallas conectadas (una TV AirPlay usada como pantalla incluida).
+    let displays = DisplayRouter()
+    /// Salidas de audio disponibles para elegir una distinta de la del sistema.
+    let audioOutputs = AudioOutputDevices()
+    /// UID de Core Audio elegido para Rift; `nil` sigue la salida del sistema.
+    @Published private(set) var audioOutputDeviceID = UserDefaults.standard.string(forKey: RiftPlayerState.audioOutputKey)
+    private static let audioOutputKey = "rift.audioOutputDevice"
+    private var routingObservers: Set<AnyCancellable> = []
+    /// Salida que se aplica de verdad: la elegida si sigue conectada, si no la
+    /// actual del sistema. Nunca `nil` (ver `AudioOutputDevices.systemDefaultID`).
+    private var effectiveAudioOutputDeviceID: String? {
+        audioOutputs.contains(audioOutputDeviceID) ? audioOutputDeviceID : audioOutputs.systemDefaultID
+    }
     private var sourceFrameRate: Double?
     /// Periodo del vídeo fuente en segundos (1/fps), usado para detectar pares
     /// con hueco (decode rezagado ≥2 frames) en la rama interpolada.
@@ -852,6 +866,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         uniformCadence = ProcessInfo.processInfo.environment["RIFT_CADENCE"] != "telecine"
         repeatedFrameDedup = ProcessInfo.processInfo.environment["RIFT_DEDUP"] != "0"
         restorePlaybackPreferences()
+        // Los menús leen pantallas y salidas a través del estado del reproductor.
+        displays.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &routingObservers)
+        audioOutputs.objectWillChange.sink { [weak self] _ in
+            // Salida elegida desconectada (o de vuelta), o el sistema cambió de
+            // salida: el audio pasa a la que corresponde.
+            self?.objectWillChange.send()
+            DispatchQueue.main.async { self?.applyAudioOutputDevice() }
+        }
+        .store(in: &routingObservers)
         restoreRecentVideos()
         restorePlaylist()
         restoreMarkers()
@@ -1669,6 +1693,22 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         volume = min(max(v, 0), 1)
         audioRenderer?.volume = Float(volume)
         persistPlaybackPreferences()
+    }
+
+    /// Elige la salida de audio de Rift (`nil`: la del sistema). Se recuerda entre sesiones.
+    func setAudioOutputDevice(_ uid: String?) {
+        audioOutputDeviceID = uid
+        UserDefaults.standard.set(uid, forKey: Self.audioOutputKey)
+        applyAudioOutputDevice()
+    }
+
+    private func applyAudioOutputDevice() {
+        guard let renderer = audioRenderer, let device = effectiveAudioOutputDeviceID,
+              renderer.audioOutputDeviceUniqueID != device else { return }
+        renderer.audioOutputDeviceUniqueID = device
+        // Cambiar de dispositivo cambia el reloj del synchronizer y puede
+        // pararlo un instante: un seek al mismo punto lo vuelve a anclar.
+        if hasVideo { seek(to: currentTime) }
     }
 
     func setAudioSyncOffset(_ offset: Double) {
@@ -2644,6 +2684,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
             let ar = AVSampleBufferAudioRenderer()
             ar.volume = Float(volume)
             ar.isMuted = false
+            if let device = self.effectiveAudioOutputDeviceID { ar.audioOutputDeviceUniqueID = device }
             self.audioRenderer = ar
             // Importante: agregar ANTES de que el synchronizer arranque (rate=1.0).
             self.scheduler?.synchronizer.addRenderer(ar)

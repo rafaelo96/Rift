@@ -176,3 +176,11 @@
 /* Botón de subtítulos y menú Video */
 "Subtitle Timing" = "Sincronía de subtítulos";
 "Video" = "Video";
+
+/* AirPlay, pantallas y salida de audio */
+"Connect an AirPlay Display…" = "Conectar una pantalla AirPlay…";
+"Audio Output" = "Salida de audio";
+"Same as System" = "Igual que el sistema";
+"Same as System (%@)" = "Igual que el sistema (%@)";
+"Show On" = "Ver en";
+"AirPlay and Screens" = "AirPlay y pantallas";

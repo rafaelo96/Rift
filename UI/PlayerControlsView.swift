@@ -517,6 +517,7 @@ struct PlayerControlsView<PlayerStateType: PlayerStateProviding>: View {
             }
             if let rift {
                 Section {
+                    AudioOutputMenu(state: rift)
                     Menu(NSLocalizedString("Audio Sync", comment: ""), systemImage: "waveform") {
                         ForEach(RiftCommands.audioSyncOffsets, id: \.self) { offset in
                             Toggle(RiftCommands.audioSyncTitle(for: offset), isOn: Binding(

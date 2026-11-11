@@ -223,6 +223,18 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   aplica la saturación. Siguen `CIVibrance` y `CITemperatureAndTint` (fuente
   D65, destino 4500 K…10000 K). Con valores neutros no hay filtro. Sin
   verificar con video HDR en pantalla EDR.
+- **AirPlay y pantallas**: en macOS, `AVRoutePickerView` solo enruta video
+  de un `AVPlayer` (el header dice que el enrutado de
+  `AVSampleBufferAudioRenderer` es solo de iOS/tvOS), así que Rift no envía
+  video a la TV por AirPlay. La TV se usa como pantalla (el usuario la conecta
+  en Centro de control o Ajustes → Pantallas; ninguna API pública lo inicia) y
+  `DisplayRouter` mueve el video a ella en pantalla completa. El audio sale por
+  `AVSampleBufferAudioRenderer.audioOutputDeviceUniqueID` (`AudioOutputDevices`).
+  **No asignar `nil` a esa propiedad**: en macOS 27.2 deja el proceso sin
+  reconocer el hilo principal como MainActor y SwiftUI se cierra en el
+  siguiente menú o movimiento del puntero (3 de 3). "Igual que el sistema" se
+  aplica con el UID de la salida actual del sistema y se actualiza cuando
+  cambia. Sin probar con una TV real todavía.
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

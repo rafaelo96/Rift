@@ -701,6 +701,26 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
                 .animation(pipTransitionAnimation, value: rift.isPictureInPictureActive)
             }
 
+            if let rift = state as? RiftPlayerState {
+                Menu {
+                    Section(NSLocalizedString("Show On", comment: "Screen that shows the video")) {
+                        ScreenMenuItems(state: rift)
+                    }
+                    Section {
+                        AudioOutputMenu(state: rift)
+                    }
+                } label: {
+                    TopChromeGlyph(systemName: "airplayvideo")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .frame(width: 28, height: 28)
+                .modifier(GlassCircle())
+                .accessibilityLabel(NSLocalizedString("AirPlay and Screens", comment: ""))
+                .help(NSLocalizedString("AirPlay and Screens", comment: ""))
+            }
+
             TopChromeButton(
                 systemName: "arrow.up.left.and.arrow.down.right",
                 accessibilityLabel: NSLocalizedString("Toggle full screen", comment: "")
