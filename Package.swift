@@ -74,7 +74,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Rift",
-            dependencies: ["Contracts", "Demux", "Decode", "DecodeAudio", "FramePool", "Scheduler", "Rendering", "Interpolation"],
+            dependencies: ["Contracts", "Demux", "Decode", "DecodeAudio", "FramePool", "Scheduler", "Rendering", "Interpolation", "Cast"],
             path: "UI",
             resources: [.process("Assets"), .process("Resources")],
             // Display loop and per-frame work run on the real-time path: keep `swift run`

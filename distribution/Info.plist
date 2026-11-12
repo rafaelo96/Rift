@@ -27,6 +27,13 @@
 	<string>1</string>
 	<key>CFBundleIconFile</key>
 	<string>Rift</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Rift uses the local network to send video to your TV over AirPlay.</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>

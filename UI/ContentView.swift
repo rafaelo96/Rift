@@ -487,6 +487,11 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             HDRDisplayView(displayLayer: rift.isPictureInPictureActive ? nil : dl,
                            videoGravity: presentationMode.videoGravity)
                 .overlay {
+                    if rift.isCasting {
+                        airPlayPlaceholder
+                    }
+                }
+                .overlay {
                     if rift.isPictureInPictureActive {
                         pictureInPicturePlaceholder
                             .transition(
@@ -506,6 +511,29 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
         } else {
             videoPlaceholder
         }
+    }
+
+    /// Cubre el video mientras la TV lo reproduce por AirPlay.
+    private var airPlayPlaceholder: some View {
+        ZStack {
+            Color.black
+            VStack(spacing: 14) {
+                Image(systemName: "airplayvideo")
+                    .font(.system(size: 54, weight: .light))
+                    .foregroundStyle(.white.opacity(0.64))
+                Text(NSLocalizedString("This video is playing on your TV.", comment: "AirPlay"))
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+                Text(NSLocalizedString("Frame+, Super Resolution and filters can’t be applied over AirPlay. The TV plays the original video.", comment: "AirPlay"))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(maxWidth: 420)
+            }
+            .multilineTextAlignment(.center)
+            .padding(32)
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
     }
 
     private var pictureInPicturePlaceholder: some View {
@@ -702,23 +730,13 @@ struct ContentView<PlayerStateType: PlayerStateProviding>: View {
             }
 
             if let rift = state as? RiftPlayerState {
-                Menu {
-                    Section(NSLocalizedString("Show On", comment: "Screen that shows the video")) {
-                        ScreenMenuItems(state: rift)
-                    }
-                    Section {
-                        AudioOutputMenu(state: rift)
-                    }
-                } label: {
-                    TopChromeGlyph(systemName: "airplayvideo")
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .frame(width: 28, height: 28)
-                .modifier(GlassCircle())
-                .accessibilityLabel(NSLocalizedString("AirPlay and Screens", comment: ""))
-                .help(NSLocalizedString("AirPlay and Screens", comment: ""))
+                // Selector de AirPlay de Apple: envía el video a la TV. Usar la TV
+                // como pantalla (con Frame+) está en Video → Ver en.
+                AirPlayRouteButton(player: rift.airPlay.player) { rift.prepareAirPlay() }
+                    .frame(width: 28, height: 28)
+                    .modifier(GlassCircle())
+                    .accessibilityLabel(NSLocalizedString("AirPlay", comment: ""))
+                    .help(NSLocalizedString("AirPlay", comment: ""))
             }
 
             TopChromeButton(

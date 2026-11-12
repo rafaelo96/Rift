@@ -278,6 +278,20 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   pierde 1 frame en ~55 s (unos 10 durante los traslados). La TV llega a
   1920×1080 y sin EDR, así que el HDR se ve como SDR. Un traslado pedido
   durante la animación de pantalla completa se aplica al terminar.
+- **AirPlay directo (2026-11-11)**: el botón de AirPlay de la barra superior
+  (`AirPlayRouteButton`) sí envía video a la TV sin permisos: `Core/Cast`
+  remultiplexa el archivo en memoria a HLS con segmentos fMP4 (libavformat,
+  sin decodificar ni escribir a disco; aprobado por el usuario), lo sirve por
+  HTTP local (`CastServer`) y un `AVPlayer` (`AirPlayCast`) lo enruta. El
+  `AVPlayer` apunta a `media.m3u8`: la lista maestra con VIDEO-RANGE=PQ falla
+  con -11868 en un Mac SDR. La TV decodifica el original, así que **Frame+,
+  superresolución y filtros no se aplican** (la ventana lo avisa mientras
+  dura); para verlos en la TV hay que usarla como pantalla. Play/pausa, seek y
+  volumen se reenvían al `AVPlayer`. Requiere `NSAllowsLocalNetworking` y
+  `NSLocalNetworkUsageDescription` en Info.plist. Probado por el usuario con
+  la LG webOS: reproduce. Sin hacer: subtítulos en la TV y mantener el envío
+  al cambiar de video. Se descartó por ahora recodificar en vivo la salida con
+  Frame+ (retraso de segundos y recodificación).
 - **Control de tiempo (`currentTime`)**: poll cada 100ms con Timer en `startDisplayLoop`/`togglePlay`, leyendo `scheduler.synchronizer.currentTime()`. No usar la fecha absoluta, no usar contadores locales.
 - **Pause/resume**: `sched.synchronizer.setRate(0 | 1, time: t)` en `togglePlay()`. El `displayLoop` no consume ni encola frames mientras `rate == 0`.
 - **Seek**: `seek(to:)` → `demuxer.seek(to:)`, `decoder.flush()`, `framePool.flush()`, `render.displayLayer.flush()`, `synchronizer.setRate(...)` al nuevo pts, y **restaurar cupo del semáforo** con 4 señales del coordinator (si no, decode loop se bloquea tras flush).

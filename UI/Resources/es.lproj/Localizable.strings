@@ -186,3 +186,9 @@
 "AirPlay and Screens" = "AirPlay y pantallas";
 "Allow Rift in Privacy & Security → Accessibility to connect from here" = "Permite Rift en Privacidad y seguridad → Accesibilidad para conectar desde aquí";
 "To watch on a TV: Control Center → Screen Mirroring" = "Para ver en la TV: Centro de control → Duplicar pantalla";
+
+/* AirPlay directo */
+"This video is playing on your TV." = "Este video se está reproduciendo en tu TV.";
+"Frame+, Super Resolution and filters can’t be applied over AirPlay. The TV plays the original video." = "Por AirPlay no se pueden aplicar Frame+, la superresolución ni los filtros. La TV reproduce el video original.";
+"This video can’t be sent over AirPlay" = "Este video no se puede enviar por AirPlay";
+"This Mac is not connected to a network" = "Este Mac no está conectado a una red";

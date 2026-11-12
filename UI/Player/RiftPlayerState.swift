@@ -528,6 +528,12 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     private var audioDecoder: AudioDecoder?
     private var audioRenderer: AVSampleBufferAudioRenderer?
 
+    /// Envío directo a una TV por AirPlay (la TV reproduce el video original).
+    let airPlay = AirPlayCast()
+    /// La TV está reproduciendo: el pipeline queda en pausa y los controles la manejan.
+    var isCasting: Bool { airPlay.isActive }
+    private var castTimer: Timer?
+
     /// Pantallas conectadas (una TV AirPlay usada como pantalla incluida).
     let displays = DisplayRouter()
     /// Salidas de audio disponibles para elegir una distinta de la del sistema.
@@ -866,6 +872,11 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
         uniformCadence = ProcessInfo.processInfo.environment["RIFT_CADENCE"] != "telecine"
         repeatedFrameDedup = ProcessInfo.processInfo.environment["RIFT_DEDUP"] != "0"
         restorePlaybackPreferences()
+        airPlay.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &routingObservers)
+        airPlay.onActiveChange = { [weak self] active in
+            active ? self?.beginCasting() : self?.endCasting()
+        }
         // Los menús leen pantallas y salidas a través del estado del reproductor.
         displays.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &routingObservers)
@@ -1446,6 +1457,16 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
 
     func togglePlay() {
         cancelUpNext()
+        if isCasting {
+            if playbackEnded, !isPlaying {
+                playbackEnded = false
+                airPlay.seek(to: 0)
+                currentTime = 0
+            }
+            isPlaying.toggle()
+            isPlaying ? airPlay.play(rate: playbackRate, volume: Float(volume)) : airPlay.pause()
+            return
+        }
         if playbackEnded, !isPlaying {
             // Al final del video, Reproducir empieza de nuevo desde el inicio.
             playbackEnded = false
@@ -1570,6 +1591,14 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// exige que su completionHandler se dispare solo cuando el timebase ya
     /// refleja el destino; por eso encola y no invoca en línea.
     func enqueueSeek(to time: Double, completion: (() -> Void)? = nil) {
+        if isCasting {
+            let target = min(max(time, 0), duration)
+            playbackEnded = false
+            airPlay.seek(to: target)
+            currentTime = target
+            completion?()
+            return
+        }
         pendingSeekTarget = time
         if let completion { pendingSeekCompletions.append(completion) }
         pumpSeekQueue()
@@ -1692,7 +1721,92 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     func setVolume(_ v: Double) {
         volume = min(max(v, 0), 1)
         audioRenderer?.volume = Float(volume)
+        if isCasting { airPlay.player.volume = Float(volume) }
         persistPlaybackPreferences()
+    }
+
+    // MARK: - AirPlay directo
+
+    /// El usuario abrió el selector de AirPlay: deja el video listo para la TV.
+    func prepareAirPlay() {
+        guard hasVideo, let sourceURL else { return }
+        let audio = selectedAudioTrackIndex
+        let time = currentTime
+        Task { @MainActor in
+            await airPlay.prepare(url: sourceURL, audioStreamIndex: audio, at: time)
+            if let failure = airPlay.failure {
+                feedback.show(FramePlusNotice(symbol: "airplayvideo", title: failure, emphasized: false))
+            }
+        }
+    }
+
+    /// La TV tomó el video: el pipeline se pausa y ella sigue desde el mismo punto.
+    private func beginCasting() {
+        let wasPlaying = isPlaying
+        let time = currentTime
+        if isPlaying { togglePlayPipelineOnly() }
+        airPlay.seek(to: time)
+        isPlaying = wasPlaying
+        if wasPlaying { airPlay.play(rate: playbackRate, volume: Float(volume)) }
+        castTimer?.invalidate()
+        castTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isCasting else { return }
+                // El reproductor de la TV puede pausarse solo (control remoto de la TV).
+                if !self.playbackEnded { self.isPlaying = self.airPlay.player.rate != 0 }
+                self.currentTime = min(self.airPlay.time, self.duration)
+                if self.duration > 0, self.currentTime >= self.duration - 0.3, !self.playbackEnded {
+                    self.playbackEnded = true
+                    self.isPlaying = false
+                    self.airPlay.pause()
+                }
+                self.persistCurrentSession()
+            }
+        }
+        areControlsVisible = true
+    }
+
+    /// La TV soltó el video (se eligió este Mac o se desconectó): Rift sigue
+    /// desde donde iba la TV.
+    private func endCasting() {
+        castTimer?.invalidate()
+        castTimer = nil
+        guard hasVideo else { return }
+        let wasPlaying = isPlaying
+        let time = min(airPlay.time, max(duration - 1, 0))
+        airPlay.pause()
+        airPlay.player.isMuted = true
+        isPlaying = false
+        enqueueSeek(to: time) { [weak self] in
+            guard let self, wasPlaying, !self.isPlaying else { return }
+            self.togglePlay()
+        }
+    }
+
+    /// Al cerrar o cambiar de video.
+    private func stopCasting() {
+        castTimer?.invalidate()
+        castTimer = nil
+        let wasCasting = isCasting
+        airPlay.onActiveChange = nil
+        airPlay.stop()
+        airPlay.onActiveChange = { [weak self] active in
+            active ? self?.beginCasting() : self?.endCasting()
+        }
+        if wasCasting { isPlaying = false }
+    }
+
+    /// Pausa el pipeline sin pasar por la rama de AirPlay de `togglePlay`.
+    private func togglePlayPipelineOnly() {
+        isPlaying = false
+        compensator?.resetTemporalState()
+        interpolationCostMonitor.reset()
+        pendingLoadAction = nil
+        if let sched = scheduler {
+            sched.synchronizer.setRate(0, time: CMTime(seconds: currentTime, preferredTimescale: 600))
+        }
+        updateTimePolling()
+        invalidatePictureInPicturePlaybackState()
     }
 
     /// Elige la salida de audio de Rift (`nil`: la del sistema). Se recuerda entre sesiones.
@@ -1739,6 +1853,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
     func closeVideo() {
         cancelUpNext()
+        stopCasting()
         dismissResumedNotice()
         playbackEnded = false
         videoOpenRequestID = UUID()
@@ -2509,6 +2624,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     }
 
     private func loadVideo(_ url: URL, restoringAt rememberedPosition: Double) {
+        stopCasting()
         cancelUpNext()
         dismissResumedNotice()
         playbackEnded = false
