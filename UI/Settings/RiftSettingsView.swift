@@ -41,7 +41,7 @@ struct RiftSettingsView: View {
                 Text("Los cambios se aplican al video actual y se conservan para próximas sesiones.")
             }
             Button("Restablecer reproducción") {
-                state.reopenLastVideoOnLaunch = true
+                state.reopenLastVideoOnLaunch = false
                 state.openingBehavior = .resume
                 state.rememberTrackSelections = true
                 state.setAudioSyncOffset(0)

@@ -79,6 +79,9 @@ struct RecentVideo: Codable, Identifiable {
     var url: URL { URL(fileURLWithPath: path) }
     var title: String { url.lastPathComponent }
 
+    /// Visto hasta el final (o casi): se abre desde el principio.
+    var isFinished: Bool { duration > 0 && playbackPosition >= 5 && resumePosition == 0 }
+
     var resumePosition: Double {
         guard duration > 0, playbackPosition < max(duration - 15, 0) else { return 0 }
         return max(playbackPosition, 0)
@@ -307,7 +310,7 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     @Published var automaticPiPOnAppSwitch = UserDefaults.standard.bool(forKey: "automaticPiPOnAppSwitch") {
         didSet { UserDefaults.standard.set(automaticPiPOnAppSwitch, forKey: "automaticPiPOnAppSwitch") }
     }
-    @Published var reopenLastVideoOnLaunch = UserDefaults.standard.object(forKey: "rift.reopenLastVideoOnLaunch") as? Bool ?? true {
+    @Published var reopenLastVideoOnLaunch = UserDefaults.standard.object(forKey: "rift.reopenLastVideoOnLaunch") as? Bool ?? false {
         didSet { UserDefaults.standard.set(reopenLastVideoOnLaunch, forKey: "rift.reopenLastVideoOnLaunch") }
     }
     @Published var openingBehavior = PlaybackOpeningBehavior(rawValue: UserDefaults.standard.string(forKey: "rift.openingBehavior") ?? "resume") ?? .resume {
@@ -1146,9 +1149,9 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Recientes sin terminar para la fila "Continuar viendo" de la pantalla vacía.
     /// Omite los archivos que ya no están en su ruta (comprobarlo por marcador
     /// escribiría en UserDefaults en cada dibujo de la vista).
+    /// Vistos recientemente para la pantalla de inicio: a medias y terminados.
     var continueWatching: [RecentVideo] {
         recentVideos
-            .filter { $0.resumePosition >= 5 }
             .filter { FileManager.default.fileExists(atPath: $0.path) }
             .prefix(4)
             .map { $0 }
@@ -1157,7 +1160,8 @@ final class RiftPlayerState: PlayerStateProviding, ObservableObject {
     /// Miniatura en la posición guardada; usa el mismo extractor acotado que la
     /// línea de tiempo (no copia ni transcodifica el archivo).
     func thumbnail(forRecent video: RecentVideo) async -> CGImage? {
-        await thumbnail(for: video.url, at: video.playbackPosition)
+        // Un video terminado se queda en los créditos: mejor una imagen del principio.
+        await thumbnail(for: video.url, at: video.isFinished ? video.duration * 0.1 : video.playbackPosition)
     }
 
     func thumbnail(for url: URL, at time: Double) async -> CGImage? {

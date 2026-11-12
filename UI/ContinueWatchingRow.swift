@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Fila "Continuar viendo" de la pantalla vacía: recientes sin terminar con
-/// miniatura en la posición guardada, progreso y tiempo restante.
+/// Fila "Vistos recientemente" de la pantalla vacía: miniatura, progreso y
+/// tiempo restante; los terminados dicen "Visto" y se abren desde el principio.
 struct ContinueWatchingRow: View {
     let videos: [RecentVideo]
     let thumbnail: (RecentVideo) async -> CGImage?
@@ -9,7 +9,7 @@ struct ContinueWatchingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(NSLocalizedString("Continue Watching", comment: ""))
+            Text(NSLocalizedString("Recently Watched", comment: ""))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
@@ -33,10 +33,13 @@ private struct ContinueWatchingCard: View {
 
     private var progress: Double {
         guard video.duration > 0 else { return 0 }
+        if video.isFinished { return 1 }
         return min(max(video.playbackPosition / video.duration, 0), 1)
     }
 
     private var remainingText: String {
+        if video.isFinished { return NSLocalizedString("Watched", comment: "Finished video") }
+        guard video.duration > 0 else { return "" }
         let minutes = max(Int(((video.duration - video.playbackPosition) / 60).rounded()), 1)
         return String(format: NSLocalizedString("%d min left", comment: "Time left in a video"), minutes)
     }
@@ -107,7 +110,7 @@ private struct ContinueWatchingCard: View {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { isHovered = hovering }
         }
         .help(video.title)
-        .accessibilityLabel(String(format: NSLocalizedString("Continue %@, %@", comment: "Continue watching card"),
+        .accessibilityLabel(String(format: NSLocalizedString(video.isFinished ? "Play %@, %@" : "Continue %@, %@", comment: "Recently watched card"),
                                    displayTitle, remainingText))
         .task(id: video.path) {
             let result = await thumbnail(video)

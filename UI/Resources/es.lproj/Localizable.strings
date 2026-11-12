@@ -161,6 +161,9 @@
 "Close" = "Cerrar";
 "Continue Watching" = "Continuar viendo";
 "%d min left" = "Quedan %d min";
+"Recently Watched" = "Vistos recientemente";
+"Watched" = "Visto";
+"Play %@, %@" = "Reproducir %@, %@";
 "Continue %@, %@" = "Continuar %@, %@";
 "%d videos" = "%d videos";
 "Hide Playlist" = "Ocultar lista";
