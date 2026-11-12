@@ -18,6 +18,9 @@ func auditNativeScene(buffers: [CVPixelBuffer], pts: [Double], output: String) t
     if ProcessInfo.processInfo.environment["MV_DEDUP_SIM"]=="1" {
         try simulateDedup(buffers:buffers,pts:pts,output:output);return
     }
+    if ProcessInfo.processInfo.environment["MV_HOLD_CLASSIFY"]=="1" {
+        try classifyHeldMotion(buffers:buffers,pts:pts,output:output);return
+    }
     if ProcessInfo.processInfo.environment["MV_HOLD_AB"]=="1" {
         try abDrawingHold(buffers:buffers,pts:pts,output:output);return
     }

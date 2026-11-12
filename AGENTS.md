@@ -200,6 +200,20 @@ Antes de escribir código: describe tu plan en 3-4 líneas y espera confirmació
   (M4, Fluidez máxima): 4K HDR 60 fps, par 31.3 ms, 2 perdidos de 2595;
   1080p 60 fps, par 28.0 ms, 2 de 1722. Pendiente que el usuario lo juzgue en
   movimiento. Comparación fija: `docs/diagnostics/frame-9m50-tres-opciones.jpg`.
+- **Qué queda sin mover en Fluidez máxima (2026-11-12)**: MVProbe
+  `MV_HOLD_CLASSIFY=1` compara la salida de Fluidez máxima con la salida sin
+  sostén (t = 0.5, repetidos descartados) y, en bloques de 16×16 de la zona
+  donde actuó el sostén, busca una traslación de I0 a I1 hasta ±160 px con
+  vuelta atrás y coherencia con un vecino. E07 1080p, M4, 3 tramos de 100
+  frames: el sostén toca el 38–55 % de los píxeles en movimiento; de sus
+  bloques con textura solo el 22–25 % tiene una traslación (en los bloques
+  bien interpolados la misma prueba da 35–50 %, porque no ve deformaciones),
+  y los de ≥ 64 px son el 2–5 %. Es decir, casi todo es cambio de pose; ampliar
+  la búsqueda recuperaría como mucho un ~2 % de la zona en movimiento. No se
+  amplió. Una búsqueda simétrica I0(x − s) ≈ I1(x + s) da falsos positivos
+  (dos zonas planas del mismo color coinciden en cualquier sitio); por eso es
+  de un solo lado. `MV_HOLD_CLASSIFY_PNG=<pares>` marca los bloques (rojo sin
+  traslación, verde con, azul planos).
 - **Modo "Fluidez máxima" (Ajustes → Frame+, apagado por defecto)**: quita la
   siembra por falta de correspondencia del sostén del dibujo
   (`InterpolationConfig.usesDrawingHold = false`; la siembra por daño sigue) y deja
